@@ -313,8 +313,7 @@ namespace verona::rt
         // attempt to remove, so the notification can be handled.
         // Do not move to sleeping as we still need ownership to
         // handle the notification.
-        notify =
-          back.compare_exchange_strong(bk, clear, std::memory_order_release);
+        notify = back.compare_exchange_strong(bk, clear, std::memory_order_release);
         return false;
       }
 
