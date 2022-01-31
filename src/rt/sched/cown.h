@@ -127,15 +127,9 @@ namespace verona::rt
       YesTryFast
     };
 
-    Cown(bool initialise = true)
+    Cown()
     {
       make_cown();
-
-      if (initialise)
-      {
-        auto& alloc = ThreadAlloc::get();
-        queue.init(stub_msg(alloc));
-      }
     }
 
   private:
@@ -188,7 +182,7 @@ namespace verona::rt
       auto desc = token_desc();
       auto p = ThreadAlloc::get().alloc(desc->size);
       auto o = Object::register_object(p, desc);
-      auto a = new (o) Cown(false);
+      auto a = new (o) Cown();
       return a;
     }
 
@@ -713,6 +707,7 @@ namespace verona::rt
           // Reschedule if cown does not go to sleep.
           if (!queue.mark_sleeping(alloc, notify))
           {
+            Logging::cout() << "Mark sleeping failed on " << this << Logging::endl;
             if (notify)
             {
               // It is possible to have already notified the cown in this batch,
@@ -851,11 +846,8 @@ namespace verona::rt
       // Now we may run our destructor.
       destructor();
 
-      auto* stub = queue.destroy();
-      // All messages must have been run by the time the cown is collected.
-      assert(stub->next_is_null());
-
-      alloc.dealloc<sizeof(MultiMessage)>(stub);
+      // Check queue is sleeping, and hence contains no messages.
+      assert(queue.is_sleeping());
     }
 
     bool release_early()
