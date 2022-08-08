@@ -367,7 +367,7 @@ namespace verona::rt
     }
 
   protected:
-    void schedule()
+    void schedule(bool fifo = true)
     {
       // This should only be called if the cown is known to have been
       // unscheduled, for example when detecting a previously empty message
@@ -376,7 +376,10 @@ namespace verona::rt
 
       if (t != nullptr)
       {
-        t->schedule_fifo(this);
+        if (fifo)
+          t->schedule_fifo(this);
+        else
+          t->schedule_lifo(this);
         return;
       }
 
