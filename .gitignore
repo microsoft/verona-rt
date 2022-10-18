@@ -1,0 +1,9 @@
+/build*/
+CMakeFiles/
+.vscode/
+.vs/
+**/dump/*
+/src/rt/build*/
+/Testing/
+compile_commands.json
+.*.swp
