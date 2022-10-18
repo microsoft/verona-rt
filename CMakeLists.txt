@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10.0)
 
-project(verona-rt CXX)
+project(verona-rt-all CXX)
 
 # ## Clang-format target
 include(cmake/clangformat.cmake)
@@ -13,6 +13,7 @@ copyright_targets()
 include(FetchContent)
 
 set(SNMALLOC_HEADER_ONLY_LIBRARY ON)
+set(SNMALLOC_USE_CXX17 ON CACHE BOOL "Build snmalloc in legacy CXX17 mode as long as Verona stays on CXX17" FORCE)
 
 FetchContent_Declare(
   snmalloc
@@ -21,6 +22,5 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(snmalloc)
-
 
 add_subdirectory(src/rt)

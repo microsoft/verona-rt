@@ -1,9 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(verona C CXX)
-
-set(SNMALLOC_USE_CXX17 ON CACHE BOOL "Build snmalloc in legacy CXX17 mode as long as Verona stays on CXX17" FORCE)
-#set(SNMALLOC_HEADER_ONLY_LIBRARY ON)
-#add_subdirectory(../../external/snmalloc ./external/snmalloc EXCLUDE_FROM_ALL)
+project(verona-rt C CXX)
 
 macro(subdirlist result curdir)
   file(GLOB children LIST_DIRECTORIES true CONFIGURE_DEPENDS RELATIVE ${curdir} ${curdir}/*)

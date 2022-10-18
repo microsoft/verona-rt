@@ -1,0 +1,62 @@
+name: Verona Runtime CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        # Variant is used to specify alternative jobs by specifying somethig other then
+        # standard
+        variant: [ "Standard" ]
+
+        #        platform: [ "ubuntu-latest", "windows-latest", "mac-latest" ]
+        # Use VS 2019 as currently doesn't compile with latest
+        # Disable mac-latest, not managing to get machines from the pool.
+        platform: [ "ubuntu-latest", "windows-2019" ]
+
+
+        build-type: [ "Release", "Debug" ]
+                
+        include:
+          - platform: "ubuntu-latest"
+            cmake-flags: "-G Ninja"
+            dependencies: "sudo apt install ninja-build"
+          
+          - variant: "Sanitizer"
+            platform: "ubuntu-latest"
+            build-type: "Release"
+            cmake-flags: "-G Ninja -DSANITIZER=address,undefined -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
+            dependencies: "sudo apt install ninja-build"
+
+          - platform: "windows-2019"
+            build-type: "Debug"
+            # Exclude perf tests in Debug on Windows as they take too long.
+            ctest-flags: "-Rperf"
+          
+          # - platform: "mac-latest"
+          #   cmake-flags: ""
+          #   dependencies: ""
+      # Don't abort runners if a single one fails
+      fail-fast: false
+    runs-on: ${{matrix.platform}}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install build dependencies
+      run: ${{ matrix.dependencies }}
+    
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DVERONA_CI_BUILD=On ${{matrix.cmake-flags}} ${{matrix.extra-cmake-flags}}
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{matrix.build-type}} --parallel 4
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build/src/rt
+      run: ctest -C ${{matrix.build-type}} -j 4 ${{matrix.ctest-flags}}
