@@ -117,7 +117,7 @@ namespace verona::rt
       {
         if (is_last)
         {
-          alloc.dealloc(&body);
+          alloc.dealloc(body);
         }
       }
 
