@@ -67,6 +67,10 @@ namespace verona::rt::pal
   };
 } // namespace verona::rt::pal
 #  elif defined(WIN32)
+#    define WIN32_LEAN_AND_MEAN
+#    ifndef NOMINMAX
+#      define NOMINMAX
+#    endif
 #    include <windows.h>
 namespace verona::rt::pal
 {
