@@ -1,8 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #define VERONA_EXTERNAL_THREADING
-#include <iterator>
 #include <debug/harness.h>
+#include <iterator>
 #include <verona.h>
 
 constexpr const char* HARNESS_ARGV[] = {"binary", "--cores", "1"};

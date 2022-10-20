@@ -1,8 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include <cpp/when.h>
-#include <memory>
 #include <debug/harness.h>
+#include <memory>
 
 using namespace verona::cpp;
 

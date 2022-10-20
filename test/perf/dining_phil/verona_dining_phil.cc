@@ -3,8 +3,8 @@
 #include "args.h"
 
 #include <cpp/when.h>
-#include <memory>
 #include <debug/harness.h>
+#include <memory>
 
 using namespace verona::cpp;
 

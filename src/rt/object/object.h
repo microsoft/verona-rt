@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../ds/bag.h"
-#include "../ds/stack.h"
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
+#include "../ds/bag.h"
+#include "../ds/stack.h"
 
 #include <snmalloc/snmalloc.h>
 

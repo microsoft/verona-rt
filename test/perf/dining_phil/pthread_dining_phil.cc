@@ -4,9 +4,9 @@
 
 #include <algorithm>
 #include <cassert>
+#include <debug/harness.h>
 #include <iostream>
 #include <mutex>
-#include <debug/harness.h>
 #include <thread>
 #include <vector>
 

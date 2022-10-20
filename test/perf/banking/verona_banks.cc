@@ -3,9 +3,9 @@
 #include "args.h"
 
 #include <cpp/when.h>
+#include <debug/harness.h>
 #include <ds/scramble.h>
 #include <memory>
-#include <debug/harness.h>
 
 using namespace verona::cpp;
 
