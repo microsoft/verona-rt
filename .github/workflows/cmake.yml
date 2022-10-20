@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-test:
     strategy:
       matrix:
         # Variant is used to specify alternative jobs by specifying somethig other then
@@ -60,3 +60,10 @@ jobs:
     - name: Test
       working-directory: ${{github.workspace}}/build/
       run: ctest -C ${{matrix.build-type}} -j 4 ${{matrix.ctest-flags}}
+
+  all-checks:
+    needs: [ build-test ]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Dummy step
+      run: true

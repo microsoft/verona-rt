@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include "ds/hashmap.h"
 
-#include "harness.h"
+#include "debug/harness.h"
 #include "test/opt.h"
 #include "test/xoroshiro.h"
 #include "verona.h"

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include "args.h"
 
-#include <harness.h>
+#include <debug/harness.h>
 
 int verona_main(SystematicTestHarness& harness);
 int pthread_main();

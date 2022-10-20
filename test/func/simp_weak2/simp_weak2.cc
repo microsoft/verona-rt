@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <cpp/when.h>
-#include <harness.h>
+#include <debug/harness.h>
 
 using namespace verona::cpp;
 

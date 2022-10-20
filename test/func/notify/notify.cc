@@ -1,6 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
-#include <harness.h>
+#include <debug/harness.h>
 // Harness must come before tests.
 #include "./notify_basic.h"
 #include "./notify_coalesce.h"

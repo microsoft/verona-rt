@@ -6,7 +6,7 @@
 #include <cassert>
 #include <iostream>
 #include <mutex>
-#include <harness.h>
+#include <debug/harness.h>
 #include <thread>
 #include <vector>
 

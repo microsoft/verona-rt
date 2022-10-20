@@ -51,7 +51,7 @@
  *     3      Early release: finish
  * ---------------------------
  */
-#include <harness.h>
+#include <debug/harness.h>
 
 struct A : public VCown<A>
 {};

@@ -14,7 +14,7 @@
 #include "verona.h"
 
 #include <chrono>
-#include <harness.h>
+#include <debug/harness.h>
 
 namespace sn = snmalloc;
 namespace rt = verona::rt;

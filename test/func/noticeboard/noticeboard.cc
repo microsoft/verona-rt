@@ -5,7 +5,7 @@
 #include "./noticeboard_primitive_weak.h"
 #include "./noticeboard_weak.h"
 
-#include <harness.h>
+#include <debug/harness.h>
 
 int main(int argc, char** argv)
 {

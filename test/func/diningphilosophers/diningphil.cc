@@ -1,7 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include <ds/scramble.h>
-#include <harness.h>
+#include <debug/harness.h>
 
 struct Fork : public VCown<Fork>
 {

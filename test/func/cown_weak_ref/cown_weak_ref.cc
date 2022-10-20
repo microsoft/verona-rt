@@ -1,6 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
-#include <harness.h>
+#include <debug/harness.h>
 
 /**
  * This test case produces a binary tree with weak parent pointers.  The

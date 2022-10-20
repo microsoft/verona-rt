@@ -22,7 +22,7 @@
 #include "verona.h"
 
 #include <chrono>
-#include <harness.h>
+#include <debug/harness.h>
 
 using namespace std;
 

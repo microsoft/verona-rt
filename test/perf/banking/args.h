@@ -1,6 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
-#include <harness.h>
+#include <debug/harness.h>
 
 // Command line parametes
 inline size_t TRANSACTIONS = 50;

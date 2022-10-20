@@ -1,6 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
-#include <harness.h>
+#include <debug/harness.h>
 
 inline uint32_t GENERATOR_COUNT = 2;
 inline uint64_t ACCOUNTS_COUNT = 1000;

@@ -3,7 +3,7 @@
 #include "deadlock.h"
 #include "unblock.h"
 
-#include <harness.h>
+#include <debug/harness.h>
 
 int main(int argc, char** argv)
 {

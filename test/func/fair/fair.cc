@@ -1,7 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include <ctime>
-#include <harness.h>
+#include <debug/harness.h>
 
 static constexpr int start_count = 100;
 struct A : public VCown<A>

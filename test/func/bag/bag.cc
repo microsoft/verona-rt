@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include "ds/bag.h"
 
-#include "harness.h"
+#include "debug/harness.h"
 #include "debug/log.h"
 #include "unordered_set"
 #include "verona.h"

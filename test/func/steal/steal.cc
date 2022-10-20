@@ -1,7 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include <ctime>
-#include <harness.h>
+#include <debug/harness.h>
 
 struct Runner : public VCown<Runner>
 {

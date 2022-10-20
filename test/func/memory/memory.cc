@@ -10,7 +10,7 @@
 // #include "memory_subregion.h"
 #include "memory_swap_root.h"
 
-#include <harness.h>
+#include <debug/harness.h>
 #include <test/opt.h>
 
 /**

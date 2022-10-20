@@ -16,7 +16,7 @@
  * This is true for the commit that adds this comment.
  */
 
-#include <harness.h>
+#include <debug/harness.h>
 
 namespace noticeboard_basic
 {

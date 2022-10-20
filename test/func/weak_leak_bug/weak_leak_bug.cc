@@ -6,7 +6,7 @@
 // leak detector is much simpler.  Leaving the test incase that
 // changes.
 
-#include <harness.h>
+#include <debug/harness.h>
 
 #if defined(__has_feature)
 #  if __has_feature(address_sanitizer)

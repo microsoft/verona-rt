@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include <harness.h>
+#include <debug/harness.h>
 #include <verona.h>
 
 using namespace snmalloc;
