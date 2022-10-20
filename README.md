@@ -1,19 +1,22 @@
-
-Project Verona is a research programming language to explore the concept of
+## Project Verona
+It is a research programming language to explore the concept of
 concurrent ownership.  We are providing a new concurrency model that seamlessly
 integrates ownership.
 
-This research project is at an early stage and is open sourced to facilitate 
+This research project is in its early stage and is open sourced to facilitate 
 academic collaborations.  We are keen to engage in research collaborations on
 this project, please do reach out to discuss this.
 
 The project is not ready to be used outside of research.
 
+
+![Github Repo Size](https://img.shields.io/github/repo-size/microsoft/verona-rt?style=for-the-badge&color=aqua)
+
 # Status
 
-This project is at a very early stage, parts of the type checker are still to be
+This project is in its very early stage, parts of the type checker are still to be
 implemented, and there are very few language features implemented yet. This will
-change, but will take time.
+change, but it would take time.
 
 ## Nightly Build
 
@@ -28,19 +31,23 @@ MacOS 10.14 Clang 11 | [![Build Status](https://dev.azure.com/ProjectVeronaCI/Pr
 
 Due to some amazing early contributors, we have syntax highlighting for the following editors:
 * **VS Code:** Automatically suggests installing when opening Verona files. Thanks to @KodrAus (see #145).
-* **Emacs:** https://github.com/damon-kwok/verona-mode. Thanks to @damon-kwok (see #199).
-* **Vim:** https://github.com/timmyjose-projects/verona.vim. Thanks to @timmyjose (see #504).
+* **Emacs:** [LINK](https://github.com/damon-kwok/verona-mode) Thanks to @damon-kwok (see #199).
+* **Vim:** [LINK](https://github.com/timmyjose-projects/verona.vim) Thanks to @timmyjose (see #504).
 
-# Development Documents
+## Development Documents
 
-## [Exploring the language](docs/explore.md)
+||||||
+|--|--|--|--|--|
+|[Exploring the language](docs/explore.md)|[FAQ](docs/faq.md)|[Building](docs/building.md)|[Contributing](CONTRIBUTING.md)|[Internal Design](docs/internal)|
 
-## [FAQ](docs/faq.md)
+**Warning:** These documents are work-in-progress and may change without notice.
 
-## [Building](docs/building.md)
+<br>
 
-## [Contributing](CONTRIBUTING.md)
+<details><summary><h2> See Our Contributors 😄 </h2></summary>
 
-## [Internal Design](docs/internal)
+<a href="https://github.com/microsoft/verona-rt/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=microsoft/verona-rt" />
+</a>
 
-Warning: These documents are work-in-progress and may change without notice.
+</details>
