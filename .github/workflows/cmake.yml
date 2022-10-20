@@ -36,7 +36,7 @@ jobs:
           - platform: "windows-2019"
             build-type: "Debug"
             # Exclude perf tests in Debug on Windows as they take too long.
-            ctest-flags: "-Rperf"
+            ctest-flags: "-E perf"
           
           # - platform: "mac-latest"
           #   cmake-flags: ""
