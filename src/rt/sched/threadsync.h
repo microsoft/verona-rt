@@ -3,7 +3,7 @@
 
 #pragma once
 #include "../pal/semaphore.h"
-#include "test/logging.h"
+#include "debug/logging.h"
 
 /**
  * This file contains the synchronisation implementation for suspending

@@ -6,7 +6,7 @@
 #include "../region/region.h"
 #include "../sched/epoch.h"
 #include "../sched/schedulerthread.h"
-#include "../test/logging.h"
+#include "../debug/logging.h"
 
 #include <queue>
 

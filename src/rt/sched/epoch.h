@@ -27,7 +27,7 @@
 
 #include "../ds/asymlock.h"
 #include "../ds/queue.h"
-#include "../test/logging.h"
+#include "../debug/logging.h"
 #include "region/immutable.h"
 
 #include <snmalloc/snmalloc.h>

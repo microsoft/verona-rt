@@ -58,5 +58,5 @@ jobs:
       run: cmake --build ${{github.workspace}}/build --config ${{matrix.build-type}} --parallel 4
 
     - name: Test
-      working-directory: ${{github.workspace}}/build/src/rt
+      working-directory: ${{github.workspace}}/build/
       run: ctest -C ${{matrix.build-type}} -j 4 ${{matrix.ctest-flags}}

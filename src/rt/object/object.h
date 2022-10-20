@@ -4,8 +4,8 @@
 
 #include "../ds/bag.h"
 #include "../ds/stack.h"
-#include "../test/logging.h"
-#include "../test/systematic.h"
+#include "../debug/logging.h"
+#include "../debug/systematic.h"
 
 #include <snmalloc/snmalloc.h>
 
