@@ -15,7 +15,7 @@ namespace verona::rt
   {
     Cown* _cown;
 
-    static const uintptr_t READ_FLAG = 1;
+    static constexpr uintptr_t READ_FLAG = 1;
 
     Request(Cown* cown) : _cown(cown) {}
 

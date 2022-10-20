@@ -536,6 +536,7 @@ namespace verona::rt
 
       if (delivered.is_read_request())
       {
+        read_ref_count.add_read();
         // In this case, this thread will execute the behaviour
         // but another thread can still read this cown, so reschedule
         // it before executing the behaviour and do not reschedule it after.
