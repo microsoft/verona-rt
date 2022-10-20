@@ -14,6 +14,7 @@ namespace verona::rt
 
   class MultiMessage
   {
+  public:
     /**
      * This represents a message that is sent to a behaviour.
      *
@@ -47,6 +48,19 @@ namespace verona::rt
       }
 
       /**
+       * Remove one from the exec_count_down.
+       *
+       * Returns true if this call makes the count_down_zero
+       */
+      bool count_down()
+      {
+        // Note that we don't actually perform the last decrement as it is not
+        // required.
+        return (exec_count_down.load(std::memory_order_acquire) == 1) ||
+          (exec_count_down.fetch_sub(1) == 1);
+      }
+
+      /**
        * Allocates a message body with sufficient space for the
        * cowns_array and the behaviour.  This does not initialise the cowns
        * array.
@@ -69,39 +83,93 @@ namespace verona::rt
       }
     };
 
+    class Delivered
+    {
+      friend MultiMessage;
+
+      // If is_last is true, then this is an owning reference.
+      Body* body;
+      bool is_read;
+      bool is_last;
+      Alloc& alloc;
+
+      Delivered(Body* body, bool is_read, bool is_last, Alloc& alloc)
+      : body(body), is_read(is_read), is_last(is_last), alloc(alloc)
+      {}
+
+    public:
+      Body* get_body()
+      {
+        return body;
+      }
+
+      bool is_last_reference()
+      {
+        return is_last;
+      }
+
+      bool is_read_request()
+      {
+        return is_read;
+      }
+
+      ~Delivered()
+      {
+        if (is_last)
+        {
+          alloc.dealloc(body);
+        }
+      }
+
+      Delivered(const Delivered& other) = delete;
+      Delivered(Delivered&& other) = delete;
+    };
+
   private:
-    // The body of the actual message.
-    Body* body;
     friend verona::rt::MPSCQ<MultiMessage>;
-    friend class Cown;
-    friend struct Request;
+
+    // The body of the actual message.
+    // uses the bottom bit to determine if the request is a read.
+    uintptr_t body_and_mode;
 
     std::atomic<MultiMessage*> next{nullptr};
 
-    inline Body* get_body()
-    {
-      auto result = (Body*)((uintptr_t)body & ~Object::MARK_MASK);
-      return result;
-    }
-
-    static MultiMessage* make(Alloc& alloc, Body* body)
+  public:
+    static MultiMessage* make(Alloc& alloc, Body* body, bool is_read)
     {
       auto msg = (MultiMessage*)alloc.alloc<sizeof(MultiMessage)>();
-      msg->body = body;
-      return msg;
-    }
-
-    static MultiMessage* make_message(Alloc& alloc, Body* body)
-    {
-      MultiMessage* m = make(alloc, body);
-      Logging::cout() << "MultiMessage " << m << " payload " << body
+      msg->body_and_mode = ((uintptr_t)body) | (is_read ? 1 : 0);
+      Logging::cout() << "MultiMessage " << msg << " payload " << body
                       << Logging::endl;
-      return m;
+      return msg;
     }
 
     inline size_t size()
     {
       return sizeof(MultiMessage);
+    }
+
+    inline bool is_read()
+    {
+      return (body_and_mode & 1) == 1;
+    }
+
+    /**
+     * Processes the message, if it is the last message then
+     * it takes ownership of the body.
+     */
+    Delivered deliver(Alloc& alloc)
+    {
+      auto body = (Body*)(body_and_mode & ~Object::MARK_MASK);
+      auto is_read_ = is_read();
+      body_and_mode = 0;
+      auto is_last = body->count_down();
+      return {is_last? body : nullptr, is_read_, is_last, alloc};
+    }
+
+    bool next_is_null()
+    {
+      return next.load(std::memory_order_acquire) == nullptr;
     }
   };
 } // namespace verona::rt
