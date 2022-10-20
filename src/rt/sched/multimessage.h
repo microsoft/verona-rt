@@ -85,14 +85,20 @@ namespace verona::rt
 
     class Delivered
     {
+      friend MultiMessage;
+
       // If is_last is true, then this is an owning reference.
-      Body& body;
+      Body* body;
       bool is_read;
       bool is_last;
       Alloc& alloc;
 
+      Delivered(Body* body, bool is_read, bool is_last, Alloc& alloc)
+      : body(body), is_read(is_read), is_last(is_last), alloc(alloc)
+      {}
+
     public:
-      Body& get_body()
+      Body* get_body()
       {
         return body;
       }
@@ -158,7 +164,7 @@ namespace verona::rt
       auto is_read_ = is_read();
       body_and_mode = 0;
       auto is_last = body->count_down();
-      return {*(body), is_read_, is_last, alloc};
+      return {is_last? body : nullptr, is_read_, is_last, alloc};
     }
 
     bool next_is_null()

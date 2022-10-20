@@ -524,9 +524,9 @@ namespace verona::rt
 
       bool schedule_after_behaviour = true;
 
-      if (!delivered.is_last)
+      if (!delivered.is_last_reference())
       {
-        if (delivered.is_read)
+        if (delivered.is_read_request())
         {
           read_ref_count.add_read();
           return true;
@@ -534,7 +534,7 @@ namespace verona::rt
         return false;
       }
 
-      if (delivered.is_read)
+      if (delivered.is_read_request())
       {
         // In this case, this thread will execute the behaviour
         // but another thread can still read this cown, so reschedule
@@ -546,19 +546,21 @@ namespace verona::rt
         schedule();
       }
 
-      Scheduler::local()->message_body = &delivered.body;
+      auto body = delivered.get_body();
+
+      Scheduler::local()->message_body = body;
 
       // Run the behaviour.
-      delivered.body.get_behaviour().f();
+      body->get_behaviour().f();
 
       Logging::cout() << "MultiMessage " << m << " completed and running on "
                       << this << Logging::endl;
 
       //  Reschedule the writeable cowns (read-only cowns are not unscheduled
       //  for a behaviour).
-      for (size_t s = 0; s < delivered.body.count; s++)
+      for (size_t s = 0; s < body->count; s++)
       {
-        Request request = delivered.body.get_requests_array()[s];
+        Request request = body->get_requests_array()[s];
         Cown* cown = request.cown();
         if (cown)
         {
