@@ -25,9 +25,9 @@
  * changed. A rejoining thread may prevent a thread from advancing the epoch.
  */
 
+#include "../debug/logging.h"
 #include "../ds/asymlock.h"
 #include "../ds/queue.h"
-#include "../test/logging.h"
 #include "region/immutable.h"
 
 #include <snmalloc/snmalloc.h>

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #pragma once
-#include "test/logging.h"
+#include "debug/logging.h"
 
 #include <condition_variable>
 #include <mutex>

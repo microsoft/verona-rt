@@ -164,7 +164,7 @@ namespace verona::rt
       auto is_read_ = is_read();
       body_and_mode = 0;
       auto is_last = body->count_down();
-      return {is_last? body : nullptr, is_read_, is_last, alloc};
+      return {is_last ? body : nullptr, is_read_, is_last, alloc};
     }
 
     bool next_is_null()

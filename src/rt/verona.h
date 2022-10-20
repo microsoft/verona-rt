@@ -11,6 +11,8 @@
 #include "cpp/promise.h"
 #include "cpp/vbehaviour.h"
 #include "cpp/vobject.h"
+#include "debug/logging.h"
+#include "debug/systematic.h"
 #include "object/object.h"
 #include "region/externalreference.h"
 #include "region/freeze.h"
@@ -23,7 +25,5 @@
 #include "sched/multimessage.h"
 #include "sched/noticeboard.h"
 #include "sched/schedulerthread.h"
-#include "test/logging.h"
-#include "test/systematic.h"
 
 #include <snmalloc/snmalloc.h>

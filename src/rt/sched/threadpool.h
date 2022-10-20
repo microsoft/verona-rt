@@ -3,7 +3,7 @@
 #pragma once
 
 #include "../pal/threadpoolbuilder.h"
-#include "test/logging.h"
+#include "debug/logging.h"
 #include "threadstate.h"
 #ifdef USE_SYSTEMATIC_TESTING
 #  include "threadsyncsystematic.h"
