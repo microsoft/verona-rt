@@ -52,14 +52,14 @@ jobs:
       run: ${{ matrix.dependencies }}
     
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DVERONA_CI_BUILD=On ${{matrix.cmake-flags}} ${{matrix.extra-cmake-flags}}
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DVERONA_CI_BUILD=On ${{matrix.cmake-flags}}
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{matrix.build-type}} --parallel 4
 
     - name: Test
       working-directory: ${{github.workspace}}/build/
-      run: ctest -C ${{matrix.build-type}} -j 4 ${{matrix.ctest-flags}}
+      run: ctest -C ${{matrix.build-type}} -j 4 ${{matrix.ctest-flags}} --output-on-failure --timeout 400 --interactive-debug-mode 0 
 
   # Job to run clang-format and report errors
   format:
