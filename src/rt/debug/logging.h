@@ -3,9 +3,10 @@
 #pragma once
 
 #ifdef _MSC_VER
+#  include <windows.h>
+// include windows before  DbgHelp.h
 #  include <DbgHelp.h>
 #  include <csignal>
-#  include <windows.h>
 #  pragma comment(lib, "dbghelp.lib")
 #elif defined(USE_EXECINFO)
 #  include "threadping.h"
