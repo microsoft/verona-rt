@@ -16,18 +16,13 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 See the [building](docs/building.md) document for more information on how to get and build Verona on multiple operating systems.
 
-When submiting patches, you need to make sure all tests pass (`check` target) and that the code is formatted accordingly.
+When submiting patches, you need to make sure all tests pass (run ctest) and that the code is formatted accordingly.
 
 We provide the `compiler_commands.json` file for editors that use the [clangd](https://clangd.llvm.org/) engine for code completion, and we `git-ignore` meta files from common editors, like VSCode and Vim.
 
 ## Tests
 
-If you're only changing the compiler, interpreter or parser, then running the `check` target is enough to cover those areas. On Windows, there is no separate `check` target, and the tests are run as part of the default target.
-
-If you're changing the runtime libraries, then you'll need to [build the RT tests](docs/building.md#building-the-runtime-tests) and run them before submiting a PR.
-
-Our CI bots will check if you changed the runtime and will dispatch the runtime tests automatically.
-
+The tests should be run using `ctest`.  This will run a collection of concurrent and systematic tests of the runtime.  
 ## Style
 
 We use `clang-format-9` on our CI bots, which will fail the pull request if the code is not formatted as expected.
@@ -42,9 +37,9 @@ A `clangformat` target will be created and you can make sure you won't break the
 
 # Bugs and patches
 
-We use Github [issues](https://github.com/microsoft/verona/issues) to track bugs and features. If you found a bug or want to propose a new feature, please file an issue on our project.
+We use Github [issues](https://github.com/microsoft/verona-rt/issues) to track bugs and features. If you found a bug or want to propose a new feature, please file an issue on our project.
 
-We use Github [pull requests](https://github.com/microsoft/verona/pulls) for contributions in code, documents, tests, etc. 
+We use Github [pull requests](https://github.com/microsoft/verona-rt/pulls) for contributions in code, documents, tests, etc. 
 
 Every PR must pass the CI builds (which include CLA checks and formatting) and the appropriate set of tests on Windows, Linux (clang & gcc) and Mac, on x86_64. PRs cannot be merged if any of the tests fail.
 
