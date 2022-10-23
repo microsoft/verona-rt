@@ -707,7 +707,8 @@ namespace verona::rt
           // Reschedule if cown does not go to sleep.
           if (!queue.mark_sleeping(alloc, notify))
           {
-            Logging::cout() << "Mark sleeping failed on " << this << Logging::endl;
+            Logging::cout()
+              << "Mark sleeping failed on " << this << Logging::endl;
             if (notify)
             {
               // It is possible to have already notified the cown in this batch,

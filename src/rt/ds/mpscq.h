@@ -18,15 +18,16 @@ namespace verona::rt
    * thread.
    *
    * Elements are enqueued (added) to the `back` of the queue and dequeued
-   * (removed) from the `front`.  
+   * (removed) from the `front`.
    *
    * The queue may contain one stub element.  This removes some branching in
    * the implementation.
    *
-   * The queue is considered empty when 
-   *    1. `back` and `front` contain the same value, and the queue contains a stub element, or
+   * The queue is considered empty when
+   *    1. `back` and `front` contain the same value, and the queue contains a
+   *stub element, or
    *    2. `front` is nullptr, and `back` is `&front`.
-   * 
+   *
    * The queue supports several internal states to enable schedulers to manage
    * the ownership of the queue.
    *
@@ -87,32 +88,32 @@ namespace verona::rt
       return snmalloc::pointer_offset_signed<T>(ptr, -offset);
     }
 
-    template <typename TT>
+    template<typename TT>
     inline static bool has_state(TT* p, STATE f)
     {
       return ((uintptr_t)p & STATES) == f;
     }
 
-    template <typename TT>
+    template<typename TT>
     inline static TT* set_state(TT* p, STATE f)
     {
       assert(is_clear(p));
       return (TT*)((uintptr_t)p | f);
     }
 
-    template <typename TT>
+    template<typename TT>
     inline static bool is_clear(TT* p)
     {
       return clear_state(p) == p;
     }
 
-    template <typename TT>
+    template<typename TT>
     inline static STATE get_state(TT* p)
     {
       return static_cast<STATE>((uintptr_t)p & STATES);
     }
 
-    template <typename TT>
+    template<typename TT>
     static TT* clear_state(TT* p)
     {
       return (TT*)((uintptr_t)p & MASK);
@@ -123,7 +124,8 @@ namespace verona::rt
 
     T* peek_back()
     {
-      return get_containing_type(clear_state(back.load(std::memory_order_relaxed)));
+      return get_containing_type(
+        clear_state(back.load(std::memory_order_relaxed)));
     }
 
     inline bool is_sleeping()
@@ -149,7 +151,7 @@ namespace verona::rt
 
       // Pass on the notify info if set
       t = has_state(prev, NOTIFY) ? set_state(t, NOTIFY) : t;
- 
+
       prev = clear_state(prev);
       if (prev == nullptr)
       {
@@ -245,7 +247,7 @@ namespace verona::rt
         fnt = clear_state(fnt);
         return clear_state(fnt->next.load(std::memory_order_relaxed));
       }
-      
+
       return clear_state(fnt);
     }
 
@@ -268,9 +270,9 @@ namespace verona::rt
      * will only result in the first dequeue having the notify parameter set.
      *
      *   mark_notify; enqueue; mark_sleeping; dequeue
-     * 
-     * the mark sleeping will fail, and will not set its notify parameter, but the subsequent
-     * dequeue will have its notify parameter set.
+     *
+     * the mark sleeping will fail, and will not set its notify parameter, but
+     * the subsequent dequeue will have its notify parameter set.
      *
      * State transition:
      *   NONE     -> NOTIFY;  return false
@@ -311,7 +313,7 @@ namespace verona::rt
      *
      * If the queue is non-empty, then this will return false.
      *
-     * If the queue has been notified since the last enqueue, then 
+     * If the queue has been notified since the last enqueue, then
      * it will return false, and will set the `notify` parameter to true.
      *
      * In the case that it actually puts the queue into the SLEEPING state,
@@ -332,7 +334,8 @@ namespace verona::rt
 
       if (bk == &front)
       {
-        return back.compare_exchange_strong(bk, nullptr, std::memory_order_release);
+        return back.compare_exchange_strong(
+          bk, nullptr, std::memory_order_release);
       }
 
       // Handle special cases for notify.
@@ -343,8 +346,8 @@ namespace verona::rt
         // Do not move to sleeping as we still need ownership to
         // handle the notification.  Also, we might be removing
         // the notification from a non-empty queue.
-        notify =
-          back.compare_exchange_strong(bk, clear_state(bk), std::memory_order_release);
+        notify = back.compare_exchange_strong(
+          bk, clear_state(bk), std::memory_order_release);
         return false;
       }
 
@@ -353,7 +356,8 @@ namespace verona::rt
       if (set_state(get_containing_type(bk), STUB) == fnt)
       {
         front = nullptr;
-        auto success = back.compare_exchange_strong(bk, nullptr, std::memory_order_release);
+        auto success =
+          back.compare_exchange_strong(bk, nullptr, std::memory_order_release);
         if (success)
         {
           alloc.dealloc(clear_state(fnt));
