@@ -75,6 +75,8 @@ namespace verona::rt
 
     static constexpr uintptr_t MASK = ~static_cast<uintptr_t>(STATES);
 
+    // This is a pointer to a next field in the queue. Using std::atomic<T*>
+    // means we can treat the queue not and the front as the same thing.
     std::atomic<std::atomic<T*>*> back{nullptr};
     // The front is atomic as it can be read and written concurrently.
     std::atomic<T*> front{nullptr};
@@ -146,12 +148,9 @@ namespace verona::rt
       yield();
 
       // Pass on the notify info if set
-      if (has_state(prev, NOTIFY))
-      {
-        t = set_state(t, NOTIFY);
-        prev = clear_state(prev);
-      }
-
+      t = has_state(prev, NOTIFY) ? set_state(t, NOTIFY) : t;
+ 
+      prev = clear_state(prev);
       if (prev == nullptr)
       {
         // Was sleeping so use front to start list.
@@ -363,7 +362,8 @@ namespace verona::rt
         else
         {
           // Reset front as we failed to sleep the queue.
-          front = fnt;
+          front = fnt.next;
+          alloc.dealloc(fnt);
           return false;
         }
       }
