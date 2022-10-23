@@ -379,7 +379,7 @@ namespace verona::rt
         if (fifo)
           t->schedule_fifo(this);
         else
-          t->schedule_lifo(this);
+          t->schedule_lifo(t->core, this);
         return;
       }
 
