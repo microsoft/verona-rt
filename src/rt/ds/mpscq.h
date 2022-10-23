@@ -366,8 +366,9 @@ namespace verona::rt
         else
         {
           // Reset front as we failed to sleep the queue.
-          front = fnt.next;
-          alloc.dealloc(fnt);
+          // Note you might try to use fnt->next, but that could still be
+          // nullptr as the queue is not linearisable.
+          front = fnt;
           return false;
         }
       }
