@@ -29,14 +29,12 @@ namespace verona::rt
 
   struct EnqueueLock
   {
-    std::atomic<bool> locked = false;
+    std::atomic<bool> locked{false};
 
     void lock()
     {
-      auto u = false;
-      while (!locked.compare_exchange_strong(u, true))
+      while (locked.exchange(true))
       {
-        u = false;
         while (locked)
         {
           yield();
