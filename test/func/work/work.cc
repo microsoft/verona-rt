@@ -28,5 +28,9 @@ int main()
     return true;
   });
 
+  check_order("Work - Start", 0);
+  w->run();
+  check_order("Work - End", 3);
+
   return 0;
 }
