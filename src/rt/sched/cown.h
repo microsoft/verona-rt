@@ -19,13 +19,7 @@ namespace verona::rt
 {
   using namespace snmalloc;
   class Cown;
-  using CownThread = SchedulerThread<Cown>;
-  using Scheduler = ThreadPool<CownThread, Cown>;
-
-  static void yield()
-  {
-    Systematic::yield();
-  }
+  using Scheduler = ThreadPool<SchedulerThread>;
 
   struct EnqueueLock
   {
@@ -141,7 +135,7 @@ namespace verona::rt
   private:
     friend class MultiMessage;
     friend CownThread;
-    friend Core<Cown>;
+    friend Core;
 
     template<typename T>
     friend class Noticeboard;
@@ -181,29 +175,6 @@ namespace verona::rt
       static constexpr Descriptor desc{
         vsizeof<Cown>, nullptr, nullptr, nullptr};
       return &desc;
-    }
-
-    static Cown* create_token_cown()
-    {
-      auto desc = token_desc();
-      auto p = ThreadAlloc::get().alloc(desc->size);
-      auto o = Object::register_object(p, desc);
-      auto a = new (o) Cown(false);
-      return a;
-    }
-
-    void set_token_owning_core(Core<Cown>* owner)
-    {
-      assert(get_descriptor() == token_desc());
-      // Use region meta_data to point at the
-      // owning scheduler thread for a token cown.
-      init_next((Object*)owner);
-    }
-
-    Core<Cown>* get_token_owning_core()
-    {
-      assert(get_descriptor() == token_desc());
-      return (Core<Cown>*)(get_next());
     }
 
   public:
@@ -913,46 +884,3 @@ namespace verona::rt
     }
   } // namespace cown
 } // namespace verona::rt
-
-namespace Logging
-{
-  inline std::string get_systematic_id()
-  {
-#if defined(USE_SYSTEMATIC_TESTING) || defined(USE_FLIGHT_RECORDER)
-    static std::atomic<size_t> external_id_source = 1;
-    static thread_local size_t external_id = 0;
-    auto s = verona::rt::Scheduler::local();
-    if (s != nullptr)
-    {
-      std::stringstream ss;
-      auto offset = static_cast<int>(s->systematic_id % 9);
-      if (offset != 0)
-        ss << std::setw(offset) << " ";
-      ss << s->systematic_id;
-      ss << std::setw(9 - offset) << " ";
-      return ss.str();
-    }
-    if (external_id == 0)
-    {
-      auto e = external_id_source.fetch_add(1);
-      external_id = e;
-    }
-    std::stringstream ss;
-    bool short_id = external_id <= 26;
-    unsigned char spaces = short_id ? 9 : 8;
-    // Modulo guarantees that this fits into the same type as spaces.
-    decltype(spaces) offset =
-      static_cast<decltype(spaces)>((external_id - 1) % spaces);
-    if (offset != 0)
-      ss << std::setw(spaces - offset) << " ";
-    if (short_id)
-      ss << (char)('a' + (external_id - 1));
-    else
-      ss << 'E' << (external_id - 26);
-    ss << std::setw(offset) << " ";
-    return ss.str();
-#else
-    return "";
-#endif
-  }
-}

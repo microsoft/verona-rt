@@ -12,9 +12,7 @@
 
 namespace verona::rt
 {
-  class Cown;
-  using CownThread = SchedulerThread<Cown>;
-  using Scheduler = ThreadPool<CownThread, Cown>;
+  using Scheduler = ThreadPool<SchedulerThread>;
 
   class BaseNoticeboard
   {

@@ -15,7 +15,14 @@ namespace verona::rt
    */
   struct Work
   {
-    std::atomic<Work*> next_in_queue{nullptr};
+    static constexpr auto NO_EPOCH_SET = (std::numeric_limits<uint64_t>::max)();
+
+    union
+    {
+      std::atomic<Work*> next_in_queue;
+      uint64_t epoch_when_popped{NO_EPOCH_SET};
+    };
+
     void (*f)(Work*);
 
     constexpr Work(void (*f)(Work*)) : f(f) {}
@@ -23,6 +30,29 @@ namespace verona::rt
     void run()
     {
       f(this);
+    }
+
+    void dealloc()
+    {
+      auto& alloc = ThreadAlloc::get();
+      auto epoch = epoch_when_popped;
+      auto outdated = epoch == NO_EPOCH_SET || GlobalEpoch::is_outdated(epoch);
+      if (outdated)
+      {
+        Logging::cout() << "Work " << this << " dealloc" << Logging::endl;
+        alloc.dealloc(this);
+      }
+      else
+      {
+        Logging::cout() << "Work " << this << " defer dealloc" << Logging::endl;
+        // There could be an ABA problem if we reuse this work as the epoch
+        // has not progressed enough We delay the deallocation until the epoch
+        // has progressed enough
+        // TODO: We are waiting too long as this is inserting in the current
+        // epoch, and not `epoch` which is all that is required.
+        Epoch e(alloc);
+        e.delete_in_epoch(this);
+      }
     }
   };
 
@@ -42,13 +72,22 @@ namespace verona::rt
     static void invoke(Work* w)
     {
       T* t = snmalloc::pointer_offset<T>(w, sizeof(Work));
-      (*t)(w);
+      bool dealloc = (*t)(w);
+      if (dealloc)
+      {
+        w->dealloc();
+      }
     }
 
   public:
     /**
      * @brief Creates a closure that will run the `run` method of the object
      * The pointer it returns is owning.
+     *
+     * t_param expected to be a bool returning thunk. If it returns true, then
+     * the `Work` will be deallocated (subject to epoch checks).  If it returns
+     * false, then the `Work` will not be deallocated, and the thunk is free to
+     * reschedule itself.
      */
     template<typename T>
     static Work* make(T&& t_param)

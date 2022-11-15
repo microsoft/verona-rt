@@ -349,4 +349,9 @@ namespace verona::rt
       }
     }
   };
+
+  static void yield()
+  {
+    Systematic::yield();
+  }
 } // namespace verona::rt

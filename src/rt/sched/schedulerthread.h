@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "../debug/systematic.h"
 #include "core.h"
 #include "ds/dllist.h"
 #include "ds/hashmap.h"
@@ -29,7 +30,6 @@ namespace verona::rt
    * previous one has been dequeued or stolen, once more work is scheduled on
    * the scheduler thread.
    */
-  template<class T>
   class SchedulerThread
   {
   public:
@@ -37,18 +37,17 @@ namespace verona::rt
     size_t systematic_id = 0;
 
   private:
-    using Scheduler = ThreadPool<SchedulerThread<T>, T>;
+    using Scheduler = ThreadPool<SchedulerThread>;
     friend Scheduler;
-    friend T;
-    friend DLList<SchedulerThread<T>>;
-    friend SchedulerList<SchedulerThread<T>>;
+    friend DLList<SchedulerThread>;
+    friend SchedulerList<SchedulerThread>;
 
     template<typename Owner>
     friend class Noticeboard;
 
     static constexpr uint64_t TSC_QUIESCENCE_TIMEOUT = 1'000'000;
 
-    Core<T>* core = nullptr;
+    Core* core = nullptr;
 #ifdef USE_SYSTEMATIC_TESTING
     friend class ThreadSyncSystematic<SchedulerThread>;
     Systematic::Local* local_systematic{nullptr};
@@ -58,20 +57,13 @@ namespace verona::rt
 #endif
 
     Alloc* alloc = nullptr;
-    Core<T>* victim = nullptr;
+    Core* victim = nullptr;
 
     bool running = true;
 
-    bool should_steal_for_fairness = false;
-
-    std::atomic<bool> scheduled_unscanned_cown = false;
-
-    /// The MessageBody of a running behaviour.
-    typename T::MessageBody* message_body = nullptr;
-
     /// SchedulerList pointers.
-    SchedulerThread<T>* prev = nullptr;
-    SchedulerThread<T>* next = nullptr;
+    SchedulerThread* prev = nullptr;
+    SchedulerThread* next = nullptr;
 
     SchedulerThread()
     {
@@ -80,7 +72,7 @@ namespace verona::rt
 
     ~SchedulerThread() {}
 
-    void set_core(Core<T>* core)
+    void set_core(Core* core)
     {
       this->core = core;
     }
@@ -90,25 +82,24 @@ namespace verona::rt
       running = false;
     }
 
-    inline void schedule_fifo(T* a)
+    inline void schedule_fifo(Work* w)
     {
-      Logging::cout() << "Enqueue cown " << a << Logging::endl;
+      Logging::cout() << "Enqueue work " << w << Logging::endl;
 
-      assert(!a->queue.is_sleeping());
-      core->q.enqueue(*alloc, a);
+      core->q.enqueue(w);
 
       if (Scheduler::get().unpause())
         core->stats.unpause();
     }
 
-    static inline void schedule_lifo(Core<T>* c, T* a)
+    static inline void schedule_lifo(Core* c, Work* w)
     {
       // A lifo scheduled cown is coming from an external source, such as
       // asynchronous I/O.
-      Logging::cout() << "LIFO scheduling cown " << a << " onto " << c->affinity
+      Logging::cout() << "LIFO scheduling work " << w << " onto " << c->affinity
                       << Logging::endl;
-      c->q.enqueue_front(ThreadAlloc::get(), a);
-      Logging::cout() << "LIFO scheduled cown " << a << " onto " << c->affinity
+      c->q.enqueue_front(w);
+      Logging::cout() << "LIFO scheduled work " << w << " onto " << c->affinity
                       << Logging::endl;
 
       c->stats.lifo();
@@ -138,7 +129,6 @@ namespace verona::rt
       alloc = &ThreadAlloc::get();
       assert(core != nullptr);
       victim = core->next;
-      T* cown = nullptr;
       core->servicing_threads++;
 
 #ifdef USE_SYSTEMATIC_TESTING
@@ -147,91 +137,35 @@ namespace verona::rt
 
       while (true)
       {
-        if (should_steal_for_fairness)
+        Work* work = nullptr;
+
+        if (core->should_steal_for_fairness)
         {
-          if (cown == nullptr)
-          {
-            should_steal_for_fairness = false;
-            fast_steal(cown);
-          }
+          // Can race with other threads on the same core.
+          // This is a heuristic, so we don't care.
+          core->should_steal_for_fairness = false;
+          fast_steal(work);
         }
 
-        if (cown == nullptr)
+        if (work == nullptr)
         {
-          cown = core->q.dequeue(*alloc);
-          if (cown != nullptr)
-            Logging::cout()
-              << "Pop cown " << clear_thread_bit(cown) << Logging::endl;
+          work = core->q.dequeue(*alloc);
+          if (work != nullptr)
+            Logging::cout() << "Pop work " << work << Logging::endl;
         }
 
-        if (cown == nullptr)
+        if (work == nullptr)
         {
-          cown = steal();
+          work = steal();
 
           // If we can't steal, we are done.
-          if (cown == nullptr)
+          if (work == nullptr)
             break;
         }
 
-        // Administrative work before handling messages.
-        if (!prerun(cown))
-        {
-          cown = nullptr;
-          continue;
-        }
+        Logging::cout() << "Schedule work " << work << Logging::endl;
 
-        Logging::cout() << "Schedule cown " << cown << Logging::endl;
-
-        bool reschedule = cown->run(*alloc);
-
-        if (reschedule)
-        {
-          if (should_steal_for_fairness)
-          {
-            schedule_fifo(cown);
-            cown = nullptr;
-          }
-          else
-          {
-            assert(!cown->queue.is_sleeping());
-            // Push to the back of the queue if the queue is not empty,
-            // otherwise run this cown again. Don't push to the queue
-            // immediately to avoid another thread stealing our only cown.
-
-            T* n = core->q.dequeue(*alloc);
-
-            if (n != nullptr)
-            {
-              schedule_fifo(cown);
-              cown = n;
-            }
-            else
-            {
-              if (core->q.nothing_old())
-              {
-                Logging::cout() << "Queue empty" << Logging::endl;
-                // We have effectively reached token cown.
-
-                T* stolen;
-                if (Scheduler::get().fair && fast_steal(stolen))
-                {
-                  schedule_fifo(cown);
-                  cown = stolen;
-                }
-              }
-
-              if (!has_thread_bit(cown))
-              {
-                Logging::cout() << "Reschedule cown " << cown << Logging::endl;
-              }
-            }
-          }
-        }
-        else
-        {
-          // Don't reschedule.
-          cown = nullptr;
-        }
+        work->run();
 
         yield();
       }
@@ -254,22 +188,22 @@ namespace verona::rt
       Scheduler::local() = nullptr;
     }
 
-    bool fast_steal(T*& result)
+    bool fast_steal(Work*& result)
     {
       // auto cur_victim = victim;
-      T* cown;
+      Work* work;
 
       // Try to steal from the victim thread.
       if (victim != core)
       {
-        cown = victim->q.dequeue(*alloc);
+        work = victim->q.dequeue(*alloc);
 
-        if (cown != nullptr)
+        if (work != nullptr)
         {
           // stats.steal();
-          Logging::cout() << "Fast-steal cown " << clear_thread_bit(cown)
-                          << " from " << victim->affinity << Logging::endl;
-          result = cown;
+          Logging::cout() << "Fast-steal work " << work << " from "
+                          << victim->affinity << Logging::endl;
+          result = work;
           return true;
         }
       }
@@ -280,32 +214,32 @@ namespace verona::rt
       return false;
     }
 
-    T* steal()
+    Work* steal()
     {
       uint64_t tsc = Aal::tick();
-      T* cown;
+      Work* work;
 
       while (running)
       {
         yield();
 
         // Check if some other thread has pushed work on our queue.
-        cown = core->q.dequeue(*alloc);
+        work = core->q.dequeue(*alloc);
 
-        if (cown != nullptr)
-          return cown;
+        if (work != nullptr)
+          return work;
 
         // Try to steal from the victim thread.
         if (victim != core)
         {
-          cown = victim->q.dequeue(*alloc);
+          work = victim->q.dequeue(*alloc);
 
-          if (cown != nullptr)
+          if (work != nullptr)
           {
             core->stats.steal();
-            Logging::cout() << "Stole cown " << clear_thread_bit(cown)
-                            << " from " << victim->affinity << Logging::endl;
-            return cown;
+            Logging::cout() << "Stole work " << work << " from "
+                            << victim->affinity << Logging::endl;
+            return work;
           }
         }
 
@@ -338,55 +272,52 @@ namespace verona::rt
 
       return nullptr;
     }
-
-    bool has_thread_bit(T* cown)
-    {
-      return (uintptr_t)cown & 1;
-    }
-
-    T* clear_thread_bit(T* cown)
-    {
-      return (T*)((uintptr_t)cown & ~(uintptr_t)1);
-    }
-
-    /**
-     * Some preliminaries required before we start processing messages
-     *
-     * - Check if this is the token, rather than a cown.
-     *
-     * This returns false, if this is a token, and true if it is real cown.
-     **/
-    bool prerun(T* cown)
-    {
-      // See if this is a SchedulerThread enqueued as a cown LD marker.
-      // It may not be this one.
-      if (has_thread_bit(cown))
-      {
-        auto unmasked = clear_thread_bit(cown);
-        Core<T>* owning_core = unmasked->get_token_owning_core();
-
-        if (owning_core == core)
-        {
-          if (Scheduler::get().fair)
-          {
-            Logging::cout() << "Should steal for fairness!" << Logging::endl;
-            should_steal_for_fairness = true;
-          }
-
-          Logging::cout() << "Reached token" << Logging::endl;
-        }
-        else
-        {
-          Logging::cout() << "Reached token: stolen from "
-                          << owning_core->affinity << Logging::endl;
-        }
-
-        // Put back the token
-        owning_core->q.enqueue(*alloc, cown);
-        return false;
-      }
-
-      return true;
-    }
   };
+
+  using Scheduler = ThreadPool<SchedulerThread>;
 } // namespace verona::rt
+
+namespace Logging
+{
+  using namespace verona::rt;
+
+  inline std::string get_systematic_id()
+  {
+#if defined(USE_SYSTEMATIC_TESTING) || defined(USE_FLIGHT_RECORDER)
+    static std::atomic<size_t> external_id_source = 1;
+    static thread_local size_t external_id = 0;
+    auto s = verona::rt::Scheduler::local();
+    if (s != nullptr)
+    {
+      std::stringstream ss;
+      auto offset = static_cast<int>(s->systematic_id % 9);
+      if (offset != 0)
+        ss << std::setw(offset) << " ";
+      ss << s->systematic_id;
+      ss << std::setw(9 - offset) << " ";
+      return ss.str();
+    }
+    if (external_id == 0)
+    {
+      auto e = external_id_source.fetch_add(1);
+      external_id = e;
+    }
+    std::stringstream ss;
+    bool short_id = external_id <= 26;
+    unsigned char spaces = short_id ? 9 : 8;
+    // Modulo guarantees that this fits into the same type as spaces.
+    decltype(spaces) offset =
+      static_cast<decltype(spaces)>((external_id - 1) % spaces);
+    if (offset != 0)
+      ss << std::setw(spaces - offset) << " ";
+    if (short_id)
+      ss << (char)('a' + (external_id - 1));
+    else
+      ss << 'E' << (external_id - 26);
+    ss << std::setw(offset) << " ";
+    return ss.str();
+#else
+    return "";
+#endif
+  }
+}

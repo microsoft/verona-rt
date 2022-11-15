@@ -24,13 +24,9 @@ int main()
 {
   auto w = Closure::make([](Work* w) {
     check_order("Work - Run", 1);
-    snmalloc::ThreadAlloc::get().dealloc(w);
     check_order("Work - Done", 2);
+    return true;
   });
-
-  check_order("Constructed", 0);
-  w->run();
-  check_order("Run done", 3);
 
   return 0;
 }
