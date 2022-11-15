@@ -4,9 +4,12 @@
 
 #include <atomic>
 #include <snmalloc/snmalloc.h>
+#include "epoch.h"
 
 namespace verona::rt
 {
+  using namespace snmalloc;
+
   /**
    * @brief A work item that can be scheduled.
    *
