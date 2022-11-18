@@ -171,6 +171,10 @@ namespace verona::rt
             work = next_work;
           next_work = nullptr;
         }
+        else
+        {
+          batch = BATCH_SIZE;
+        }
 
         if (work == nullptr)
         {
