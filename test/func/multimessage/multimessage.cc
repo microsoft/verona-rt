@@ -4,73 +4,40 @@
 #include <debug/log.h>
 #include <test/opt.h>
 #include <verona.h>
+#include <cpp/when.h>
 
 using namespace snmalloc;
 using namespace verona::rt;
+using namespace verona::cpp;
 
 void test_multimessage(size_t cores)
 {
-  struct CCown : public VCown<CCown>
+  struct CCown
   {
     int i = 0;
 
+    CCown(int i) : i(i) {}
+
     ~CCown()
     {
-      logger::cout() << "Cown " << (void*)this << " destroyed" << std::endl;
-    }
-  };
-
-  struct GotMsg : public VBehaviour<GotMsg>
-  {
-    Cown* a;
-    GotMsg(Cown* a) : a(a) {}
-
-    void f()
-    {
-      logger::cout() << "got message on " << a << std::endl;
-    }
-  };
-
-  class AddTwo : public VBehaviour<AddTwo>
-  {
-  private:
-    CCown* a;
-    CCown* b;
-
-  public:
-    AddTwo(CCown* a, CCown* b) : a(a), b(b) {}
-
-    void f()
-    {
-      logger::cout() << "result = " << (a->i + b->i) << std::endl;
-    }
-
-    void trace(ObjectStack& st) const
-    {
-      st.push(a);
-      st.push(b);
+      Logging::cout() << "Cown " << (void*)this << " destroyed!" << Logging::endl;
     }
   };
 
   Scheduler& sched = Scheduler::get();
   sched.init(cores);
 
-  auto a1 = new CCown;
-  a1->i = 3;
-  Cown::schedule<GotMsg>(a1, a1);
+  {
+    auto a1 = make_cown<CCown>(3);
+    when (a1) << [](auto a) { Logging::cout() << "got message on " << a.cown() << Logging::endl; };
 
-  auto a2 = new CCown;
-  a2->i = 5;
+    auto a2 = make_cown<CCown>(5);
 
-  // We are transfering our cown references to the message here.
-  Cown* dest[2] = {a1, a2};
-  Cown::schedule<AddTwo>(2, dest, a1, a2);
-
-  // Show that participating cowns remain alive.
-  auto& alloc = ThreadAlloc::get();
-  Cown::release(alloc, a1);
-  Cown::release(alloc, a2);
-
+    // We are transfering our cown references to the message here.
+    when (a1, a2) << [](auto a, auto b) {
+      Logging::cout() << "result = " << (a->i + b->i) << Logging::endl;
+    };
+  }
   sched.run();
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }

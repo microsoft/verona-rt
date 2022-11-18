@@ -7,6 +7,9 @@
 // changes.
 
 #include <debug/harness.h>
+#include <cpp/when.h>
+
+using namespace verona::cpp;
 
 #if defined(__has_feature)
 #  if __has_feature(address_sanitizer)
@@ -17,27 +20,19 @@ extern "C" const char* __asan_default_options()
 #  endif
 #endif
 
-struct MyCown : VCown<MyCown>
-{};
+struct MyCown {};
 
-struct Msg : VBehaviour<Msg>
-{
-  MyCown* m;
-  Msg(MyCown* m) : m(m) {}
-
-  void f()
-  {
-    Logging::cout() << "Msg on " << m << std::endl;
-  }
-};
+cown_ptr<MyCown>::weak weak_leak;
 
 void run_test()
 {
-  MyCown* t = new MyCown;
+  auto t = make_cown<MyCown>();
   // HERE: the weak RC is never released.
-  t->weak_acquire();
+  weak_leak = t.get_weak();
 
-  Cown::schedule<Msg, YesTransfer>(t, t);
+  when (t) << [](auto t) {
+    Logging::cout() << "Msg on " << t.cown() << std::endl;
+  };
 }
 
 int main(int argc, char** argv)
