@@ -7,6 +7,7 @@
 
 namespace verona::rt
 {
+  class Cown;
   namespace cown
   {
     // This is used only to break a dependency cycle.

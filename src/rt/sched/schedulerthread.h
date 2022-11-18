@@ -84,6 +84,7 @@ namespace verona::rt
 
     inline void schedule_fifo(Work* w)
     {
+      // TODO Batching
       Logging::cout() << "Enqueue work " << w << Logging::endl;
 
       core->q.enqueue(w);
@@ -138,6 +139,10 @@ namespace verona::rt
       while (true)
       {
         Work* work = nullptr;
+
+        // TODO Batching
+        // We should have an initial place were we look for work that is
+        // local to the thread, and not subject to work stealing.
 
         if (core->should_steal_for_fairness)
         {
