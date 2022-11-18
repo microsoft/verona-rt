@@ -78,6 +78,7 @@ namespace verona::rt
       bool dealloc = (*t)(w);
       if (dealloc)
       {
+        t->~T();
         w->dealloc();
       }
     }
