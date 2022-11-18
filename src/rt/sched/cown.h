@@ -9,7 +9,6 @@
 #include "../region/region.h"
 #include "base_noticeboard.h"
 #include "core.h"
-#include "multimessage.h"
 #include "schedulerthread.h"
 
 #include <algorithm>

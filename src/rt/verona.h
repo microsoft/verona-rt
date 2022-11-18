@@ -9,7 +9,6 @@
 
 #include "cpp/lambdabehaviour.h"
 #include "cpp/promise.h"
-#include "cpp/vbehaviour.h"
 #include "cpp/vobject.h"
 #include "debug/logging.h"
 #include "debug/systematic.h"
@@ -22,7 +21,6 @@
 #include "sched/cown.h"
 #include "sched/epoch.h"
 #include "sched/mpmcq.h"
-#include "sched/multimessage.h"
 #include "sched/noticeboard.h"
 #include "sched/schedulerthread.h"
 

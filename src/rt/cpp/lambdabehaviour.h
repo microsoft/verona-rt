@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "vbehaviour.h"
 #include "vobject.h"
 #include "../sched/behaviour.h"
 
