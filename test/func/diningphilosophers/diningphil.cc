@@ -17,9 +17,9 @@ struct Fork : public VCown<Fork>
   }
 };
 
-struct Ping : public VBehaviour<Ping>
+struct Ping
 {
-  void f() {}
+  void operator()() {}
 };
 
 /**
@@ -29,14 +29,14 @@ struct Ping : public VBehaviour<Ping>
  * will be reclaimable, once this message is delivered it will be
  * deallocated.
  **/
-struct KeepAlive : public VBehaviour<KeepAlive>
+struct KeepAlive
 {
   Cown* c;
 
   KeepAlive()
   {
     c = new Fork(999);
-    Cown::schedule<Ping>(c);
+    Behaviour::schedule<Ping>(c);
   }
 
   void trace(ObjectStack& fields) const
@@ -44,9 +44,9 @@ struct KeepAlive : public VBehaviour<KeepAlive>
     fields.push(c);
   }
 
-  void f()
+  void operator()()
   {
-    Cown::schedule<Ping, YesTransfer>(c);
+    Behaviour::schedule<Ping, YesTransfer>(c);
   }
 };
 
@@ -71,13 +71,13 @@ struct Philosopher : public VCown<Philosopher>
 
 void eat_send(Philosopher* p);
 
-struct Ponder : public VBehaviour<Ponder>
+struct Ponder
 {
   Philosopher* p;
 
   Ponder(Philosopher* p) : p(p) {}
 
-  void f()
+  void operator()()
   {
     Logging::cout() << "Philosopher " << p->id << " " << p << " pondering "
                     << p->to_eat << std::endl;
@@ -85,11 +85,11 @@ struct Ponder : public VBehaviour<Ponder>
   }
 };
 
-struct Eat : public VBehaviour<Eat>
+struct Eat
 {
   Philosopher* eater;
 
-  void f()
+  void operator()()
   {
     Logging::cout() << "Philosopher " << eater->id << " " << eater
                     << " eating (" << this << ")" << std::endl;
@@ -98,7 +98,7 @@ struct Eat : public VBehaviour<Eat>
       ((Fork*)f)->uses++;
     }
 
-    Cown::schedule<Ponder>(eater, eater);
+    Behaviour::schedule<Ponder>(eater, eater);
   }
 
   Eat(Philosopher* p_) : eater(p_)
@@ -126,9 +126,9 @@ void eat_send(Philosopher* p)
   }
 
   p->to_eat--;
-  Cown::schedule<Eat>(p->forks.size(), p->forks.data(), p);
+  Behaviour::schedule<Eat>(p->forks.size(), p->forks.data(), p);
 
-  Cown::schedule<KeepAlive>(p->forks[0]);
+  Behaviour::schedule<KeepAlive>(p->forks[0]);
 }
 
 void test_dining(
@@ -167,7 +167,7 @@ void test_dining(
     }
 
     auto p = new Philosopher(i, my_forks, hunger);
-    Cown::schedule<Ponder>(p, p);
+    Behaviour::schedule<Ponder>(p, p);
     Logging::cout() << "Philosopher " << i << " " << p << std::endl;
     for (size_t j = 0; j < fork_count; j++)
     {

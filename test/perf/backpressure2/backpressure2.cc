@@ -28,7 +28,7 @@ struct Receiver : public VCown<Receiver>
   timer::time_point prev = timer::now();
 };
 
-struct Receive : public VBehaviour<Receive>
+struct Receive
 {
   Receiver** receivers;
   size_t receiver_count;
@@ -48,7 +48,7 @@ struct Receive : public VBehaviour<Receive>
       st.push(receivers[i]);
   }
 
-  void f()
+  void operator()()
   {
     for (size_t i = 0; i < receiver_count; i++)
     {
@@ -90,13 +90,13 @@ struct Sender : public VCown<Sender>
   }
 };
 
-struct Send : public VBehaviour<Send>
+struct Send
 {
   Sender* s;
 
   Send(Sender* s_) : s(s_) {}
 
-  void f()
+  void operator()()
   {
     const size_t max_receivers = (std::min)(s->receivers.size(), (size_t)3);
     const size_t receiver_count = (s->rng.next() % max_receivers) + 1;
@@ -111,11 +111,11 @@ struct Send : public VBehaviour<Send>
         i++;
     }
 
-    Cown::schedule<Receive>(
+    Behaviour::schedule<Receive>(
       receiver_count, (Cown**)receivers, receivers, receiver_count);
 
     if ((timer::now() - s->start) < s->duration)
-      Cown::schedule<Send>(s, s);
+      Behaviour::schedule<Send>(s, s);
   }
 };
 
@@ -154,7 +154,7 @@ int main(int argc, char** argv)
 
     auto* s = new (alloc) Sender(
       std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
-    Cown::schedule<Send, YesTransfer>(s, s);
+    Behaviour::schedule<Send, YesTransfer>(s, s);
   }
 
   for (auto* r : receiver_set)

@@ -60,7 +60,7 @@ namespace verona::rt
      *   Slot* - Next Read
      *   2 - Ready and Read available
      */
-    uintptr_t status;
+    std::atomic<uintptr_t> status;
 
     Slot(Cown* cown) : cown(cown), status(0) {}
 
@@ -86,7 +86,7 @@ namespace verona::rt
 
     Behaviour* get_behaviour()
     {
-      return (Behaviour*)status;
+      return (Behaviour*)status.load();
     }
 
     void set_behaviour(Behaviour* b)
@@ -169,7 +169,10 @@ namespace verona::rt
 
           // If we failed, then the another thread is extending the chain
           while (slots[i].is_ready())
+          {
+            yield();
             Aal::pause();
+          }
         }
 
         assert(slots[i].is_behaviour());
@@ -327,14 +330,16 @@ namespace verona::rt
           continue;
         }
 
-        yield();
-        while (prev->is_wait())
-          // Wait for the previous behaviour to finish adding to chains.
-          Aal::pause();
-
-        yield();
         Logging::cout() << "Waiting for cown: " << cown << " from slot " << prev
                         << " for behaviour " << body << Logging::endl;
+
+        yield();
+        while (prev->is_wait())
+        {
+          // Wait for the previous behaviour to finish adding to chains.
+          Aal::pause();
+          yield();
+        }
 
         if (transfer == YesTransfer)
         {
@@ -351,6 +356,8 @@ namespace verona::rt
       for (size_t i = 0; i < count; i++)
       {
         yield();
+        Logging::cout() << "Setting slot " << &slots[indexes[i]] << " to ready"
+                        << Logging::endl;
         slots[i].set_ready();
       }
 

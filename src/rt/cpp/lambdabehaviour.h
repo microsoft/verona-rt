@@ -28,9 +28,9 @@ namespace verona::rt
   }
 
   template<typename T>
-  static void schedule_lambda(T f)
+  static void schedule_lambda(T&& f)
   {
-    auto w = Closure::make([f = std::forward<T>(f)](Work* w) {
+    auto w = Closure::make([f = std::forward<T>(f)](Work* w) mutable {
       f();
       return true;
     });

@@ -269,23 +269,23 @@ struct RCown : public VCown<RCown<region_type>>
   }
 };
 
-struct Pong : public VBehaviour<Pong>
+struct Pong
 {
   CCown* ccown;
   Pong(CCown* ccown) : ccown(ccown) {}
 
-  void f()
+  void operator()()
   {
     if (ccown->child != nullptr)
     {
       for (int n = 0; n < 20; n++)
-        Cown::schedule<Pong>(ccown->child, ccown->child);
+        Behaviour::schedule<Pong>(ccown->child, ccown->child);
     }
   }
 };
 
 template<RegionType region_type>
-struct Ping : public VBehaviour<Ping<region_type>>
+struct Ping
 {
   using RegionClass = typename RegionType_to_class<region_type>::T;
 
@@ -293,12 +293,12 @@ struct Ping : public VBehaviour<Ping<region_type>>
   PRNG* rand;
   Ping(RCown<region_type>* rcown, PRNG* rand) : rcown(rcown), rand(rand) {}
 
-  void f()
+  void operator()()
   {
     if (rcown->forward > 0)
     {
       // Forward Ping to next RCown.
-      Cown::schedule<Ping<region_type>>(rcown->next, rcown->next, rand);
+      Behaviour::schedule<Ping<region_type>>(rcown->next, rcown->next, rand);
 
       // Send Pongs to child CCowns.
       if (
@@ -306,25 +306,25 @@ struct Ping : public VBehaviour<Ping<region_type>>
         rcown->reg_with_graph->f->f->cown != nullptr)
       {
         auto c = rcown->reg_with_graph->f->f->cown;
-        Cown::schedule<Pong>(c, c);
+        Behaviour::schedule<Pong>(c, c);
       }
       if (
         rcown->reg_with_sub != nullptr &&
         rcown->reg_with_sub->f1->f2->f2->cown != nullptr)
       {
         auto c = rcown->reg_with_sub->f1->f2->f2->cown;
-        Cown::schedule<Pong>(c, c);
+        Behaviour::schedule<Pong>(c, c);
       }
       if (rcown->reg_with_imm != nullptr)
       {
         auto c1 = rcown->reg_with_imm->imm1->cown;
         auto c2 = rcown->reg_with_imm->imm1->f1->cown;
-        Cown::schedule<Pong>(c1, c1);
-        Cown::schedule<Pong>(c2, c2);
+        Behaviour::schedule<Pong>(c1, c1);
+        Behaviour::schedule<Pong>(c2, c2);
         c1 = rcown->reg_with_imm->imm2->cown;
         c2 = rcown->reg_with_imm->imm2->f1->cown;
-        Cown::schedule<Pong>(c1, c1);
-        Cown::schedule<Pong>(c2, c2);
+        Behaviour::schedule<Pong>(c1, c1);
+        Behaviour::schedule<Pong>(c2, c2);
       }
 
       // Randomly introduce a few leaks. We don't want to do this for every
@@ -396,7 +396,7 @@ void test_cown_gc(
   rcown_first = nullptr;
   auto a = new RCown<region_type>(ring_size, forward_count);
   rand->seed(h->current_seed());
-  Cown::schedule<Ping<region_type>>(a, a, rand);
+  Behaviour::schedule<Ping<region_type>>(a, a, rand);
 }
 
 int main(int argc, char** argv)

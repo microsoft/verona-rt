@@ -77,14 +77,14 @@ namespace ubench
     }
   };
 
-  struct Ping : public rt::VBehaviour<Ping>
+  struct Ping
   {
     Pinger* pinger;
     std::array<Pinger*, 2> recipients;
 
     Ping(Pinger* pinger_) : pinger(pinger_) {}
 
-    void f()
+    void operator()()
     {
       if (!pinger->running)
         return;
@@ -97,7 +97,7 @@ namespace ubench
         ((pinger->rng.next() % pinger->select_mod) == 0);
       if (!send_multimessage)
       {
-        rt::Cown::schedule<Ping>(recipients[0], recipients[0]);
+        rt::Behaviour::schedule<Ping>(recipients[0], recipients[0]);
         return;
       }
 
@@ -108,7 +108,7 @@ namespace ubench
           pinger->pingers[pinger->rng.next() % pinger->pingers.size()];
       } while (recipients[1] == pinger);
 
-      rt::Cown::schedule<Ping>(2, (rt::Cown**)recipients.data(), recipients[0]);
+      rt::Behaviour::schedule<Ping>(2, (rt::Cown**)recipients.data(), recipients[0]);
     }
   };
 
@@ -122,17 +122,17 @@ namespace ubench
     rt::Cown::acquire(monitor);
     std::thread([=]() mutable {
       std::this_thread::sleep_for(timeout);
-      rt::Cown::schedule<Stop, rt::YesTransfer>((rt::Cown*)monitor, monitor);
+      rt::Behaviour::schedule<Stop, rt::YesTransfer>((rt::Cown*)monitor, monitor);
     }).detach();
   }
 
-  struct Start : public rt::VBehaviour<Start>
+  struct Start
   {
     Monitor* monitor;
 
     Start(Monitor* monitor_) : monitor(monitor_) {}
 
-    void f()
+    void operator()()
     {
       rt::Scheduler::add_external_event_source();
       for (auto* p : monitor->pingers)
@@ -140,7 +140,7 @@ namespace ubench
         p->count = 0;
         p->running = true;
         for (size_t i = 0; i < monitor->initial_pings; i++)
-          rt::Cown::schedule<Ping>(p, p);
+          rt::Behaviour::schedule<Ping>(p, p);
       }
 
       monitor->start = sn::Aal::tick();
@@ -148,21 +148,21 @@ namespace ubench
     }
   };
 
-  struct Stop : public rt::VBehaviour<Stop>
+  struct Stop
   {
     Monitor* monitor;
 
     Stop(Monitor* monitor_) : monitor(monitor_) {}
 
-    void f()
+    void operator()()
     {
       monitor->waiting = monitor->pingers.size();
       for (auto* pinger : monitor->pingers)
-        rt::Cown::schedule<StopPinger>(pinger, pinger, monitor);
+        rt::Behaviour::schedule<StopPinger>(pinger, pinger, monitor);
     }
   };
 
-  struct StopPinger : public rt::VBehaviour<StopPinger>
+  struct StopPinger
   {
     Pinger* pinger;
     Monitor* monitor;
@@ -171,37 +171,37 @@ namespace ubench
     : pinger(pinger_), monitor(monitor_)
     {}
 
-    void f()
+    void operator()()
     {
       pinger->running = false;
-      rt::Cown::schedule<NotifyStopped>(monitor, monitor);
+      rt::Behaviour::schedule<NotifyStopped>(monitor, monitor);
     }
   };
 
-  struct NotifyStopped : public rt::VBehaviour<NotifyStopped>
+  struct NotifyStopped
   {
     Monitor* monitor;
 
     NotifyStopped(Monitor* monitor_) : monitor(monitor_) {}
 
-    void f()
+    void operator()()
     {
       if (--monitor->waiting != 0)
         return;
 
-      rt::Cown::schedule<Report>(all_cowns_count, all_cowns, monitor);
+      rt::Behaviour::schedule<Report>(all_cowns_count, all_cowns, monitor);
 
       // Drop count, Start will reincrease if more external work is needed.
       rt::Scheduler::remove_external_event_source();
 
       if (--monitor->report_count != 0)
-        rt::Cown::schedule<Start>(all_cowns_count, all_cowns, monitor);
+        rt::Behaviour::schedule<Start>(all_cowns_count, all_cowns, monitor);
       else
         rt::Cown::release(sn::ThreadAlloc::get(), monitor);
     }
   };
 
-  struct Report : public rt::VBehaviour<Report>
+  struct Report
   {
     Monitor* monitor;
 
@@ -212,7 +212,7 @@ namespace ubench
       st.push(monitor);
     }
 
-    void f()
+    void operator()()
     {
       uint64_t t = sn::Aal::tick() - monitor->start;
       uint64_t sum = 0;
@@ -270,7 +270,7 @@ int main(int argc, char** argv)
   all_cowns = (rt::Cown**)alloc.alloc(all_cowns_count * sizeof(rt::Cown*));
   memcpy(all_cowns, pinger_set.data(), pinger_set.size() * sizeof(rt::Cown*));
   all_cowns[pinger_set.size()] = monitor;
-  rt::Cown::schedule<ubench::Start>(all_cowns_count, all_cowns, monitor);
+  rt::Behaviour::schedule<ubench::Start>(all_cowns_count, all_cowns, monitor);
 
   sched.run();
   alloc.dealloc(all_cowns, all_cowns_count * sizeof(rt::Cown*));
