@@ -59,6 +59,10 @@ namespace verona::rt
     Alloc* alloc = nullptr;
     Core* victim = nullptr;
 
+    /// Local work item to avoid overhead of synchronisation
+    /// on message queue.
+    Work* next_work = nullptr;
+
     bool running = true;
 
     /// SchedulerList pointers.
@@ -87,7 +91,10 @@ namespace verona::rt
       // TODO Batching
       Logging::cout() << "Enqueue work " << w << Logging::endl;
 
-      core->q.enqueue(w);
+      if (next_work != nullptr)
+        core->q.enqueue(next_work);
+
+      next_work = w;
 
       if (Scheduler::get().unpause())
         core->stats.unpause();
@@ -135,7 +142,8 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       Systematic::attach_systematic_thread(local_systematic);
 #endif
-
+      constexpr size_t BATCH_SIZE = 100;
+      size_t batch = BATCH_SIZE;
       while (true)
       {
         Work* work = nullptr;
@@ -150,6 +158,18 @@ namespace verona::rt
           // This is a heuristic, so we don't care.
           core->should_steal_for_fairness = false;
           fast_steal(work);
+        }
+
+        if (next_work != nullptr)
+        {
+          if (work != nullptr || batch-- == 0)
+          {
+            core->q.enqueue(next_work);
+            batch = BATCH_SIZE;
+          }
+          else
+            work = next_work;
+          next_work = nullptr;
         }
 
         if (work == nullptr)
