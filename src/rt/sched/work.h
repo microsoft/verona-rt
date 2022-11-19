@@ -99,7 +99,7 @@ namespace verona::rt
       void* base =
         snmalloc::ThreadAlloc::get().alloc<sizeof(Work) + sizeof(T)>();
       T* t_base = snmalloc::pointer_offset<T>(base, sizeof(Work));
-      new (t_base) T(t_param);
+      new (t_base) T(std::forward<T>(t_param));
       return new (base) Work(&invoke<T>);
     }
   };
