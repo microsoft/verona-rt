@@ -11,6 +11,7 @@
 
 namespace verona::rt
 {
+  class Cown;
   static void yield();
   /**!object.md
    * Object representation
@@ -388,6 +389,7 @@ namespace verona::rt
 
   private:
     friend class Cown;
+    friend void notify(Cown*);
     friend class Immutable;
     friend class Freeze;
     friend class Region;

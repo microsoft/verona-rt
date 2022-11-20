@@ -68,13 +68,13 @@ namespace notify_empty_queue
             c1.go = true
         }
   */
-  struct Go : public VBehaviour<Go>
+  struct Go
   {
     MyCown* leader;
 
     Go(MyCown* leader) : leader(leader) {}
 
-    void f()
+    void operator()()
     {
       std::cout << "Go!" << std::endl;
 
@@ -92,7 +92,7 @@ namespace notify_empty_queue
             c2.closed = true;
         }
     */
-  struct Finish : public VBehaviour<Finish>
+  struct Finish
   {
     MyCown* leader;
     MyCown* notified;
@@ -101,7 +101,7 @@ namespace notify_empty_queue
     : leader(leader), notified(notified)
     {}
 
-    void f()
+    void operator()()
     {
       std::cout << "Received " << notified->count << " notifications."
                 << std::endl;
@@ -122,7 +122,7 @@ namespace notify_empty_queue
   /**
    * Performs the large when inside wait in the comment above.
    */
-  struct Wait : public VBehaviour<Wait>
+  struct Wait
   {
     MyCown* leader;
     MyCown* notified;
@@ -130,12 +130,12 @@ namespace notify_empty_queue
     Wait(MyCown* leader, MyCown* notified) : leader(leader), notified(notified)
     {}
 
-    void f()
+    void operator()()
     {
       if (leader->count == 10)
       {
         Cown* cowns[2] = {leader, notified};
-        Cown::schedule<Finish>(2, cowns, leader, notified);
+        Behaviour::schedule<Finish>(2, cowns, leader, notified);
       }
       else
       {
@@ -145,14 +145,14 @@ namespace notify_empty_queue
           std::cout << "Incremement count!" << std::endl;
           leader->go = false;
           leader->count++;
-          notified->mark_notify();
-          notified->mark_notify();
+          notify(notified);
+          notify(notified);
         }
         else
         {
           std::cout << "No go!" << std::endl;
         }
-        Cown::schedule<Wait>(leader, leader, notified);
+        Behaviour::schedule<Wait>(leader, leader, notified);
       }
     }
   };
@@ -168,7 +168,7 @@ namespace notify_empty_queue
     }
 
     c->count++;
-    Cown::schedule<Go>(c->observer, c->observer);
+    Behaviour::schedule<Go>(c->observer, c->observer);
   }
 
   void run_test()
@@ -177,7 +177,7 @@ namespace notify_empty_queue
     auto notified = new MyCown;
     notified->observer = leader;
 
-    Cown::schedule<Wait>(leader, leader, notified);
+    Behaviour::schedule<Wait>(leader, leader, notified);
     // We have left two reference counts unused for leader and notified.
     // These will be dec refed in the Finish message. This saves
     // having to correctly manage the reference counts.

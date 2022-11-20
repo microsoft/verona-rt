@@ -22,7 +22,7 @@ namespace notify_basic
 
     g_a = new A;
 
-    g_a->mark_notify();
+    notify(g_a);
     schedule_lambda(g_a, []() {});
 
     Cown::release(alloc, g_a);

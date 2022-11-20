@@ -36,4 +36,10 @@ namespace verona::rt
     });
     Scheduler::schedule(w);
   }
+
+  // TODO Temporary until we actually design notify correctly.
+  inline void notify(Cown* p)
+  {
+    schedule_lambda(p, [p = p]() { p->notified(); });
+  }
 } // namespace verona::rt

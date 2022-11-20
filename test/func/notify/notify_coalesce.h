@@ -13,9 +13,9 @@ namespace notify_coalesce
     }
   };
 
-  struct Ping : public VBehaviour<Ping>
+  struct Ping
   {
-    void f()
+    void operator()()
     {
       Logging::cout() << "Recv Ping" << std::endl;
     }
@@ -44,12 +44,12 @@ namespace notify_coalesce
     }
   };
 
-  struct Loop : public VBehaviour<Loop>
+  struct Loop
   {
     B* b;
     Loop(B* b) : b(b) {}
 
-    void f()
+    void operator()()
     {
       auto a = b->a;
       switch (b->state)
@@ -60,11 +60,11 @@ namespace notify_coalesce
           for (int i = 0; i < 10; ++i)
           {
             Logging::cout() << "Send Notify" << std::endl;
-            a->mark_notify();
-            Cown::schedule<Ping>(a);
+            notify(a);
+            Behaviour::schedule<Ping>(a);
           }
           b->state = WAIT;
-          Cown::schedule<Loop>(b, b);
+          Behaviour::schedule<Loop>(b, b);
           break;
         }
 
@@ -78,7 +78,7 @@ namespace notify_coalesce
           {
             b->state = CHECK;
           }
-          Cown::schedule<Loop>(b, b);
+          Behaviour::schedule<Loop>(b, b);
           break;
         }
 
@@ -98,6 +98,7 @@ namespace notify_coalesce
     }
   };
 
+  // TODO Notify: Revise comment
   // This test verifies that multiple calls to `mark_notify` could be
   // coalesced, causing single acknowledge on the cown.
   void run_test()
@@ -108,8 +109,8 @@ namespace notify_coalesce
     auto b = new B(a);
 
     auto a2 = new A;
-    Cown::schedule<Ping>(a);
-    Cown::schedule<Loop>(b, b);
+    Behaviour::schedule<Ping>(a);
+    Behaviour::schedule<Loop>(b, b);
     Cown::release(alloc, a2);
   }
 }
