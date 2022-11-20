@@ -274,7 +274,7 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       return Systematic::coin(2);
 #else
-      return *get_pressure(2) % 1024 == 0;
+      return *get_pressure(2) % 128 == 0;
 #endif
     }
 

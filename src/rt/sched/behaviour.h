@@ -3,9 +3,9 @@
 #pragma once
 
 #include "../ds/mpscq.h"
+#include "../ds/stackarray.h"
 #include "../object/object.h"
 #include "cown.h"
-
 
 #include <snmalloc/snmalloc.h>
 
@@ -66,32 +66,32 @@ namespace verona::rt
 
     bool is_ready()
     {
-      return status == 1;
+      return status.load(std::memory_order_acquire) == 1;
     }
 
     void set_ready()
     {
-      status = 1;
+      status.store(1, std::memory_order_release);
     }
 
     bool is_wait()
     {
-      return status == 0;
+      return status.load(std::memory_order_relaxed) == 0;
     }
 
     bool is_behaviour()
     {
-      return status > 1;
+      return status.load(std::memory_order_relaxed) > 1;
     }
 
     Behaviour* get_behaviour()
     {
-      return (Behaviour*)status.load();
+      return (Behaviour*)status.load(std::memory_order_acquire);
     }
 
     void set_behaviour(Behaviour* b)
     {
-      status = (uintptr_t)b;
+      status.store((uintptr_t)b, std::memory_order_release);
     }
 
     void release();
@@ -242,7 +242,6 @@ namespace verona::rt
       typename... Args>
     static void schedule(size_t count, Request* requests, Args&&... args)
     {
-//      static_assert(std::is_base_of_v<Behaviour, Be>);
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
@@ -258,7 +257,7 @@ namespace verona::rt
       }
 
       // Really want a dynamically sized stack allocation here.
-      auto indexes = std::make_unique<size_t[]>(count);
+      StackArray<size_t> indexes(count);
       for (size_t i = 0; i < count; i++)
         indexes[i] = i;
 
