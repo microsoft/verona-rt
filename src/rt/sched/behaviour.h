@@ -93,6 +93,8 @@ namespace verona::rt
     {
       status = (uintptr_t)b;
     }
+
+    void release();
   };
 
   struct Behaviour
@@ -147,39 +149,7 @@ namespace verona::rt
       // Behaviour is done, we can resolve successors.
       for (size_t i = 0; i < behaviour->count; i++)
       {
-        assert(!slots[i].is_wait());
-
-        if (slots[i].is_ready())
-        {
-          yield();
-          auto slot_addr = &slots[i];
-          // Attempt to CAS cown to null.
-          if (slots[i].cown->last_slot.compare_exchange_strong(
-                slot_addr, nullptr, std::memory_order_acq_rel))
-          {
-            yield();
-            Logging::cout() << "No more work for cown " << slots[i].cown
-                            << Logging::endl;
-            // Success, no successor, release scheduler threads reference count.
-            cown::release(ThreadAlloc::get(), slots[i].cown);
-            continue;
-          }
-
-          yield();
-
-          // If we failed, then the another thread is extending the chain
-          while (slots[i].is_ready())
-          {
-            yield();
-            Aal::pause();
-          }
-        }
-
-        assert(slots[i].is_behaviour());
-        // Wake up the next behaviour.
-        yield();
-        slots[i].get_behaviour()->resolve();
-        yield();
+        slots[i].release();
       }
 
       // Dealloc behaviour
@@ -365,4 +335,40 @@ namespace verona::rt
       body->resolve(ec);
     }
   };
+
+  inline void Slot::release()
+  {
+    assert(!is_wait());
+
+    if (is_ready())
+    {
+      yield();
+      auto slot_addr = this;
+      // Attempt to CAS cown to null.
+      if (cown->last_slot.compare_exchange_strong(
+            slot_addr, nullptr, std::memory_order_acq_rel))
+      {
+        yield();
+        Logging::cout() << "No more work for cown " << cown << Logging::endl;
+        // Success, no successor, release scheduler threads reference count.
+        cown::release(ThreadAlloc::get(), cown);
+        return;
+      }
+
+      yield();
+
+      // If we failed, then the another thread is extending the chain
+      while (is_ready())
+      {
+        yield();
+        Aal::pause();
+      }
+    }
+
+    assert(is_behaviour());
+    // Wake up the next behaviour.
+    yield();
+    get_behaviour()->resolve();
+    yield();
+  }
 } // namespace verona::rt
