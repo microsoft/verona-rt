@@ -25,6 +25,9 @@ namespace verona::rt
   template<typename T>
   class Promise : public VCown<Promise<T>>
   {
+    // Used to store the start of the queue.
+    Slot slot;
+
   public:
     class PromiseErr
     {
@@ -160,7 +163,7 @@ namespace verona::rt
         if (promise)
         {
           if (!promise->fulfilled)
-            promise->schedule();
+            promise->slot.release();
           else
             Cown::release(ThreadAlloc::get(), promise);
         }
@@ -201,10 +204,9 @@ namespace verona::rt
      * be scheduled through an explicit call to schedule(). schedule() is
      * called when the promise is fulfilled.
      */
-    Promise()
+    Promise() : slot(this), fulfilled(false)
     {
-      VCown<Promise<T>>::wake();
-      fulfilled = false;
+      VCown<Promise<T>>::last_slot = &slot;
     }
 
   public:
@@ -231,7 +233,7 @@ namespace verona::rt
       tmp.promise->val = std::move(v);
       tmp.promise->fulfilled = true;
       Cown::acquire(tmp.promise);
-      tmp.promise->schedule();
+      tmp.promise->slot.release();
     }
   };
 }
