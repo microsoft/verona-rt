@@ -229,7 +229,7 @@ endforeach()
 
 foreach(CORES 1 2 3 4)
 foreach(SEED RANGE 1 5)
-  MATH(EXPR SEEDLOWER "${SEED} * 1")
+  MATH(EXPR SEEDLOWER "${SEED} * 1000")
   SET (TESTNAME "runtime/func-sys-external_event_source_${CORES}_${SEED}")
   add_test(${TESTNAME} func-sys-external_event_source --cores ${CORES} --seed_count 1000 --seed ${SEEDLOWER})
 endforeach()

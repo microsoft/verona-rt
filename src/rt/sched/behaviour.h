@@ -153,6 +153,7 @@ namespace verona::rt
       }
 
       // Dealloc behaviour
+      body->~Be();
       work->dealloc();
     }
 

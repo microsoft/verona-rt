@@ -255,10 +255,7 @@ namespace verona::rt
           auto o = dn->o;
           alloc.dealloc<sizeof(DecNode)>(dn);
           Logging::cout() << "Delayed decref on " << o << Logging::endl;
-          // TODO: Removed due to Cown being broken in this commit
-          //      Reinstate by end of changes. If this is in final PR, that is
-          //      wrong.
-          //          immutable::release(alloc, o);
+          immutable::release(alloc, o);
         }
       }
       debug_check_count();

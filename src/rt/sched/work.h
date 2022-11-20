@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "epoch.h"
+
 #include <atomic>
 #include <snmalloc/snmalloc.h>
-#include "epoch.h"
 
 namespace verona::rt
 {
