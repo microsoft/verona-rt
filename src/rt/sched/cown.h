@@ -5,7 +5,6 @@
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/forward_list.h"
-#include "../ds/mpscq.h"
 #include "../region/region.h"
 #include "base_noticeboard.h"
 #include "core.h"

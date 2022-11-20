@@ -3,7 +3,7 @@
 #pragma once
 
 #include <cassert>
-#include <type_traits>
+#include <cstdint>
 
 template<typename T>
 class StackArray
@@ -12,7 +12,7 @@ class StackArray
   T* current;
 
 public:
-  StackArray(size_t size)
+  StackArray(std::size_t size)
   {
     if (size <= 128)
     {
@@ -37,7 +37,7 @@ public:
     return current;
   }
 
-  size_t& operator[](size_t index)
+  std::size_t& operator[](std::size_t index)
   {
     return current[index];
   }
