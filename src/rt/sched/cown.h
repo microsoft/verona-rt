@@ -114,7 +114,6 @@ namespace verona::rt
 
     std::atomic<Slot*> last_slot{nullptr};
 
-
     /**
      * Cown's weak reference count.  This keeps the cown itself alive, but not
      * the data it can reach.  Weak reference can be promoted to strong, if a

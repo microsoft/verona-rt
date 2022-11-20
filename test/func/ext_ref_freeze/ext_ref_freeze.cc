@@ -1,8 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <verona.h>
-#include <cpp/when.h>
 
 using namespace snmalloc;
 using namespace verona::rt;

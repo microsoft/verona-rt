@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "vobject.h"
 #include "../sched/behaviour.h"
+#include "vobject.h"
 
 namespace verona::rt
 {
@@ -16,15 +16,13 @@ namespace verona::rt
   template<TransferOwnership transfer = NoTransfer, typename T>
   static void schedule_lambda(size_t count, Cown** cowns, T&& f)
   {
-    Behaviour::schedule<T, transfer>(
-      count, cowns, std::forward<T>(f));
+    Behaviour::schedule<T, transfer>(count, cowns, std::forward<T>(f));
   }
 
   template<TransferOwnership transfer = NoTransfer, typename T>
   static void schedule_lambda(size_t count, Request* requests, T&& f)
   {
-    Behaviour::schedule<T, transfer>(
-      count, requests, std::forward<T>(f));
+    Behaviour::schedule<T, transfer>(count, requests, std::forward<T>(f));
   }
 
   template<typename T>

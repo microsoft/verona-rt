@@ -1,10 +1,10 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <debug/log.h>
 #include <test/opt.h>
 #include <verona.h>
-#include <cpp/when.h>
 
 using namespace snmalloc;
 using namespace verona::rt;
@@ -20,7 +20,8 @@ void test_multimessage(size_t cores)
 
     ~CCown()
     {
-      Logging::cout() << "Cown " << (void*)this << " destroyed!" << Logging::endl;
+      Logging::cout() << "Cown " << (void*)this << " destroyed!"
+                      << Logging::endl;
     }
   };
 
@@ -29,12 +30,14 @@ void test_multimessage(size_t cores)
 
   {
     auto a1 = make_cown<CCown>(3);
-    when (a1) << [](auto a) { Logging::cout() << "got message on " << a.cown() << Logging::endl; };
+    when(a1) << [](auto a) {
+      Logging::cout() << "got message on " << a.cown() << Logging::endl;
+    };
 
     auto a2 = make_cown<CCown>(5);
 
     // We are transfering our cown references to the message here.
-    when (a1, a2) << [](auto a, auto b) {
+    when(a1, a2) << [](auto a, auto b) {
       Logging::cout() << "result = " << (a->i + b->i) << Logging::endl;
     };
   }

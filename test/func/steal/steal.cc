@@ -1,8 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <ctime>
 #include <debug/harness.h>
-#include <cpp/when.h>
 
 struct Runner
 {
@@ -18,7 +18,7 @@ void schedule_run(size_t decay)
 
   auto& alloc = ThreadAlloc::get();
   auto runner = make_cown<Runner>();
-  when (runner) << [decay](auto) { schedule_run(decay - 1); };
+  when(runner) << [decay](auto) { schedule_run(decay - 1); };
 }
 
 void basic_test(size_t cores)

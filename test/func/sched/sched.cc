@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include <iostream>
-#include <verona.h>
 #include <snmalloc/snmalloc.h>
+#include <verona.h>
 
 /**
  * Minimal test of the scheduler. Build a fibinacci sequence of scheduling

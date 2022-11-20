@@ -35,6 +35,7 @@ overload(sender: C & imm, receiver: C & imm)
 */
 
 #include "verona.h"
+
 #include <cpp/when.h>
 #include <functional>
 
@@ -42,12 +43,12 @@ namespace backpressure_unblock
 {
   using namespace verona::cpp;
 
-  struct Body {};
+  struct Body
+  {};
 
   void overload(cown_ptr<Body> sender, cown_ptr<Body> receiver)
   {
-    when () << [sender, receiver]()
-    {
+    when() << [sender, receiver]() {
       size_t i = 100;
       while (i > 0)
       {
@@ -66,6 +67,6 @@ namespace backpressure_unblock
 
     overload(sender1, receiver1);
     overload(sender2, receiver2);
-    when(sender1, receiver2) << [](auto,auto) {};
+    when(sender1, receiver2) << [](auto, auto) {};
   }
 }

@@ -13,10 +13,10 @@
  * propagated from the receiver set.
  */
 
+#include "cpp/when.h"
 #include "debug/log.h"
 #include "test/opt.h"
 #include "verona.h"
-#include "cpp/when.h"
 
 #include <chrono>
 
@@ -88,7 +88,8 @@ struct Forward
       return;
     }
 
-    Behaviour::schedule<Receive>(receiver_set.size(), (Cown**)receiver_set.data());
+    Behaviour::schedule<Receive>(
+      receiver_set.size(), (Cown**)receiver_set.data());
   }
 };
 
@@ -125,7 +126,8 @@ struct Send
     if (proxy_chain.size() > 0)
       Behaviour::schedule<Forward>(proxy_chain[0], proxy_chain[0]);
     else
-      Behaviour::schedule<Receive>(receiver_set.size(), (Cown**)receiver_set.data());
+      Behaviour::schedule<Receive>(
+        receiver_set.size(), (Cown**)receiver_set.data());
 
     if ((Sender::clk::now() - s->start) < s->duration)
       Behaviour::schedule<Send>(s, s);
@@ -165,7 +167,7 @@ int main(int argc, char** argv)
     proxy_chain.push_back(new (alloc) Proxy(p));
 
   auto e = make_cown<int>();
-  when (e) << [](auto){ 
+  when(e) << [](auto) {
     Logging::cout() << "Add external event source" << std::endl;
     Scheduler::add_external_event_source();
   };
@@ -197,7 +199,7 @@ int main(int argc, char** argv)
         Cown::release(alloc, r);
     }
 
-    when (e) << [](auto) {
+    when(e) << [](auto) {
       Logging::cout() << "Remove external event source" << std::endl;
       Scheduler::remove_external_event_source();
     };

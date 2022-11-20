@@ -8,37 +8,37 @@
 template<typename T>
 class StackArray
 {
-    T main[128];
-    T* current;
+  T main[128];
+  T* current;
 
-  public:
-    StackArray(size_t size)
+public:
+  StackArray(size_t size)
+  {
+    if (size <= 128)
     {
-        if (size <= 128)
-        {
-            current = main;
-        }
-        else
-        {
-            current = new T[size];
-        }
+      current = main;
     }
+    else
+    {
+      current = new T[size];
+    }
+  }
 
-    ~StackArray()
+  ~StackArray()
+  {
+    if (current != main)
     {
-        if (current != main)
-        {
-            delete[] current;
-        }
+      delete[] current;
     }
+  }
 
-    T* get()
-    {
-        return current;
-    }
+  T* get()
+  {
+    return current;
+  }
 
-    size_t& operator[](size_t index)
-    {
-        return current[index];
-    }
+  size_t& operator[](size_t index)
+  {
+    return current[index];
+  }
 };

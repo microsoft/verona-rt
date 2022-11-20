@@ -108,7 +108,8 @@ namespace ubench
           pinger->pingers[pinger->rng.next() % pinger->pingers.size()];
       } while (recipients[1] == pinger);
 
-      rt::Behaviour::schedule<Ping>(2, (rt::Cown**)recipients.data(), recipients[0]);
+      rt::Behaviour::schedule<Ping>(
+        2, (rt::Cown**)recipients.data(), recipients[0]);
     }
   };
 
@@ -122,7 +123,8 @@ namespace ubench
     rt::Cown::acquire(monitor);
     std::thread([=]() mutable {
       std::this_thread::sleep_for(timeout);
-      rt::Behaviour::schedule<Stop, rt::YesTransfer>((rt::Cown*)monitor, monitor);
+      rt::Behaviour::schedule<Stop, rt::YesTransfer>(
+        (rt::Cown*)monitor, monitor);
     }).detach();
   }
 

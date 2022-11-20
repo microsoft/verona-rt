@@ -6,8 +6,8 @@
 // leak detector is much simpler.  Leaving the test incase that
 // changes.
 
-#include <debug/harness.h>
 #include <cpp/when.h>
+#include <debug/harness.h>
 
 using namespace verona::cpp;
 
@@ -20,7 +20,8 @@ extern "C" const char* __asan_default_options()
 #  endif
 #endif
 
-struct MyCown {};
+struct MyCown
+{};
 
 cown_ptr<MyCown>::weak weak_leak;
 
@@ -30,9 +31,8 @@ void run_test()
   // HERE: the weak RC is never released.
   weak_leak = t.get_weak();
 
-  when (t) << [](auto t) {
-    Logging::cout() << "Msg on " << t.cown() << std::endl;
-  };
+  when(t) <<
+    [](auto t) { Logging::cout() << "Msg on " << t.cown() << std::endl; };
 }
 
 int main(int argc, char** argv)

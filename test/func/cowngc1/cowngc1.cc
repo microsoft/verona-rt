@@ -4,7 +4,6 @@
 #include <random>
 #include <test/xoroshiro.h>
 
-
 /**
  * This tests the cown leak detector.
  *

@@ -1,10 +1,10 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <ctime>
 #include <debug/harness.h>
 #include <test/opt.h>
 #include <verona.h>
-#include <cpp/when.h>
 
 using namespace snmalloc;
 using namespace verona::rt;
@@ -25,8 +25,7 @@ double elapsed_secs[n_cowns];
 
 void loop(cown_ptr<A> c)
 {
-  when (c) << [c = std::move(c)](auto a)
-  {
+  when(c) << [c = std::move(c)](auto a) {
     auto& count = a->count;
     auto id = a->id;
 
@@ -51,7 +50,7 @@ void loop(cown_ptr<A> c)
 
 void spawn()
 {
-  when () << []() {
+  when() << []() {
     for (int i = 0; i < n_cowns; ++i)
     {
       loop(make_cown<A>(i));

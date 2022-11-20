@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include <iostream>
-#include <verona.h>
 #include <snmalloc/snmalloc.h>
+#include <verona.h>
 
 using namespace verona::rt;
 

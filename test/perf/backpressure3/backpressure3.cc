@@ -95,7 +95,7 @@ struct Sender : public VCown<Sender>
   }
 };
 
-struct Send 
+struct Send
 {
   Sender* s;
 
