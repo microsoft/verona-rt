@@ -257,6 +257,15 @@ namespace verona::rt
         new (&slots[i]) Slot(requests[i].cown());
       }
 
+      schedule<transfer>(body);
+    }
+
+    template<TransferOwnership transfer = NoTransfer>
+    static void schedule(Behaviour* body)
+    {
+      auto count = body->count;
+      auto slots = body->get_slots();
+
       // Really want a dynamically sized stack allocation here.
       StackArray<size_t> indexes(count);
       for (size_t i = 0; i < count; i++)
