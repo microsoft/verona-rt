@@ -104,6 +104,9 @@ namespace verona::rt
 
   private:
     friend Core;
+    friend Slot;
+    template<typename T>
+    friend class Promise;
     friend struct Behaviour;
 
     template<typename T>
