@@ -116,7 +116,8 @@ namespace verona::rt
 
     Work* as_work()
     {
-      return pointer_offset_signed<Work>(this, -static_cast<ptrdiff_t>(sizeof(Work)));
+      return pointer_offset_signed<Work>(
+        this, -static_cast<ptrdiff_t>(sizeof(Work)));
     }
 
     /**
@@ -316,7 +317,7 @@ namespace verona::rt
         {
           // Wait for the previous behaviour to finish adding to chains.
           Aal::pause();
-          Systematic::yield_until([prev](){ return !prev->is_wait(); });
+          Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
 
         if (transfer == YesTransfer)
@@ -368,7 +369,7 @@ namespace verona::rt
       // If we failed, then the another thread is extending the chain
       while (is_ready())
       {
-        Systematic::yield_until([this](){ return !is_ready(); });
+        Systematic::yield_until([this]() { return !is_ready(); });
         Aal::pause();
       }
     }
