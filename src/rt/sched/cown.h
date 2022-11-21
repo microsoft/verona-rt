@@ -90,12 +90,6 @@ namespace verona::rt
   class Cown : public Object
   {
   public:
-    enum TryFastSend
-    {
-      NoTryFast,
-      YesTryFast
-    };
-
     Cown()
     {
       make_cown();
