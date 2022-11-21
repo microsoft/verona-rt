@@ -171,7 +171,7 @@ namespace verona::rt
 
       // Manual memory layout of the behaviour structure.
       //   | Work | Behaviour | Slot ... Slot | Body |
-      void* base = TheadAlloc::get().alloc(size);
+      void* base = ThreadAlloc::get().alloc(size);
       void* base_behaviour = pointer_offset(base, sizeof(Work));
       void* base_slots = pointer_offset(base_behaviour, sizeof(Behaviour));
       void* base_body = pointer_offset(base_slots, sizeof(Slot) * count);
@@ -281,7 +281,7 @@ namespace verona::rt
 
       // Execution count - we will remove at least
       // one from the execution count on finishing phase 2 of the
-      // 2PL. This ensures that the behaviour cannot be 
+      // 2PL. This ensures that the behaviour cannot be
       // deallocated until we finish phase 2.
       size_t ec = 1;
 
