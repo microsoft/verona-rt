@@ -298,8 +298,8 @@ namespace verona::rt
      * previous behaviour on that cown specifies it has completed its scheduling
      * by marking itself ready, `set_ready`.
      *
-     * The second (release) phase is simply making each slot ready, so that subsequent
-     * behaviours can continue scheduling.
+     * The second (release) phase is simply making each slot ready, so that
+     * subsequent behaviours can continue scheduling.
      *
      * Returning to our example earlier, if B1 exchanges on `a` first, then
      * B2 will have to wait for B1 to perform all its exchanges, and mark the
