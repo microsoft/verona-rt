@@ -116,7 +116,7 @@ namespace verona::rt
 
     Work* as_work()
     {
-      return pointer_offset_signed<Work>(this, -sizeof(Work));
+      return pointer_offset_signed<Work>(this, -static_cast<ptrdiff_t>(sizeof(Work)));
     }
 
     /**
