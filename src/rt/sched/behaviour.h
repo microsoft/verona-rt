@@ -97,6 +97,17 @@ namespace verona::rt
     void release();
   };
 
+  /**
+   * @brief This class implements the `when` construct in the runtime.
+   *
+   * It is based on the using the class MCS Queue Lock to build a dag of
+   * behaviours.  Each cown can be seen as a lock, and each behaviour is
+   * like a wait node in the queues for multiple cowns.
+   *
+   * Unlike, the MCS Queue Lock, we do not spin waiting for the behaviour
+   * to be actionable, but instead the behaviour carries the code, that
+   * can be scheduled when it has no predecessors in the dag.
+   */
   struct Behaviour
   {
     std::atomic<size_t> exec_count_down;
@@ -258,6 +269,49 @@ namespace verona::rt
       schedule<transfer>(body);
     }
 
+    /**
+     * @brief Schedule a behaviour for execution.
+     *
+     * @tparam transfer - NoTransfer or YesTransfer - NoTransfer means
+     * any cowns that are scheduled will need a reference count added to them.
+     * YesTransfer means that the caller is transfering a reference count to
+     * each of the cowns, so the schedule should remove a count if it is not
+     * required.
+     * @param body  The behaviour to schedule.
+     *
+     * @note
+     *
+     * To correctly implement the happens before order, we need to ensure that
+     * one when cannot overtake another:
+     *
+     *   when (a, b, d) { B1 } || when (a, c, d) { B2 }
+     *
+     * Where we assume the underlying acquisition order is alphabetical.
+     *
+     * Let us assume B1 exchanges on `a` first, then we need to ensure that
+     * B2 cannot acquire `d` before B1 as this would lead to a cycle.
+     *
+     * To achieve this we effectively do two phase locking.
+     *
+     * The first (acquire) phase performs exchange on each cown in same
+     * global assumed order.  It can only move onto the next cown once the
+     * previous behaviour on that cown specifies it has completed its scheduling
+     * by marking itself ready, `set_ready`.
+     *
+     * The second (release) phase is simply making each slot ready, so that subsequent
+     * behaviours can continue scheduling.
+     *
+     * Returning to our example earlier, if B1 exchanges on `a` first, then
+     * B2 will have to wait for B1 to perform all its exchanges, and mark the
+     * appropriate slot ready in phase two. Hence, it is not possible for any
+     * number of behaviours to form a cycle.
+     *
+     *
+     * Invariant: If the cown is part of a chain, then the scheduler holds an RC
+     * on the cown. This means the first behaviour to access a cown will need to
+     * perform an acquire. When the execution of a chain completes, then the
+     * scheduler will release the RC.
+     */
     template<TransferOwnership transfer = NoTransfer>
     static void schedule(Behaviour* body)
     {
@@ -286,7 +340,7 @@ namespace verona::rt
       // deallocated until we finish phase 2.
       size_t ec = 1;
 
-      // Acquire phase.
+      // First phase - Acquire phase.
       for (size_t i = 0; i < count; i++)
       {
         auto cown = slots[indexes[i]].cown;
@@ -314,7 +368,7 @@ namespace verona::rt
         yield();
         while (prev->is_wait())
         {
-          // Wait for the previous behaviour to finish adding to chains.
+          // Wait for the previous behaviour to finish adding to first phase.
           Aal::pause();
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
@@ -329,6 +383,7 @@ namespace verona::rt
         yield();
       }
 
+      // Second phase - Release phase.
       Logging::cout() << "Release phase for behaviour " << body
                       << Logging::endl;
       for (size_t i = 0; i < count; i++)
