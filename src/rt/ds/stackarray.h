@@ -7,10 +7,10 @@
 
 /**
  * @brief A stack allocated array.
- * 
- * Due to portability allocates a largeish array on the stack, if this array is not
- * big enough then dynamically allocates something of the correct size. This is done 
- * to avoid the need for a dynamic allocation in the common case.
+ *
+ * Due to portability allocates a largeish array on the stack, if this array is
+ * not big enough then dynamically allocates something of the correct size. This
+ * is done to avoid the need for a dynamic allocation in the common case.
  */
 template<typename T>
 class StackArray
@@ -24,7 +24,7 @@ class StackArray
   // Pointer to the array in use, may be main or a dynamically allocated array.
   T* current;
 
-  // User requested size. 
+  // User requested size.
   std::size_t size;
 
 public:
@@ -35,16 +35,16 @@ public:
   }
 
   ~StackArray()
-  {    
+  {
     if (current != main)
       delete[] current;
   }
 
   /**
    * Return non-owning pointer to the array.
-   * 
+   *
    * Lifetime is managed by the StackArray.
-   * 
+   *
    * TODO C++20:  Use std::span
    */
   T* get()
