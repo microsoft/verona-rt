@@ -207,6 +207,7 @@ namespace verona::rt
     Promise() : slot(this), fulfilled(false)
     {
       VCown<Promise<T>>::last_slot = &slot;
+      slot.set_ready();
     }
 
   public:
