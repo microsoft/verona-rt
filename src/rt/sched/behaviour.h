@@ -55,8 +55,9 @@ namespace verona::rt
      *   1 - Ready
      *   Behaviour* - Next write
      *
-     * TODO
-     *   Slot* - Next Read
+     * TODO Read-only When we extend to read-only we will need the following
+     * additional state
+     *   Slot* - Next Read 
      *   2 - Ready and Read available
      */
     std::atomic<uintptr_t> status;
