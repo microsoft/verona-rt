@@ -182,9 +182,6 @@ namespace verona::rt
 
         Logging::cout() << "Schedule cown " << cown << Logging::endl;
 
-        core->progress_counter++;
-        core->last_worker = systematic_id;
-
         bool reschedule = cown->run(*alloc);
 
         if (reschedule)
