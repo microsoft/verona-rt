@@ -316,7 +316,7 @@ namespace verona::rt
         {
           // Wait for the previous behaviour to finish adding to chains.
           Aal::pause();
-          yield();
+          Systematic::yield_until([prev](){ return !prev->is_wait(); });
         }
 
         if (transfer == YesTransfer)
@@ -368,7 +368,7 @@ namespace verona::rt
       // If we failed, then the another thread is extending the chain
       while (is_ready())
       {
-        yield();
+        Systematic::yield_until([this](){ return !is_ready(); });
         Aal::pause();
       }
     }
