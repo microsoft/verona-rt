@@ -180,6 +180,7 @@ namespace verona::rt
         std::enable_if_t<std::is_invocable_v<F, std::variant<T, PromiseErr>>>>
     void then(F&& fn)
     {
+      Logging::cout() << "Promise: then" << this << std::endl;
       schedule_lambda(this, [fn = std::move(fn), this] {
         if (fulfilled)
         {
@@ -234,6 +235,7 @@ namespace verona::rt
       tmp.promise->val = std::move(v);
       tmp.promise->fulfilled = true;
       Cown::acquire(tmp.promise);
+      Logging::cout() << "Fulfilling promise" << tmp.promise << std::endl;
       tmp.promise->slot.release();
     }
   };
