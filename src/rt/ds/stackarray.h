@@ -3,7 +3,7 @@
 #pragma once
 
 #include <cassert>
-#include <cstdint>
+#include <cstddef>
 
 template<typename T>
 class StackArray
