@@ -107,6 +107,11 @@ namespace verona::rt
    * Unlike, the MCS Queue Lock, we do not spin waiting for the behaviour
    * to be actionable, but instead the behaviour carries the code, that
    * can be scheduled when it has no predecessors in the dag.
+   *
+   * MCS Queue Lock paper:
+   *   J. M. Mellor-Crummey and M. L. Scott. Algorithms for
+   *   scalable synchronization on shared-memory
+   *   multiprocessors. ACM TOCS, 9(1):21–65, Feb. 1991
    */
   struct Behaviour
   {
