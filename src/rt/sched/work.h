@@ -21,21 +21,40 @@ namespace verona::rt
   {
     static constexpr auto NO_EPOCH_SET = (std::numeric_limits<uint64_t>::max)();
 
+    // Entry in the MPMC Queue of work items per scheduler.
     union
     {
+      // When in the queue this references the next element
       std::atomic<Work*> next_in_queue;
+      // When not in the queue this is the epoch that it was last seen in the
+      // queue. This is used to allow deferred deallocation to be more
+      // efficient.
       uint64_t epoch_when_popped{NO_EPOCH_SET};
     };
 
+    // The function to execute this work item. It is supplied with a self
+    // pointer and is responsible for all casting and memory management.
     void (*f)(Work*);
 
     constexpr Work(void (*f)(Work*)) : f(f) {}
 
+    // Helper to run the item.
     void run()
     {
       f(this);
     }
 
+    /**
+     * Helper to perform deallocation.
+     *
+     * Due to complexity with the MPMCQ memory management there is an
+     * epoch mechanism to prevent the underlying allocator decommitting
+     * the memory and thus causing a segfault.  This correctly deallocates
+     * a work item.
+     *
+     * It assumes the work item is the start of an underlying allocation, and
+     * does not work if it is embedded not at the start of an allocation.
+     */
     void dealloc()
     {
       auto& alloc = ThreadAlloc::get();
