@@ -109,8 +109,8 @@ namespace verona::rt
      * Note that exec_count_down is initialised to count + 1. This is because
      * we use the additional count to protect against the behaviour being
      * completely executed, before we have finished setting Ready on all the
-     * slots. This is because the two phase locking needs to complete before we
-     * can execute the behaviour.
+     * slots. Two phase locking needs to complete before we can execute the
+     * behaviour.
      */
     Behaviour(size_t count) : exec_count_down(count + 1), count(count) {}
 
@@ -121,7 +121,7 @@ namespace verona::rt
     }
 
     /**
-     * Remove one from the exec_count_down.
+     * Remove `n` from the exec_count_down.
      *
      * Returns true if this call makes the count_down_zero
      */
@@ -164,14 +164,14 @@ namespace verona::rt
     }
 
     template<typename Be, typename... Args>
-    static Behaviour* make(Alloc& alloc, size_t count, Args... args)
+    static Behaviour* make(size_t count, Args... args)
     {
       size_t size =
         sizeof(Work) + sizeof(Behaviour) + (sizeof(Slot) * count) + sizeof(Be);
 
       // Manual memory layout of the behaviour structure.
       //   | Work | Behaviour | Slot ... Slot | Body |
-      void* base = alloc.alloc(size);
+      void* base = TheadAlloc::get().alloc(size);
       void* base_behaviour = pointer_offset(base, sizeof(Work));
       void* base_slots = pointer_offset(base_behaviour, sizeof(Behaviour));
       void* base_body = pointer_offset(base_slots, sizeof(Slot) * count);
@@ -235,7 +235,7 @@ namespace verona::rt
      *
      * Pass `transfer = YesTransfer` as a template argument if the
      * caller is transfering ownership of a reference count on each cown to
-     *this method.
+     * this method.
      **/
     template<
       class Be,
@@ -246,10 +246,7 @@ namespace verona::rt
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto& alloc = ThreadAlloc::get();
-
-      auto body =
-        Behaviour::make<Be>(alloc, count, std::forward<Args>(args)...);
+      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
 
       auto* slots = body->get_slots();
       for (size_t i = 0; i < count; i++)
@@ -284,12 +281,13 @@ namespace verona::rt
 
       // Execution count - we will remove at least
       // one from the execution count on finishing phase 2 of the
-      // 2PL.
+      // 2PL. This ensures that the behaviour cannot be 
+      // deallocated until we finish phase 2.
       size_t ec = 1;
 
+      // Acquire phase.
       for (size_t i = 0; i < count; i++)
       {
-        // Acquire phase.
         auto cown = slots[indexes[i]].cown;
         auto prev = cown->last_slot.exchange(
           &slots[indexes[i]], std::memory_order_acq_rel);
