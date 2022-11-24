@@ -26,13 +26,13 @@ namespace noticeboard_basic
     int n = 10;
   };
 
-  struct Ping : public VBehaviour<Ping>
+  struct Ping
   {
     void* target;
 
     Ping(void* t) : target(t) {}
 
-    void f()
+    void operator()()
     {
       Logging::cout() << "Ping on " << target << std::endl;
     }
@@ -102,12 +102,12 @@ namespace noticeboard_basic
     }
   };
 
-  struct UpdateDB : public VBehaviour<UpdateDB>
+  struct UpdateDB
   {
     DB* db;
     UpdateDB(DB* db) : db(db) {}
 
-    void f()
+    void operator()()
     {
       auto& alloc = ThreadAlloc::get();
 
@@ -132,12 +132,12 @@ namespace noticeboard_basic
     }
   };
 
-  struct ToPeek : public VBehaviour<ToPeek>
+  struct ToPeek
   {
     Peeker* peeker;
     ToPeek(Peeker* peeker) : peeker(peeker) {}
 
-    void f()
+    void operator()()
     {
       auto& alloc = ThreadAlloc::get();
 
@@ -174,9 +174,9 @@ namespace noticeboard_basic
 
     Logging::cout() << "Peeker " << peeker << std::endl;
 
-    Cown::schedule<ToPeek>(peeker, peeker);
-    Cown::schedule<UpdateDB>(peeker->db, peeker->db);
-    Cown::schedule<Ping>(alive, alive);
+    Behaviour::schedule<ToPeek>(peeker, peeker);
+    Behaviour::schedule<UpdateDB>(peeker->db, peeker->db);
+    Behaviour::schedule<Ping>(alive, alive);
 
     Cown::release(alloc, alive);
     Cown::release(alloc, peeker);

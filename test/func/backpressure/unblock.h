@@ -36,39 +36,37 @@ overload(sender: C & imm, receiver: C & imm)
 
 #include "verona.h"
 
+#include <cpp/when.h>
 #include <functional>
 
 namespace backpressure_unblock
 {
-  using namespace verona::rt;
+  using namespace verona::cpp;
+
+  struct Body
+  {};
+
+  void overload(cown_ptr<Body> sender, cown_ptr<Body> receiver)
+  {
+    when() << [sender, receiver]() {
+      size_t i = 100;
+      while (i > 0)
+      {
+        i--;
+        when(sender) << [receiver](auto) { when(receiver) << [](auto) {}; };
+      }
+    };
+  }
 
   void test()
   {
-    auto& alloc = ThreadAlloc::get();
-    auto* sender1 = new (alloc) EmptyCown;
-    auto* sender2 = new (alloc) EmptyCown;
-    auto* receiver1 = new (alloc) EmptyCown;
-    auto* receiver2 = new (alloc) EmptyCown;
+    auto sender1 = make_cown<Body>();
+    auto sender2 = make_cown<Body>();
+    auto receiver1 = make_cown<Body>();
+    auto receiver2 = make_cown<Body>();
 
-    Cown::acquire(sender1);
-    Cown::acquire(receiver2);
-
-    auto overload = [](Cown* sender, Cown* receiver) {
-      for (size_t i = 0; i < 100; i++)
-      {
-        Cown::acquire(receiver);
-        schedule_lambda(sender, [receiver] {
-          schedule_lambda<YesTransfer>(receiver, [] {});
-        });
-      }
-      Cown::release(ThreadAlloc::get(), sender);
-      Cown::release(ThreadAlloc::get(), receiver);
-    };
-
-    schedule_lambda([=] { overload(sender1, receiver1); });
-    schedule_lambda([=] { overload(sender2, receiver2); });
-
-    Cown* receivers[2] = {sender1, receiver2};
-    schedule_lambda<YesTransfer>(2, receivers, [] {});
+    overload(sender1, receiver1);
+    overload(sender2, receiver2);
+    when(sender1, receiver2) << [](auto, auto) {};
   }
 }

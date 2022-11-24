@@ -1,5 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <ctime>
 #include <debug/harness.h>
 #include <test/opt.h>
@@ -7,9 +8,10 @@
 
 using namespace snmalloc;
 using namespace verona::rt;
+using namespace verona::cpp;
 
 static constexpr int start_count = 1'00'000;
-struct A : public VCown<A>
+struct A
 {
   int id;
   int count = start_count;
@@ -21,13 +23,9 @@ struct A : public VCown<A>
 int constexpr n_cowns = 6;
 double elapsed_secs[n_cowns];
 
-struct Loop : public VBehaviour<Loop>
+void loop(cown_ptr<A> c)
 {
-  A* a;
-  Loop(A* a) : a(a) {}
-
-  void f()
-  {
+  when(c) << [c = std::move(c)](auto a) {
     auto& count = a->count;
     auto id = a->id;
 
@@ -46,27 +44,19 @@ struct Loop : public VBehaviour<Loop>
     }
 
     count--;
-    Cown::schedule<Loop>(a, a);
-  }
-};
+    loop(std::move(c));
+  };
+}
 
-struct B : public VCown<A>
-{};
-
-struct Spawn : public VBehaviour<Spawn>
+void spawn()
 {
-  void f()
-  {
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
+  when() << []() {
     for (int i = 0; i < n_cowns; ++i)
     {
-      auto a = new A(i);
-      Cown::schedule<Loop>(a, a);
-      Cown::release(alloc, a);
+      loop(make_cown<A>(i));
     }
-  }
-};
+  };
+}
 
 void assert_variance()
 {
@@ -87,8 +77,6 @@ void assert_variance()
     printf("variance too large");
     check(false);
   }
-  UNUSED(min);
-  UNUSED(max);
 }
 
 int main()
@@ -102,13 +90,8 @@ int main()
   sched.init(cores);
   sched.set_fair(true);
 
-  auto& alloc = ThreadAlloc::get();
-  (void)alloc;
+  spawn();
 
-  auto b = new B;
-  Cown::schedule<Spawn>(b);
-
-  Cown::release(alloc, b);
   sched.run();
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
   assert_variance();

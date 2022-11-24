@@ -247,57 +247,57 @@ struct RCown : public VCown<RCown>
   }
 };
 
-struct Pong : public VBehaviour<Pong>
+struct Pong
 {
   CCown* ccown;
   Pong(CCown* ccown) : ccown(ccown) {}
 
-  void f()
+  void operator()()
   {
     if (ccown->child != nullptr)
     {
       for (int n = 0; n < 20; n++)
-        Cown::schedule<Pong>(ccown->child, ccown->child);
+        Behaviour::schedule<Pong>(ccown->child, ccown->child);
     }
   }
 };
 
-struct Ping : public VBehaviour<Ping>
+struct Ping
 {
   RCown* rcown;
   PRNG* rand;
   Ping(RCown* rcown, PRNG* rand) : rcown(rcown), rand(rand) {}
 
-  void f()
+  void operator()()
   {
     if (rcown->forward > 0)
     {
       // Forward Ping to next RCown.
-      Cown::schedule<Ping>(rcown->next, rcown->next, rand);
+      Behaviour::schedule<Ping>(rcown->next, rcown->next, rand);
 
       // Send Pongs to child CCowns.
       for (uint64_t i = 0; i < others_count; i++)
       {
         if (rcown->array[i] != nullptr)
-          Cown::schedule<Pong>(rcown->array[i], rcown->array[i]);
+          Behaviour::schedule<Pong>(rcown->array[i], rcown->array[i]);
       }
       if (rcown->otrace != nullptr && rcown->otrace->cown != nullptr)
-        Cown::schedule<Pong>(rcown->otrace->cown, rcown->otrace->cown);
+        Behaviour::schedule<Pong>(rcown->otrace->cown, rcown->otrace->cown);
       if (rcown->oarena != nullptr && rcown->oarena->cown != nullptr)
-        Cown::schedule<Pong>(rcown->oarena->cown, rcown->oarena->cown);
+        Behaviour::schedule<Pong>(rcown->oarena->cown, rcown->oarena->cown);
       if (rcown->imm1 != nullptr)
       {
         auto c1 = rcown->imm1->cown;
         auto c2 = rcown->imm1->f1->cown;
-        Cown::schedule<Pong>(c1, c1);
-        Cown::schedule<Pong>(c2, c2);
+        Behaviour::schedule<Pong>(c1, c1);
+        Behaviour::schedule<Pong>(c2, c2);
       }
       if (rcown->imm2 != nullptr)
       {
         auto c1 = rcown->imm2->cown;
         auto c2 = rcown->imm2->f1->cown;
-        Cown::schedule<Pong>(c1, c1);
-        Cown::schedule<Pong>(c2, c2);
+        Behaviour::schedule<Pong>(c1, c1);
+        Behaviour::schedule<Pong>(c2, c2);
       }
 
       // Randomly introduce a pointer nulling operations. We don't want to do
@@ -381,7 +381,7 @@ void test_cown_gc(
   rcown_first = nullptr;
   auto a = new RCown(ring_size, forward_count);
   rand->seed(h->current_seed());
-  Cown::schedule<Ping>(a, a, rand);
+  Behaviour::schedule<Ping>(a, a, rand);
 }
 
 void test_cown_gc_before_sched()

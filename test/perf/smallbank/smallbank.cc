@@ -74,8 +74,11 @@ void deposit_checking(
   if (account == accounts.end())
     return;
 
-  when(account->second.checking)
-    << [=](acquired_cown<Checking> ch_acq) { ch_acq->balance += amount; };
+  when(account->second.checking) << [=](acquired_cown<Checking> ch_acq) {
+    ch_acq->balance += amount;
+
+    Logging::cout() << "Deposited " << amount << std::endl;
+  };
 }
 
 // TransactSavings: Add or remove from the savings account
@@ -92,6 +95,9 @@ void transact_savings(
     if ((amount < 0) && (sa_acq->balance < (-1 * amount)))
       return;
     sa_acq->balance += amount;
+
+    Logging::cout() << "TransactSavings: " << amount << " " << sa_acq->balance
+                    << std::endl;
   };
 }
 
@@ -111,6 +117,8 @@ void write_check(
            ch_acq->balance -= (amount + 1);
          else
            ch_acq->balance -= amount;
+
+         Logging::cout() << "Write check: " << amount << std::endl;
        };
 }
 
@@ -136,6 +144,7 @@ void amalgamate(
          ch_acq2->balance += (sa_acq1->balance + ch_acq1->balance);
          sa_acq1->balance = 0;
          ch_acq1->balance = 0;
+         Logging::cout() << "Amalgamate" << std::endl;
        };
 }
 
@@ -168,6 +177,7 @@ public:
       uint64_t acc1 =
         static_cast<uint64_t>(rand()) % (ACCOUNTS_COUNT + ACCOUNT_EXTRA);
 
+      Logging::cout() << "Txn: " << (int)txn_type << " " << acc1 << std::endl;
       switch (txn_type)
       {
         case BALANCE:

@@ -1,27 +1,15 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <ctime>
 #include <debug/harness.h>
 
-struct Runner : public VCown<Runner>
+struct Runner
 {
   Runner() {}
 };
 
-void schedule_run(size_t decay);
-
-struct Run : public VBehaviour<Run>
-{
-  Runner* r;
-  size_t decay;
-
-  Run(Runner* r, size_t decay) : r(r), decay(decay) {}
-
-  void f()
-  {
-    schedule_run(decay);
-  }
-};
+using namespace verona::cpp;
 
 void schedule_run(size_t decay)
 {
@@ -29,9 +17,8 @@ void schedule_run(size_t decay)
     return;
 
   auto& alloc = ThreadAlloc::get();
-  auto runner = new Runner();
-  Cown::schedule<Run>(runner, runner, decay - 1);
-  Cown::release(alloc, runner);
+  auto runner = make_cown<Runner>();
+  when(runner) << [decay](auto) { schedule_run(decay - 1); };
 }
 
 void basic_test(size_t cores)

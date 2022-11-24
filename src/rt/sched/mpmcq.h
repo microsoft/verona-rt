@@ -41,9 +41,10 @@ namespace verona::rt
    * The queue also has a notion of a token. This is used to determine once
    * the queue has been flushed through.  The client can check if the value
    * popped is a token.  This is used to monitor how quickly this queue is
-   * completed, and then can be used for
-   *   - The leak detector algorithm
-   *   - The fairness of scheduling
+   * completed, and then can be used for fairness scheduling.
+   *
+   * The queue doesn't know which work elements are the token, but the non-empty
+   * nature needs it to exist otherwise, we can't reach a quicent state.
    */
   template<class T>
   class MPMCQ
@@ -58,27 +59,11 @@ namespace verona::rt
     // Used for work stealing and posting new work from another thread.
     snmalloc::ABA<T> front;
 
-    T* unmask(T* tagged_ptr)
-    {
-      return (T*)((uintptr_t)tagged_ptr & ~BIT);
-    }
-
-    bool is_bit_set(T* tagged_ptr)
-    {
-      return unmask(tagged_ptr) != tagged_ptr;
-    }
-
-    T* set_bit(T* ptr)
-    {
-      return (T*)((uintptr_t)ptr | BIT);
-    }
-
   public:
     explicit MPMCQ(T* token)
     {
       assert(token);
       token->next_in_queue = nullptr;
-      token = set_bit(token);
       back = token;
       front.init(token);
     }
@@ -89,24 +74,20 @@ namespace verona::rt
      * once we return, due to other enqueues that have not
      * completed.
      */
-    void enqueue(Alloc& alloc, T* node)
+    void enqueue(T* node)
     {
-      UNUSED(alloc);
-      auto unmasked_node = unmask(node);
-      unmasked_node->next_in_queue = nullptr;
+      node->next_in_queue = nullptr;
       std::atomic_thread_fence(std::memory_order_release);
-      auto unmasked_back =
-        unmask(back.exchange(node, std::memory_order_relaxed));
+      auto b = back.exchange(node, std::memory_order_relaxed);
       // The element we are writing into must have made its next pointer null
       // before exchanging into the structure, as the element cannot be removed
       // if it has a null next pointer, we know the write is safe.
-      assert(unmasked_back->next_in_queue == nullptr);
-      unmasked_back->next_in_queue.store(node, std::memory_order_relaxed);
+      assert(b->next_in_queue == nullptr);
+      b->next_in_queue.store(node, std::memory_order_relaxed);
     }
 
-    void enqueue_front(Alloc& alloc, T* node)
+    void enqueue_front(T* node)
     {
-      UNUSED(alloc);
       auto cmp = front.read();
 
       do
@@ -135,9 +116,8 @@ namespace verona::rt
       do
       {
         fnt = cmp.ptr();
-        auto unmasked_fnt = unmask(fnt);
         // This operation is memory safe due to holding the epoch.
-        next = unmasked_fnt->next_in_queue;
+        next = fnt->next_in_queue;
 
         // If next is nullptr, then this is most likely the next entry has not
         // been enqueued.  Due to the non-linearisable nature, there may be
@@ -153,7 +133,7 @@ namespace verona::rt
 
       assert(epoch != T::NO_EPOCH_SET);
 
-      unmask(fnt)->epoch_when_popped = epoch;
+      fnt->epoch_when_popped = epoch;
 
       return fnt;
     }
@@ -163,11 +143,10 @@ namespace verona::rt
     void destroy(Alloc& alloc)
     {
       assert(front.peek() == back);
-      assert(is_bit_set(back));
-      auto unmasked = unmask(back);
-      assert(unmasked->next_in_queue == nullptr);
+      auto b = back.load();
+      assert(b->next_in_queue == nullptr);
 
-      unmasked->dealloc(alloc);
+      alloc.dealloc(b);
     }
 
     /**
@@ -193,8 +172,9 @@ namespace verona::rt
     {
       auto local_back = back.load(std::memory_order_acquire);
       // Check if last element is the token cown.
-      if (!is_bit_set(local_back))
-        return false;
+      // Last element should be the token work, but we don't need to check that
+      // as something else will have two things if we don't have the token.
+
       // Check first element is the last, hence if true, then all elements
       // in the queue have been enqueued since this call started.
       return local_back == front.peek();

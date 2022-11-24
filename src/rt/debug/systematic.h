@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "../debug/logging.h"
 #include "../pal/semaphore.h"
 #include "ds/scramble.h"
 #include "test/xoroshiro.h"
 
+#include <snmalloc/snmalloc.h>
+
 namespace verona::rt
 {
+  using namespace snmalloc;
+
   class Systematic
   {
     enum class SystematicState
@@ -349,4 +354,9 @@ namespace verona::rt
       }
     }
   };
+
+  static void yield()
+  {
+    Systematic::yield();
+  }
 } // namespace verona::rt

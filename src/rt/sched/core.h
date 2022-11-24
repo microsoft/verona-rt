@@ -4,35 +4,47 @@
 
 #include "mpmcq.h"
 #include "schedulerstats.h"
+#include "work.h"
 
 #include <atomic>
 #include <snmalloc/snmalloc.h>
 
 namespace verona::rt
 {
-  template<class T>
   class Core
   {
   public:
     size_t affinity = 0;
-    T* token_cown = nullptr;
-    MPMCQ<T> q;
-    std::atomic<Core<T>*> next = nullptr;
+    MPMCQ<Work> q;
+    std::atomic<Core*> next{nullptr};
+    std::atomic<bool> should_steal_for_fairness{false};
 
     /// Progress and synchronization between the threads.
     //  These counters represent progress on a CPU core, not necessarily on
     //  the core's queue. This is necessary to take into account core-stealing
     //  to avoid spawning many threads on a core hogged by a long running
     //  behaviour but with an empty cown queue.
-    std::atomic<std::size_t> servicing_threads = 0;
+    std::atomic<std::size_t> servicing_threads{0};
 
     SchedulerStats stats;
 
-  public:
-    Core() : token_cown{T::create_token_cown()}, q{token_cown}
+    /**
+     * @brief Create a token work object.  It is affinitised to the `home`
+     * core, and marks that stealing is required, for fairness. Once completed
+     * it reschedules itself on the home core.
+     */
+    Work* create_token_work(Core* home)
     {
-      token_cown->set_token_owning_core(this);
+      auto w = Closure::make([home](Work* w) {
+        home->should_steal_for_fairness = true;
+        home->q.enqueue(w);
+        return false;
+      });
+      return w;
     }
+
+  public:
+    Core() : q{create_token_work(this)} {}
 
     ~Core() {}
   };

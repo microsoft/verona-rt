@@ -7,6 +7,7 @@
 
 namespace verona::rt
 {
+  class Cown;
   namespace cown
   {
     // This is used only to break a dependency cycle.
@@ -146,4 +147,13 @@ namespace verona::rt
       }
     }
   };
+
+  namespace immutable
+  {
+    // This is used only to break a dependency cycle.
+    inline void release(Alloc& alloc, Object* o)
+    {
+      Immutable::release(alloc, o);
+    }
+  } // namespace cown
 } // namespace verona::rt

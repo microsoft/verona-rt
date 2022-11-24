@@ -17,12 +17,12 @@ namespace noticeboard_primitive_weak
     }
   };
 
-  struct WriterLoop : public VBehaviour<WriterLoop>
+  struct WriterLoop
   {
     Writer* writer;
     WriterLoop(Writer* writer) : writer(writer) {}
 
-    void f()
+    void operator()()
     {
       auto& alloc = ThreadAlloc::get();
 
@@ -48,12 +48,12 @@ namespace noticeboard_primitive_weak
   Reader* g_reader = nullptr;
   Writer* g_writer = nullptr;
 
-  struct ReaderLoop : public VBehaviour<ReaderLoop>
+  struct ReaderLoop
   {
     Reader* reader;
     ReaderLoop(Reader* reader) : reader(reader) {}
 
-    void f()
+    void operator()()
     {
       auto& alloc = ThreadAlloc::get();
 
@@ -84,7 +84,7 @@ namespace noticeboard_primitive_weak
     g_writer = new Writer(x_0, x_1);
     g_reader = new Reader(&g_writer->box_0, &g_writer->box_1);
 
-    Cown::schedule<ReaderLoop>(g_reader, g_reader);
-    Cown::schedule<WriterLoop>(g_writer, g_writer);
+    Behaviour::schedule<ReaderLoop>(g_reader, g_reader);
+    Behaviour::schedule<WriterLoop>(g_writer, g_writer);
   }
 }

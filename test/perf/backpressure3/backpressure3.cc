@@ -41,14 +41,14 @@ struct Receiver : public VCown<Receiver>
   }
 };
 
-struct Receive : public VBehaviour<Receive>
+struct Receive
 {
   Receiver* r;
   Sender* s;
 
   Receive(Receiver* r_, Sender* s_ = nullptr) : r(r_), s(s_) {}
 
-  void f()
+  void operator()()
   {
     auto& alloc = ThreadAlloc::get();
     if (s == nullptr)
@@ -57,7 +57,7 @@ struct Receive : public VBehaviour<Receive>
       auto** cowns = (Cown**)alloc.alloc<2 * sizeof(Cown*)>();
       cowns[0] = (Cown*)r;
       cowns[1] = (Cown*)s;
-      Cown::schedule<Receive>(2, cowns, r, s);
+      Behaviour::schedule<Receive>(2, cowns, r, s);
       alloc.dealloc<2 * sizeof(Cown*)>(cowns);
     }
     else
@@ -95,18 +95,18 @@ struct Sender : public VCown<Sender>
   }
 };
 
-struct Send : public VBehaviour<Send>
+struct Send
 {
   Sender* s;
 
   Send(Sender* s_) : s(s_) {}
 
-  void f()
+  void operator()()
   {
-    Cown::schedule<Receive>(s->receiver, s->receiver);
+    Behaviour::schedule<Receive>(s->receiver, s->receiver);
 
     if ((timer::now() - s->start) < s->duration)
-      Cown::schedule<Send>(s, s);
+      Behaviour::schedule<Send>(s, s);
     else
     {
       // Break cycle between sender and receiver.
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
   }
 
   for (auto* s : sender_set)
-    Cown::schedule<Send, NoTransfer>(s, s);
+    Behaviour::schedule<Send, NoTransfer>(s, s);
   Cown::release(alloc, receiver);
 
   sched.run();

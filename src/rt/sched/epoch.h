@@ -26,14 +26,23 @@
  */
 
 #include "../debug/logging.h"
+#include "../debug/systematic.h"
 #include "../ds/asymlock.h"
 #include "../ds/queue.h"
-#include "region/immutable.h"
 
 #include <snmalloc/snmalloc.h>
 
+using namespace snmalloc;
+
 namespace verona::rt
 {
+  class Object;
+  // Forward declaration
+  namespace immutable
+  {
+    void release(snmalloc::Alloc&, Object*);
+  }
+
   /**
    * The representation of an epoch is a 63 bit counter.  If the top bit is
    * set, then the epoch is considered ejected.
@@ -246,7 +255,7 @@ namespace verona::rt
           auto o = dn->o;
           alloc.dealloc<sizeof(DecNode)>(dn);
           Logging::cout() << "Delayed decref on " << o << Logging::endl;
-          Immutable::release(alloc, o);
+          immutable::release(alloc, o);
         }
       }
       debug_check_count();
@@ -262,7 +271,7 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       return Systematic::coin(2);
 #else
-      return *get_pressure(2) > 128;
+      return *get_pressure(2) % 128 == 0;
 #endif
     }
 
@@ -272,7 +281,7 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       return Systematic::coin(2);
 #else
-      return *get_pressure(2) > 1024;
+      return *get_pressure(2) > 1024000;
 #endif
     }
 

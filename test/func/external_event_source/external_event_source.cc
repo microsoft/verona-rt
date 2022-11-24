@@ -1,9 +1,11 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <verona.h>
 
 using namespace verona::rt;
+using namespace verona::cpp;
 
 int buffer[100];
 
@@ -108,7 +110,7 @@ struct ExternalSource
     }
 
     if (notifications_on.exchange(false))
-      p->mark_notify();
+      notify(p);
 
 #ifdef USE_SYSTEMATIC_TESTING
     Systematic::yield();
@@ -125,7 +127,7 @@ struct ExternalSource
     }
 
     if (notifications_on.exchange(false))
-      p->mark_notify();
+      notify(p);
 
     Cown::release(alloc, p);
 

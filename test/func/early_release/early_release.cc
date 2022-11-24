@@ -96,10 +96,11 @@ void early_release_test(bool first, bool second)
   schedule_lambda(2, cowns, [=]() {
     start();
 
-    if (first)
-      a->release_early();
-    if (second)
-      b->release_early();
+    // TODO readd early release
+    // if (first)
+    //   a->release_early();
+    // if (second)
+    //   b->release_early();
     yield();
 
     finished();

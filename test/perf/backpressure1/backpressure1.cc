@@ -13,6 +13,7 @@
  * propagated from the receiver set.
  */
 
+#include "cpp/when.h"
 #include "debug/log.h"
 #include "test/opt.h"
 #include "verona.h"
@@ -20,6 +21,7 @@
 #include <chrono>
 
 using namespace verona::rt;
+using namespace verona::cpp;
 using timer = std::chrono::high_resolution_clock;
 
 struct Receiver;
@@ -34,9 +36,9 @@ struct Receiver : public VCown<Receiver>
   timer::time_point prev = timer::now();
 };
 
-struct Receive : public VBehaviour<Receive>
+struct Receive
 {
-  void f()
+  void operator()()
   {
     auto& r = *receiver_set[0];
     r.msgs++;
@@ -71,22 +73,23 @@ struct Proxy : public VCown<Proxy>
   }
 };
 
-struct Forward : public VBehaviour<Forward>
+struct Forward
 {
   Proxy* proxy;
 
   Forward(Proxy* proxy_) : proxy(proxy_) {}
 
-  void f()
+  void operator()()
   {
     if (proxy != proxy_chain.back())
     {
       auto* next = proxy_chain[proxy->index + 1];
-      Cown::schedule<Forward>(next, next);
+      Behaviour::schedule<Forward>(next, next);
       return;
     }
 
-    Cown::schedule<Receive>(receiver_set.size(), (Cown**)receiver_set.data());
+    Behaviour::schedule<Receive>(
+      receiver_set.size(), (Cown**)receiver_set.data());
   }
 };
 
@@ -112,21 +115,22 @@ struct Sender : public VCown<Sender>
   }
 };
 
-struct Send : public VBehaviour<Send>
+struct Send
 {
   Sender* s;
 
   Send(Sender* s_) : s(s_) {}
 
-  void f()
+  void operator()()
   {
     if (proxy_chain.size() > 0)
-      Cown::schedule<Forward>(proxy_chain[0], proxy_chain[0]);
+      Behaviour::schedule<Forward>(proxy_chain[0], proxy_chain[0]);
     else
-      Cown::schedule<Receive>(receiver_set.size(), (Cown**)receiver_set.data());
+      Behaviour::schedule<Receive>(
+        receiver_set.size(), (Cown**)receiver_set.data());
 
     if ((Sender::clk::now() - s->start) < s->duration)
-      Cown::schedule<Send>(s, s);
+      Behaviour::schedule<Send>(s, s);
   }
 };
 
@@ -162,11 +166,11 @@ int main(int argc, char** argv)
   for (size_t p = 0; p < proxies; p++)
     proxy_chain.push_back(new (alloc) Proxy(p));
 
-  auto* e = new EmptyCown;
-  schedule_lambda(e, [] {
+  auto e = make_cown<int>();
+  when(e) << [](auto) {
     Logging::cout() << "Add external event source" << std::endl;
     Scheduler::add_external_event_source();
-  });
+  };
 
   auto thr = std::thread([=, &alloc] {
     for (size_t i = 0; i < senders; i++)
@@ -182,7 +186,7 @@ int main(int argc, char** argv)
       }
 
       auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
-      Cown::schedule<Send, YesTransfer>(s, s);
+      Behaviour::schedule<Send, YesTransfer>(s, s);
     }
 
     if (proxy_chain.size() > 0)
@@ -195,11 +199,10 @@ int main(int argc, char** argv)
         Cown::release(alloc, r);
     }
 
-    schedule_lambda(e, [e] {
+    when(e) << [](auto) {
       Logging::cout() << "Remove external event source" << std::endl;
       Scheduler::remove_external_event_source();
-      Cown::release(ThreadAlloc::get(), e);
-    });
+    };
   });
 
   sched.run();

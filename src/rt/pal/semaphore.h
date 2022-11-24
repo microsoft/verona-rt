@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <atomic>
+#include <cassert>
 /**
  * This file provides a mechanism for threads to sleep and be woken.
  *

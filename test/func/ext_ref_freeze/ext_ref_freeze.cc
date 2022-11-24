@@ -1,10 +1,12 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <verona.h>
 
 using namespace snmalloc;
 using namespace verona::rt;
+using namespace verona::cpp;
 
 // This only tests trace regions.
 // At the moment, it does not make sense to freeze arena regions.
@@ -25,9 +27,9 @@ struct C : public V<C>
   }
 };
 
-struct Ping : public VBehaviour<Ping>
+struct Ping
 {
-  void f() {}
+  void operator()() {}
 };
 
 enum Phase
@@ -51,12 +53,12 @@ struct A : public VCown<A>
 
 ExternalRef* g_ext_ref = nullptr;
 
-struct Loop : public VBehaviour<Loop>
+struct Loop
 {
   A* a;
   Loop(A* a) : a(a) {}
 
-  void f()
+  void operator()()
   {
     auto& state = a->state;
 
@@ -84,14 +86,14 @@ struct Loop : public VBehaviour<Loop>
         }
         freeze(a->r);
         state = REUSE;
-        Cown::schedule<Loop>(a, a);
+        Behaviour::schedule<Loop>(a, a);
         return;
       }
       case REUSE:
       {
         state = EXIT;
-        Cown::schedule<Ping>(a->r->f1->b);
-        Cown::schedule<Loop>(a, a);
+        Behaviour::schedule<Ping>(a->r->f1->b);
+        Behaviour::schedule<Loop>(a, a);
         return;
       }
       case EXIT:
@@ -122,7 +124,7 @@ void run_test()
 {
   auto& alloc = ThreadAlloc::get();
   auto a = new A;
-  Cown::schedule<Loop>(a, a);
+  Behaviour::schedule<Loop>(a, a);
   Cown::release(alloc, a);
 }
 

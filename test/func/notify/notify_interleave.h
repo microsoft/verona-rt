@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 namespace notify_interleave
 {
-  struct Ping : public VBehaviour<Ping>
+  struct Ping
   {
-    void f() {}
+    void operator()() {}
   };
 
   bool g_called = false;
@@ -42,12 +42,12 @@ namespace notify_interleave
     }
   };
 
-  struct Loop : public VBehaviour<Loop>
+  struct Loop
   {
     B* b;
     Loop(B* b) : b(b) {}
 
-    void f()
+    void operator()()
     {
       auto a = b->a;
       switch (b->state)
@@ -55,10 +55,10 @@ namespace notify_interleave
         case NOTIFYSEND:
         {
           g_called = false;
-          a->mark_notify();
-          Cown::schedule<Ping>(a);
+          notify(a);
+          Behaviour::schedule<Ping>(a);
           b->state = WAIT;
-          Cown::schedule<Loop>(b, b);
+          Behaviour::schedule<Loop>(b, b);
           break;
         }
 
@@ -72,7 +72,7 @@ namespace notify_interleave
           {
             b->state = EXIT;
           }
-          Cown::schedule<Loop>(b, b);
+          Behaviour::schedule<Loop>(b, b);
           break;
         }
 
@@ -90,6 +90,7 @@ namespace notify_interleave
     }
   };
 
+  // TODO Notify: Revise comment when we implement notify
   // This test confirms that `mark_notify` info is preserved when new messages
   // are sent to that cown.
   void run_test()
@@ -97,6 +98,6 @@ namespace notify_interleave
     auto a = new A;
     auto b = new B(a);
 
-    Cown::schedule<Loop>(b, b);
+    Behaviour::schedule<Loop>(b, b);
   }
 }

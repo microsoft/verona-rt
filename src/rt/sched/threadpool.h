@@ -27,7 +27,7 @@ namespace verona::rt
   using namespace snmalloc;
 
   // Threadpool instantiated with <SchedulerThread<Cown>, Cown>
-  template<class T, class C>
+  template<class T>
   class ThreadPool
   {
   private:
@@ -81,19 +81,19 @@ namespace verona::rt
     ThreadState state;
 
     /// Pool of cores shared by the scheduler threads.
-    CorePool<ThreadPool<T, C>, C> core_pool;
+    CorePool<ThreadPool<T>> core_pool;
 
     /// Systematic ids.
     std::atomic<size_t> systematic_ids = 0;
 
   public:
-    static ThreadPool<T, C>& get()
+    static ThreadPool<T>& get()
     {
-      SNMALLOC_REQUIRE_CONSTINIT static ThreadPool<T, C> global_thread_pool;
+      SNMALLOC_REQUIRE_CONSTINIT static ThreadPool<T> global_thread_pool;
       return global_thread_pool;
     }
 
-    static Core<C>* first_core()
+    static Core* first_core()
     {
       return get().core_pool.first_core;
     }
@@ -167,10 +167,10 @@ namespace verona::rt
       return local;
     }
 
-    static Core<C>* round_robin()
+    static Core* round_robin()
     {
       static thread_local size_t incarnation;
-      static thread_local Core<C>* nonlocal;
+      static thread_local Core* nonlocal;
 
       if (incarnation != get().incarnation)
       {
@@ -183,6 +183,20 @@ namespace verona::rt
       }
 
       return nonlocal;
+    }
+
+    static void schedule(Work* w)
+    {
+      auto* t = local();
+
+      if (t != nullptr)
+      {
+        t->schedule_fifo(w);
+        return;
+      }
+
+      auto* core = round_robin();
+      T::schedule_lifo(core, w);
     }
 
     void init(size_t count)
@@ -266,7 +280,7 @@ namespace verona::rt
     bool check_for_work()
     {
       // TODO: check for pending async IO
-      Core<C>* c = first_core();
+      Core* c = first_core();
       do
       {
         Logging::cout() << "Checking for pending work on thread " << c->affinity

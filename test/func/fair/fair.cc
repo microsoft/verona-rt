@@ -1,72 +1,46 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <ctime>
 #include <debug/harness.h>
 
+using namespace verona::cpp;
+// Work load that is designed to cause fairness to kick in
+// This does not check it is fair, just that it does not crash.
+// Designed for systematic testing.
+
 static constexpr int start_count = 100;
-struct A : public VCown<A>
+struct A
 {
   int id;
   int count = start_count;
-  clock_t begin;
 
   A(int id_) : id{id_} {}
 };
 
-struct Loop : public VBehaviour<Loop>
+void loop(cown_ptr<A> c)
 {
-  A* a;
-  Loop(A* a) : a(a) {}
-
-  void f()
-  {
+  when(c) << [c = std::move(c)](auto a) {
     auto& count = a->count;
-
-    if (count == start_count)
-    {
-      a->begin = clock();
-    }
 
     if (count == 0)
     {
-      clock_t end = clock();
-      double elapsed_secs = double(end - a->begin) / CLOCKS_PER_SEC;
-      (void)elapsed_secs;
-      // printf("%d: %f\n", a->id, elapsed_secs);
       return;
     }
 
     count--;
-    Cown::schedule<Loop>(a, a);
-  }
-};
-
-struct B : public VCown<A>
-{};
-
-struct Spawn : public VBehaviour<Spawn>
-{
-  void f()
-  {
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
-    for (int i = 0; i < 6; ++i)
-    {
-      auto a = new A(i);
-      Cown::schedule<Loop>(a, a);
-      Cown::release(alloc, a);
-    }
-  }
-};
+    loop(std::move(c));
+  };
+}
 
 void basic_test()
 {
-  auto& alloc = ThreadAlloc::get();
-
-  auto b = new B;
-  Cown::schedule<Spawn>(b);
-
-  Cown::release(alloc, b);
+  when() << []() {
+    for (int i = 0; i < 6; ++i)
+    {
+      loop(make_cown<A>(i));
+    }
+  };
 }
 
 int main(int argc, char** argv)

@@ -82,7 +82,7 @@ MyCown* make_tree(int n, MyCown* p)
   return c;
 }
 
-struct Up : VBehaviour<Up>
+struct Up
 {
   MyCown* m;
   Up(MyCown* m) : m(m) {}
@@ -93,12 +93,12 @@ struct Up : VBehaviour<Up>
     {
       if (m->parent->acquire_strong_from_weak())
       {
-        Cown::schedule<Up, YesTransfer>(m->parent, m->parent);
+        Behaviour::schedule<Up, YesTransfer>(m->parent, m->parent);
       }
     }
   }
 
-  void f()
+  void operator()()
   {
     Logging::cout() << "Up on " << m << std::endl;
 
@@ -108,12 +108,12 @@ struct Up : VBehaviour<Up>
   }
 };
 
-struct Down : VBehaviour<Down>
+struct Down
 {
   MyCown* m;
   Down(MyCown* m) : m(m) {}
 
-  void f()
+  void operator()()
   {
     Logging::cout() << "Down on " << m << std::endl;
 
@@ -121,12 +121,12 @@ struct Down : VBehaviour<Down>
 
     if (m->left != nullptr)
     {
-      Cown::schedule<Down>(m->left, m->left);
+      Behaviour::schedule<Down>(m->left, m->left);
     }
 
     if (m->right != nullptr)
     {
-      Cown::schedule<Down>(m->right, m->right);
+      Behaviour::schedule<Down>(m->right, m->right);
     }
   }
 };
@@ -135,8 +135,8 @@ void run_test()
 {
   auto t = make_tree(9, nullptr);
 
-  Cown::schedule<Down>(t, t);
-  Cown::schedule<Down, YesTransfer>(t, t);
+  Behaviour::schedule<Down>(t, t);
+  Behaviour::schedule<Down, YesTransfer>(t, t);
 }
 
 int main(int argc, char** argv)

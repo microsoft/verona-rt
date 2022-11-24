@@ -5,11 +5,9 @@
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/forward_list.h"
-#include "../ds/mpscq.h"
 #include "../region/region.h"
 #include "base_noticeboard.h"
 #include "core.h"
-#include "multimessage.h"
 #include "schedulerthread.h"
 
 #include <algorithm>
@@ -19,36 +17,7 @@ namespace verona::rt
 {
   using namespace snmalloc;
   class Cown;
-  using CownThread = SchedulerThread<Cown>;
-  using Scheduler = ThreadPool<CownThread, Cown>;
-
-  static void yield()
-  {
-    Systematic::yield();
-  }
-
-  struct EnqueueLock
-  {
-    std::atomic<bool> locked = false;
-
-    void lock()
-    {
-      auto u = false;
-      while (!locked.compare_exchange_strong(u, true))
-      {
-        u = false;
-        while (locked)
-        {
-          yield();
-        }
-      }
-    }
-
-    void unlock()
-    {
-      locked.store(false, std::memory_order_release);
-    }
-  };
+  using Scheduler = ThreadPool<SchedulerThread>;
 
   /**
    * A cown, or concurrent owner, encapsulates a set of resources that may be
@@ -116,49 +85,27 @@ namespace verona::rt
     }
   };
 
+  struct Slot;
+
   class Cown : public Object
   {
-    using MessageBody = MultiMessage::Body;
-
   public:
-    enum TryFastSend
-    {
-      NoTryFast,
-      YesTryFast
-    };
-
-    Cown(bool initialise = true)
+    Cown()
     {
       make_cown();
-
-      if (initialise)
-      {
-        auto& alloc = ThreadAlloc::get();
-        queue.init(stub_msg(alloc));
-      }
     }
 
   private:
-    friend class MultiMessage;
-    friend CownThread;
-    friend Core<Cown>;
+    friend Core;
+    friend Slot;
+    template<typename T>
+    friend class Promise;
+    friend struct Behaviour;
 
     template<typename T>
     friend class Noticeboard;
 
-    template<typename T>
-    friend class MPMCQ;
-
-    static constexpr auto NO_EPOCH_SET = (std::numeric_limits<uint64_t>::max)();
-
-    union
-    {
-      std::atomic<Cown*> next_in_queue;
-      uint64_t epoch_when_popped{NO_EPOCH_SET};
-    };
-
-    // Seven pointer overhead compared to an object.
-    verona::rt::MPSCQ<MultiMessage> queue{};
+    std::atomic<Slot*> last_slot{nullptr};
 
     /**
      * Cown's weak reference count.  This keeps the cown itself alive, but not
@@ -173,38 +120,6 @@ namespace verona::rt
      * Remaining bits are the count.
      */
     ReadRefCount read_ref_count;
-
-    EnqueueLock enqueue_lock;
-
-    static const Descriptor* token_desc()
-    {
-      static constexpr Descriptor desc{
-        vsizeof<Cown>, nullptr, nullptr, nullptr};
-      return &desc;
-    }
-
-    static Cown* create_token_cown()
-    {
-      auto desc = token_desc();
-      auto p = ThreadAlloc::get().alloc(desc->size);
-      auto o = Object::register_object(p, desc);
-      auto a = new (o) Cown(false);
-      return a;
-    }
-
-    void set_token_owning_core(Core<Cown>* owner)
-    {
-      assert(get_descriptor() == token_desc());
-      // Use region meta_data to point at the
-      // owning scheduler thread for a token cown.
-      init_next((Object*)owner);
-    }
-
-    Core<Cown>* get_token_owning_core()
-    {
-      assert(get_descriptor() == token_desc());
-      return (Core<Cown>*)(get_next());
-    }
 
   public:
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
@@ -232,27 +147,6 @@ namespace verona::rt
     }
 
 #endif
-
-    void reschedule()
-    {
-      if (queue.wake())
-      {
-        Cown::acquire(this);
-        schedule();
-      }
-    }
-
-    bool can_lifo_schedule()
-    {
-      // TODO: correctly indicate if this cown can be lifo scheduled.
-      // This requires some form of pinning.
-      return false;
-    }
-
-    void wake()
-    {
-      queue.wake();
-    }
 
     static void acquire(Object* o)
     {
@@ -303,31 +197,7 @@ namespace verona::rt
 
         Logging::cout() << "Cown " << this << " no references left."
                         << Logging::endl;
-        auto epoch = epoch_when_popped;
-        auto outdated =
-          epoch == NO_EPOCH_SET || GlobalEpoch::is_outdated(epoch);
-        if (outdated || Scheduler::is_teardown_in_progress())
-        {
-          // If teardown is in progress, then there are no ABA issues, so
-          // directly deallocate.
-          // TODO: Investigate if we could eject global epoch to avoid the
-          // additional test.
-          Logging::cout() << "Cown " << this << " dealloc from weak_release"
-                          << Logging::endl;
-          dealloc(alloc);
-        }
-        else
-        {
-          Logging::cout() << "Cown " << this << " defer dealloc"
-                          << Logging::endl;
-          // There could be an ABA problem if we reuse this cown as the epoch
-          // has not progressed enough We delay the deallocation until the epoch
-          // has progressed enough
-          // TODO: We are waiting too long as this is inserting in the current
-          // epoch, and not `epoch` which is all that is required.
-          Epoch e(alloc);
-          e.delete_in_epoch(this->real_start());
-        }
+        dealloc(alloc);
       }
     }
 
@@ -356,37 +226,15 @@ namespace verona::rt
       return result;
     }
 
-    void mark_notify()
-    {
-      if (queue.mark_notify())
-      {
-        Cown::acquire(this);
-        schedule();
-      }
-      yield();
-    }
-
-  protected:
-    void schedule()
-    {
-      // This should only be called if the cown is known to have been
-      // unscheduled, for example when detecting a previously empty message
-      // queue on send, or when rescheduling after a multi-message.
-      CownThread* t = Scheduler::local();
-
-      if (t != nullptr)
-      {
-        t->schedule_fifo(this);
-        return;
-      }
-
-      // TODO this should be checked further up the stack.
-      // TODO Make this assertion pass.
-      // assert(can_lifo_schedule() || Scheduler::debug_not_running());
-
-      auto* core = Scheduler::round_robin();
-      CownThread::schedule_lifo(core, this);
-    }
+    // void mark_notify()
+    // {
+    //   if (queue.mark_notify())
+    //   {
+    //     Cown::acquire(this);
+    //     schedule();
+    //   }
+    //   yield();
+    // }
 
   private:
     void dealloc(Alloc& alloc)
@@ -395,376 +243,18 @@ namespace verona::rt
       yield();
     }
 
-    void cown_notified()
-    {
-      // This is not a message make sure we know that.
-      // TODO: Back pressure.  This means that a notification that sends to
-      // an overloaded cown will not mute this cown.  We could set up a fake
-      // message structure, or alter how the backpressure system determines
-      // which is/are the currently active cowns.
-      Scheduler::local()->message_body = nullptr;
-      notified();
-    }
-
-    /**
-     * Sends a multi-message to all the cowns.
-     **/
-    template<TransferOwnership transfer = NoTransfer>
-    static void fast_send(MultiMessage::Body* body)
-    {
-      auto& alloc = ThreadAlloc::get();
-      const auto last = body->count - 1;
-
-      // First acquire all the locks if a multimessage
-      if (body->count > 1)
-      {
-        for (size_t i = 0; i < body->count; i++)
-        {
-          auto next = body->get_requests_array()[i];
-          Logging::cout() << "Will try to acquire lock " << next.cown()
-                          << Logging::endl;
-          next.cown()->enqueue_lock.lock();
-          yield();
-          Logging::cout() << "Acquired lock " << next.cown() << Logging::endl;
-        }
-      }
-
-      size_t loop_end = body->count;
-      for (size_t i = 0; i < loop_end; i++)
-      {
-        auto m = MultiMessage::make(
-          alloc, body, body->get_requests_array()[i].is_read());
-        auto next = body->get_requests_array()[i].cown();
-        Logging::cout() << "MultiMessage " << m << ": fast requesting " << next
-                        << ", index " << i << " loop end " << loop_end
-                        << Logging::endl;
-
-        auto needs_sched = next->try_fast_send<transfer>(m);
-        if (loop_end > 1)
-          next->enqueue_lock.unlock();
-
-        if (!needs_sched)
-        {
-          Logging::cout() << "try fast send found busy cown " << body
-                          << " loop iteration " << i << " cown " << next
-                          << Logging::endl;
-          continue;
-        }
-
-        Logging::cout() << "Will schedule cown " << next << Logging::endl;
-        if (i == last)
-        {
-          next->schedule();
-          return;
-        }
-
-        body->exec_count_down.fetch_sub(1);
-
-        // The cown was asleep, so we have acquired it now. Dequeue the
-        // message because we want to handle it now. Note that after
-        // dequeueing, the queue may be non-empty: the scheduler may have
-        // allowed another multi-message to request and send another message
-        // to this cown. However, we are guaranteed to be the first message in
-        // the queue.
-        const auto* m2 = next->queue.dequeue(alloc);
-        assert(m == m2);
-        UNUSED(m2);
-
-        Request r = body->get_requests_array()[i];
-        if (r.is_read())
-        {
-          r.cown()->read_ref_count.add_read();
-          r.cown()->schedule();
-        }
-      }
-    }
-
-    /**
-     * This method implements an optimized multi-message send to a cown. A
-     * sleeping cown will not be reschdeuled because we want to immediately
-     * acquire the cown without going through the scheduler queue. Returns true
-     * if the cown was asleep and needs scheduling; returns false otherwise.
-     **/
-    template<TransferOwnership transfer = NoTransfer>
-    bool try_fast_send(MultiMessage* m)
-    {
-#ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
-      flush_all(ThreadAlloc::get());
-      yield();
-#endif
-      Logging::cout() << "Enqueue MultiMessage " << m << Logging::endl;
-      bool needs_scheduling = queue.enqueue(m);
-      Logging::cout() << "Enqueued MultiMessage " << m << " needs scheduling? "
-                      << needs_scheduling << Logging::endl;
-      yield();
-      if (needs_scheduling && transfer == NoTransfer)
-      {
-        Cown::acquire(this);
-      }
-      if (!needs_scheduling && transfer == YesTransfer)
-      {
-        Cown::release(ThreadAlloc::get(), this);
-      }
-      return needs_scheduling;
-    }
-
-    /**
-     * Execute the behaviour of the given multi-message.
-     *
-     * Otherwise, all cowns have been acquired and we can execute the message
-     * behaviour.
-     **/
-    bool run_step(MultiMessage* m)
-    {
-      Alloc& alloc = ThreadAlloc::get();
-      auto delivered = m->deliver(alloc);
-
-      Logging::cout() << "MultiMessage " << m << " acquired " << this
-                      << Logging::endl;
-
-      bool schedule_after_behaviour = true;
-
-      if (!delivered.is_last_reference())
-      {
-        if (delivered.is_read_request())
-        {
-          read_ref_count.add_read();
-          return true;
-        }
-        return false;
-      }
-
-      if (delivered.is_read_request())
-      {
-        read_ref_count.add_read();
-        // In this case, this thread will execute the behaviour
-        // but another thread can still read this cown, so reschedule
-        // it before executing the behaviour and do not reschedule it after.
-        schedule_after_behaviour = false;
-        // The message `m` will be deallocated when the next scheduler thread
-        // picks up a message, so wait until after all the possible uses of
-        // `m` to reschedule this cown.
-        schedule();
-      }
-
-      auto body = delivered.get_body();
-
-      Scheduler::local()->message_body = body;
-
-      // Run the behaviour.
-      body->get_behaviour().f();
-
-      Logging::cout() << "MultiMessage " << m << " completed and running on "
-                      << this << Logging::endl;
-
-      //  Reschedule the writeable cowns (read-only cowns are not unscheduled
-      //  for a behaviour).
-      for (size_t s = 0; s < body->count; s++)
-      {
-        Request request = body->get_requests_array()[s];
-        Cown* cown = request.cown();
-        if (cown)
-        {
-          if (!request.is_read() && cown != this)
-            cown->schedule();
-          else if (request.is_read())
-          {
-            // If this read is the last read of a cown, and that cown's next
-            // message requires writing, clear the flag and either:
-            //   - schedule the cown if it is not this cown, or
-            //   - continue processing this cown's message on this scheduler
-            //   thread
-            //     (overwriting the previous decision to stop processing this
-            //     cown).
-            if (cown->read_ref_count.release_read())
-            {
-              if (cown != this)
-                cown->schedule();
-              else
-                schedule_after_behaviour = true;
-            }
-          }
-        }
-      }
-
-      Scheduler::local()->message_body = nullptr;
-
-      return schedule_after_behaviour;
-    }
+    // void cown_notified()
+    // {
+    //   // This is not a message make sure we know that.
+    //   // TODO: Back pressure.  This means that a notification that sends to
+    //   // an overloaded cown will not mute this cown.  We could set up a fake
+    //   // message structure, or alter how the backpressure system determines
+    //   // which is/are the currently active cowns.
+    //   Scheduler::local()->message_body = nullptr;
+    //   notified();
+    // }
 
   public:
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(Cown* cown, Args&&... args)
-    {
-      schedule<Behaviour, transfer, Args...>(
-        1, &cown, std::forward<Args>(args)...);
-    }
-
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(size_t count, Cown** cowns, Args&&... args)
-    {
-      // TODO Remove vector allocation here.  This is a temporary fix to
-      // as we transition to using Request through the code base.
-      auto& alloc = ThreadAlloc::get();
-      Request* requests = (Request*)alloc.alloc(count * sizeof(Request));
-
-      for (size_t i = 0; i < count; ++i)
-        requests[i] = Request::write(cowns[i]);
-
-      schedule<Behaviour, transfer, Args...>(
-        count, requests, std::forward<Args>(args)...);
-
-      alloc.dealloc(requests);
-    }
-
-    /**
-     * Sends a multi-message to the first cown we want to acquire.
-     *
-     * Pass `transfer = YesTransfer` as a template argument if the
-     * caller is transfering ownership of a reference count on each cown to
-     *this method.
-     **/
-    template<
-      class Be,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(size_t count, Request* requests, Args&&... args)
-    {
-      static_assert(std::is_base_of_v<Behaviour, Be>);
-      Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
-                      << Logging::endl;
-
-      auto& alloc = ThreadAlloc::get();
-
-      auto body =
-        MultiMessage::Body::make<Be>(alloc, count, std::forward<Args>(args)...);
-
-      auto* sort = body->get_requests_array();
-      memcpy(sort, requests, count * sizeof(Request));
-
-#ifdef USE_SYSTEMATIC_TESTING
-      std::sort(&sort[0], &sort[count], [](Request& a, Request& b) {
-        return a.cown()->id() < b.cown()->id();
-      });
-#else
-      if (count > 1)
-        std::sort(&sort[0], &sort[count], [](Request& a, Request& b) {
-          return a.cown() < b.cown();
-        });
-#endif
-
-      // Try to acquire as many cowns as possible without rescheduling,
-      // starting from the beginning.
-      fast_send<transfer>(body);
-    }
-
-    /**
-     * This processes a batch of messages on a cown.
-     *
-     * It returns false, if the cown should not be rescheduled.
-     *
-     * It will process multi-messages and notifications.
-     *
-     * The notifications will only be processed once in a call to this.  It
-     *will not process messages that were not in the queue before it began
-     * processing messages.
-     *
-     * If this cown receives a notification after it has already called
-     * cown_notified, then it guarantees to call cown_notified next time it is
-     * called, and it is guaranteed to return true, so it will be rescheduled
-     * or false if it is part of a multi-message acquire.
-     **/
-
-    bool run(Alloc& alloc)
-    {
-      auto until = queue.peek_back();
-      yield(); // Reading global state in peek_back().
-
-      static constexpr size_t batch_limit = 100;
-      auto notified_called = false;
-      auto notify = false;
-
-      MultiMessage* curr = nullptr;
-      size_t batch_size = 0;
-      do
-      {
-        assert(!queue.is_sleeping());
-
-        curr = queue.peek();
-
-        if (curr == nullptr)
-        {
-          // Reschedule if we have processed a message.
-          // This is primarily an optimisation to keep busy cowns active cowns
-          // around.
-          // TODO The following could be removed to improve the single action
-          // cown case.
-          //      This is designed to be effective if a cown is receiving a lot
-          //      of messages.
-          if (batch_size != 0)
-            return true;
-
-          // Reschedule if cown does not go to sleep.
-          if (!queue.mark_sleeping(alloc, notify))
-          {
-            if (notify)
-            {
-              // It is possible to have already notified the cown in this batch,
-              // but the notification on the mark_sleeping could have occurred
-              // after the previous call to cown_notified, so need to call
-              // again.
-              cown_notified();
-              // Don't deschedule send round again.  We could try to
-              // mark_sleeping but that could lead to another notification
-              // having been received, and then we wouldn't process anything
-              // else.
-            }
-            return true;
-          }
-
-          Logging::cout() << "Unschedule cown " << this << Logging::endl;
-          Cown::release(alloc, this);
-          return false;
-        }
-
-        // If next message is a write, check that we are not in reading mode.
-        // If we are in reading mode stop processing the message
-        // queue (importantly leaving the write request at the top.).
-        if (!curr->is_read() && !read_ref_count.try_write())
-          return false;
-
-        curr = queue.dequeue(alloc, notify);
-
-        if (!notified_called && notify)
-        {
-          notified_called = true;
-          cown_notified();
-        }
-
-        assert(!queue.is_sleeping());
-
-        batch_size++;
-
-        Logging::cout() << "Running Message " << curr << " on cown " << this
-                        << Logging::endl;
-
-        // A function that returns false indicates that the cown should not
-        // be rescheduled, even if it has pending work. This also means the
-        // cown's queue should not be marked as empty, even if it is.
-        if (!run_step(curr))
-          return false;
-
-      } while ((curr != until) && (batch_size < batch_limit));
-
-      return true;
-    }
-
     /**
      * Called when strong reference count reaches one.
      * Uses thread_local state to deal with deep deallocation
@@ -850,59 +340,45 @@ namespace verona::rt
 
       // Now we may run our destructor.
       destructor();
-
-      auto* stub = queue.destroy();
-      // All messages must have been run by the time the cown is collected.
-      assert(stub->next_is_null());
-
-      alloc.dealloc<sizeof(MultiMessage)>(stub);
     }
 
-    bool release_early()
-    {
-      auto* body = Scheduler::local()->message_body;
-      auto* senders = body->get_requests_array();
-      const size_t senders_count = body->count;
-      Alloc& alloc = ThreadAlloc::get();
+    // bool release_early()
+    // {
+    //   auto* body = Scheduler::local()->message_body;
+    //   auto* senders = body->get_requests_array();
+    //   const size_t senders_count = body->count;
+    //   Alloc& alloc = ThreadAlloc::get();
 
-      /*
-       * Avoid releasing the last cown because it breaks the current
-       * code structure
-       */
-      if (this == senders[senders_count - 1].cown())
-        return false;
+    //   /*
+    //    * Avoid releasing the last cown because it breaks the current
+    //    * code structure
+    //    */
+    //   if (this == senders[senders_count - 1].cown())
+    //     return false;
 
-      for (size_t s = 0; s < senders_count; s++)
-      {
-        if (senders[s].cown() != this)
-          continue;
+    //   for (size_t s = 0; s < senders_count; s++)
+    //   {
+    //     if (senders[s].cown() != this)
+    //       continue;
 
-        if (
-          !senders[s].is_read() ||
-          senders[s].cown()->read_ref_count.release_read())
-        {
-          senders[s].cown()->schedule();
-        }
-        else
-        {
-          Cown::release(alloc, senders[s].cown());
-        }
+    //     if (
+    //       !senders[s].is_read() ||
+    //       senders[s].cown()->read_ref_count.release_read())
+    //     {
+    //       senders[s].cown()->schedule();
+    //     }
+    //     else
+    //     {
+    //       Cown::release(alloc, senders[s].cown());
+    //     }
 
-        senders[s] = Request();
+    //     senders[s] = Request();
 
-        break;
-      }
+    //     break;
+    //   }
 
-      return true;
-    }
-
-    /**
-     * Create a `MultiMessage` that is never sent or processed.
-     */
-    static MultiMessage* stub_msg(Alloc& alloc)
-    {
-      return MultiMessage::make(alloc, nullptr, false);
-    }
+    //   return true;
+    // }
   };
 
   namespace cown
@@ -913,46 +389,3 @@ namespace verona::rt
     }
   } // namespace cown
 } // namespace verona::rt
-
-namespace Logging
-{
-  inline std::string get_systematic_id()
-  {
-#if defined(USE_SYSTEMATIC_TESTING) || defined(USE_FLIGHT_RECORDER)
-    static std::atomic<size_t> external_id_source = 1;
-    static thread_local size_t external_id = 0;
-    auto s = verona::rt::Scheduler::local();
-    if (s != nullptr)
-    {
-      std::stringstream ss;
-      auto offset = static_cast<int>(s->systematic_id % 9);
-      if (offset != 0)
-        ss << std::setw(offset) << " ";
-      ss << s->systematic_id;
-      ss << std::setw(9 - offset) << " ";
-      return ss.str();
-    }
-    if (external_id == 0)
-    {
-      auto e = external_id_source.fetch_add(1);
-      external_id = e;
-    }
-    std::stringstream ss;
-    bool short_id = external_id <= 26;
-    unsigned char spaces = short_id ? 9 : 8;
-    // Modulo guarantees that this fits into the same type as spaces.
-    decltype(spaces) offset =
-      static_cast<decltype(spaces)>((external_id - 1) % spaces);
-    if (offset != 0)
-      ss << std::setw(spaces - offset) << " ";
-    if (short_id)
-      ss << (char)('a' + (external_id - 1));
-    else
-      ss << 'E' << (external_id - 26);
-    ss << std::setw(offset) << " ";
-    return ss.str();
-#else
-    return "";
-#endif
-  }
-}
