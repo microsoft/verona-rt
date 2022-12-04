@@ -1,0 +1,187 @@
+/* Atomic reference counter from Verona
+ * 
+ * Strong and Weak references
+ *
+ * Provides a wait-free acquire_strong_from_weak.
+ *
+ * This was verified using  ff235a5a5e0e4057 from Matt Windsor's development
+ * branch of Starling.
+ *    https://github.com/MattWindsor91/starling-tool
+ *
+ * Caveats: The proof does not contain the full lifetime management aspects 
+ * such as actually running the destructor of a Cown, or deallocating the
+ * underlying representation. 
+ */
+
+
+/**
+ * The strong reference count
+ */
+shared int rc;
+
+/*
+ * The weak reference count
+ */
+shared int wrc;
+
+/*
+ * Transient weak count - count of threads about to try and close the strong RC
+ * This is auxiliary.
+ */
+shared int twrc;
+
+/*
+ * Has the structure been destructed
+ */
+shared bool destructed;
+
+/*
+ * Has the structure been deallocated
+ */
+shared bool deallocated;
+
+/**
+ * This is a mark bit added to the reference count.
+ */ 
+shared bool closed;
+
+thread bool success;
+thread bool lost_weak;
+thread bool last;
+
+view iter StrongRef;
+view iter WeakRef;
+view iter TWeakRef;
+view Destruct;
+view Dealloc;
+
+/**
+ * This corresponds to Object::incref in object.h
+ */
+method acquire_strong()
+{
+  {| StrongRef |} <| rc++; |> {| StrongRef * StrongRef |}
+}
+
+/**
+ * This corresponds to Cown::weak_acquire in cown.h
+ */
+method acquire_weak()
+{
+  {| WeakRef |} <| wrc++; |> {| WeakRef * WeakRef |}
+}
+
+/**
+ * This corresponds to Cown::weak_acquire in cown.h
+ * It is the same method as above, just with a different specification.
+ */
+method acquire_weak_from_strong()
+{
+  {| StrongRef |} <| wrc++; |> {| StrongRef * WeakRef |}
+}
+
+/*
+  Releases a strong reference count.
+
+  Internally may destruct and also deallocate the underlying object.
+
+  This corresponds to Cown::release in object.h
+*/
+method release_strong()
+{
+  {| StrongRef |}
+  <| rc--; last = rc==0; if (last) { twrc++; } |>
+  {| if last { TWeakRef } |} /* Note A */
+  if last {
+    {| TWeakRef |}
+    // The following is a CAS to attempt to set the bit if the 
+    // rc is still zero.
+    <| last = ((closed == false) && (rc == 0)); if last { closed = true;} twrc--; |>
+    {| if last { Destruct } else { WeakRef } |}
+    if (last)
+    {
+      {| Destruct |}
+      <| destructed = true; |>
+      {| WeakRef |}
+    }
+    {| WeakRef |}
+    // Should call weak release here
+    // Not supported in starling syntax.
+  }
+}
+
+/**
+ * This is corresponds to the start of 
+ * Cown::weak_release in cown.h
+ * The function in Verona also handles the deallocation of
+ * the underlying object, and integrating with other considerations
+ * of the runtime.  Here we represent that deallocation by setting a flag.
+ */
+method release_weak()
+{
+  {| WeakRef |}
+  <| wrc--; last = wrc == 0; |>
+  {| if last { Dealloc } |}
+  if (last)
+  {
+    {| Dealloc |}
+      <| deallocated = true; |>
+    {| emp |}
+  }
+}
+
+/**
+  This has two returns 
+    success    signifies we successfully acquired a StrongRef
+    lost_weak  signifies we lost our weak reference in the acquisition.
+
+  This corresponds to Object::acquire_strong_from_weak in object.h
+ */
+method acquire_strong_from_weak()
+{
+  {| WeakRef |}
+  <| 
+     lost_weak = rc == 0 && !closed; 
+     rc++; 
+     success = !closed; 
+  |>
+  {| if (success) { StrongRef }
+     * if (lost_weak) { emp } else {WeakRef}
+   |}
+}
+
+// Invariant
+constraint emp -> 
+  rc >= 0 && 
+  wrc >= twrc &&
+  twrc >= 0 && 
+  (closed == false => destructed == false) &&
+  (wrc > 0 => deallocated == false) &&
+  (rc > 0 => (wrc > 0 || closed == true)) &&
+  (destructed == true => closed == true) &&
+  (deallocated == true => wrc == 0) &&
+  ((closed == false && rc == 0) => twrc > 0) &&
+  (( destructed == false && closed == true && wrc >= 1 + twrc )
+    || ( closed == false && rc > 0 && wrc >= 1 + twrc )
+    || ( destructed == true && wrc >= twrc )
+    || ( closed == false && rc == 0 && wrc >= twrc ));
+
+constraint iter[n] TWeakRef -> twrc >= n;
+
+constraint Destruct -> destructed == false && closed == true && wrc > 0;
+
+constraint Dealloc -> deallocated == false && wrc == 0 && destructed == true;
+
+// Linear
+constraint Dealloc * Dealloc -> false;
+constraint Destruct * Destruct -> false;
+
+constraint iter[n] StrongRef -> n > 0 => (rc >= n && closed == false);
+
+constraint iter[n] WeakRef -> 
+  n > 0
+  =>  ( destructed == false && closed == true && wrc >= n + 1 + twrc )
+     || ( closed == false && rc > 0 && wrc >= n + 1 + twrc )
+     || ( destructed == true && wrc >= n + twrc )
+     || ( closed == false && rc == 0 && wrc >= n + twrc )
+     ;
