@@ -42,7 +42,6 @@ shared bool closed;
 thread bool success;
 thread bool lost_weak;
 thread bool last;
-thread bool more_work;
 
 view iter StrongRef;
 view iter WeakRef;
