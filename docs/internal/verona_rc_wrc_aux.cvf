@@ -25,6 +25,12 @@ shared int rc;
 shared int wrc;
 
 /*
+ * Transient weak count - count of threads about to try and close the strong RC
+ * This is auxiliary.
+ */
+shared int twrc;
+
+/*
  * Has the structure been destructed
  */
 shared bool destructed;
@@ -45,6 +51,7 @@ thread bool last;
 
 view iter StrongRef;
 view iter WeakRef;
+view iter TWeakRef;
 view Destruct;
 view Dealloc;
 
@@ -83,13 +90,13 @@ method acquire_weak_from_strong()
 method release_strong()
 {
   {| StrongRef |}
-  <| rc--; last = rc==0; |>
-  {| if last { WeakRef } |} /* Note A */
+  <| rc--; last = rc==0; if (last) { twrc++; } |>
+  {| if last { TWeakRef } |} /* Note A */
   if last {
-    {| WeakRef |}
+    {| TWeakRef |}
     // The following is a CAS to attempt to set the bit if the 
     // rc is still zero.
-    <| last = ((closed == false) && (rc == 0)); if last {closed = true;} |>
+    <| last = ((closed == false) && (rc == 0)); if last { closed = true;} twrc--; |>
     {| if last { Destruct } else { WeakRef } |}
     if (last)
     {
@@ -146,26 +153,24 @@ method acquire_strong_from_weak()
 // Invariant
 constraint emp -> 
   rc >= 0 && 
-  wrc >= 0 && 
+  wrc >= twrc &&
+  twrc >= 0 && 
   (closed == false => destructed == false) &&
   (wrc > 0 => deallocated == false) &&
   (rc > 0 => (wrc > 0 || closed == true)) &&
-  destructed == true => closed == true &&
-  deallocated == true => wrc == 0
-  ;
+  (destructed == true => closed == true) &&
+  (deallocated == true => wrc == 0) &&
+  ((closed == false && rc == 0) => twrc > 0) &&
+  (( destructed == false && closed == true && wrc >= 1 + twrc )
+    || ( closed == false && rc > 0 && wrc >= 1 + twrc )
+    || ( destructed == true && wrc >= twrc )
+    || ( closed == false && rc == 0 && wrc >= twrc ));
+
+constraint iter[n] TWeakRef -> twrc >= n;
 
 constraint Destruct -> destructed == false && closed == true && wrc > 0;
 
-constraint Dealloc -> deallocated == false && wrc == 0;
-// Note A: that we cannot prove the Stronger
-//
-//   constraint Dealloc -> deallocated == false && wrc == 0 && destructed == true;
-//
-// This is because the WeakRef used between the decrement and closing the count
-// (as far as the proof is concerned) could be released with weak_release.
-// To remove this possibility, it would require two different versions of WeakRef
-// and this would go beyond what is easily expressible in the current Starling tool.
-// It could be handled with auxiliary variables or an constraints over two iterated views.  
+constraint Dealloc -> deallocated == false && wrc == 0 && destructed == true;
 
 // Linear
 constraint Dealloc * Dealloc -> false;
@@ -175,8 +180,8 @@ constraint iter[n] StrongRef -> n > 0 => (rc >= n && closed == false);
 
 constraint iter[n] WeakRef -> 
   n > 0
-  =>  ( destructed == false && closed == true && wrc >= n + 1 )
-     || ( closed == false && rc > 0 && wrc >= n + 1 )
-     || ( destructed == true && wrc >= n )
-     || ( closed == false && rc == 0 && wrc >= n  )
+  =>  ( destructed == false && closed == true && wrc >= n + 1 + twrc )
+     || ( closed == false && rc > 0 && wrc >= n + 1 + twrc )
+     || ( destructed == true && wrc >= n + twrc )
+     || ( closed == false && rc == 0 && wrc >= n + twrc )
      ;
