@@ -9,6 +9,7 @@
 #include "base_noticeboard.h"
 #include "core.h"
 #include "schedulerthread.h"
+#include "shared.h"
 
 #include <algorithm>
 #include <vector>
@@ -87,12 +88,11 @@ namespace verona::rt
 
   struct Slot;
 
-  class Cown : public Object
+  class Cown : public Shared
   {
   public:
     Cown()
     {
-      make_cown();
     }
 
   private:
@@ -106,13 +106,6 @@ namespace verona::rt
     friend class Noticeboard;
 
     std::atomic<Slot*> last_slot{nullptr};
-
-    /**
-     * Cown's weak reference count.  This keeps the cown itself alive, but not
-     * the data it can reach.  Weak reference can be promoted to strong, if a
-     * strong reference still exists.
-     **/
-    std::atomic<size_t> weak_count{1};
 
     /*
      * Cown's read ref count.
@@ -148,84 +141,6 @@ namespace verona::rt
 
 #endif
 
-    static void acquire(Object* o)
-    {
-      Logging::cout() << "Cown " << o << " acquire" << Logging::endl;
-      assert(o->debug_is_cown());
-      o->incref();
-    }
-
-    static void release(Alloc& alloc, Cown* o)
-    {
-      Logging::cout() << "Cown " << o << " release" << Logging::endl;
-      assert(o->debug_is_cown());
-      Cown* a = ((Cown*)o);
-
-      // Perform decref
-      auto release_weak = false;
-      bool last = o->decref_cown(release_weak);
-
-      yield();
-
-      if (release_weak)
-      {
-        o->weak_release(alloc);
-        yield();
-      }
-
-      if (!last)
-        return;
-
-      // All paths from this point must release the weak count owned by the
-      // strong count.
-
-      Logging::cout() << "Cown " << o << " dealloc" << Logging::endl;
-
-      // If last, then collect the cown body.
-      a->queue_collect(alloc);
-    }
-
-    /**
-     * Release a weak reference to this cown.
-     **/
-    void weak_release(Alloc& alloc)
-    {
-      Logging::cout() << "Cown " << this << " weak release" << Logging::endl;
-      if (weak_count.fetch_sub(1) == 1)
-      {
-        yield();
-
-        Logging::cout() << "Cown " << this << " no references left."
-                        << Logging::endl;
-        dealloc(alloc);
-      }
-    }
-
-    void weak_acquire()
-    {
-      Logging::cout() << "Cown " << this << " weak acquire" << Logging::endl;
-      assert(weak_count > 0);
-      weak_count++;
-    }
-
-    /**
-     * Gets a strong reference from a weak reference.
-     *
-     * Weak reference is preserved.
-     *
-     * Returns true is strong reference created.
-     **/
-    bool acquire_strong_from_weak()
-    {
-      bool reacquire_weak = false;
-      auto result = Object::acquire_strong_from_weak(reacquire_weak);
-      if (reacquire_weak)
-      {
-        weak_acquire();
-      }
-      return result;
-    }
-
     // void mark_notify()
     // {
     //   if (queue.mark_notify())
@@ -237,12 +152,6 @@ namespace verona::rt
     // }
 
   private:
-    void dealloc(Alloc& alloc)
-    {
-      Object::dealloc(alloc);
-      yield();
-    }
-
     // void cown_notified()
     // {
     //   // This is not a message make sure we know that.
@@ -255,93 +164,6 @@ namespace verona::rt
     // }
 
   public:
-    /**
-     * Called when strong reference count reaches one.
-     * Uses thread_local state to deal with deep deallocation
-     * chains by queuing recursive calls.
-     **/
-    void queue_collect(Alloc& alloc)
-    {
-      thread_local ObjectStack* work_list = nullptr;
-
-      // If there is a already a queue, use it
-      if (work_list != nullptr)
-      {
-        // This is a recursive call, add to queue
-        // and return immediately.
-        work_list->push(this);
-        return;
-      }
-
-      // Make queue for recursive deallocations.
-      ObjectStack current(alloc);
-      work_list = &current;
-
-      // Collect the current cown
-      collect(alloc);
-      yield();
-      weak_release(alloc);
-
-      // Collect recursively reachable cowns
-      while (!current.empty())
-      {
-        auto a = (Cown*)current.pop();
-        a->collect(alloc);
-        yield();
-        a->weak_release(alloc);
-      }
-      work_list = nullptr;
-    }
-
-    void collect(Alloc& alloc)
-    {
-#ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
-      flush_all(alloc);
-#endif
-      Logging::cout() << "Collecting cown " << this << Logging::endl;
-
-      ObjectStack dummy(alloc);
-      // Run finaliser before releasing our data.
-      // Sub-regions handled by code below.
-      finalise(nullptr, dummy);
-
-      // TODO?
-      // Release our data.
-      ObjectStack f(alloc);
-      trace(f);
-
-      while (!f.empty())
-      {
-        Object* o = f.pop();
-
-        switch (o->get_class())
-        {
-          case RegionMD::ISO:
-            Region::release(alloc, o);
-            break;
-
-          case RegionMD::RC:
-          case RegionMD::SCC_PTR:
-            Immutable::release(alloc, o);
-            break;
-
-          case RegionMD::COWN:
-            Logging::cout()
-              << "DecRef from " << this << " to " << o << Logging::endl;
-            Cown::release(alloc, (Cown*)o);
-            break;
-
-          default:
-            abort();
-        }
-      }
-
-      yield();
-
-      // Now we may run our destructor.
-      destructor();
-    }
-
     // bool release_early()
     // {
     //   auto* body = Scheduler::local()->message_body;
@@ -385,7 +207,7 @@ namespace verona::rt
   {
     inline void release(Alloc& alloc, Cown* o)
     {
-      Cown::release(alloc, o);
+      Shared::release(alloc, o);
     }
   } // namespace cown
 } // namespace verona::rt

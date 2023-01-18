@@ -389,6 +389,7 @@ namespace verona::rt
 
   private:
     friend class Cown;
+    friend class Shared;
     friend void notify(Cown*);
     friend class Immutable;
     friend class Freeze;
