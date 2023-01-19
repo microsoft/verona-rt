@@ -342,7 +342,7 @@ namespace verona::rt
       }
     }
 
-    bool debug_is_cown()
+    bool debug_is_shared()
     {
       return get_class() == RegionMD::COWN;
     }
@@ -715,19 +715,19 @@ namespace verona::rt
       (((size_t)1) << (((sizeof(size_t)) * 8) - 1)) + (size_t)RegionMD::COWN;
 
     /**
-     * Returns true, if this was the last decref on the cown.  If this returns
-     * true all future, and parallel, calls to incref_cown_from_weak will return
-     * false.
+     * Returns true, if this was the last decref on the shared object.  If this
+     *returns true all future, and parallel, calls to acquire_strong_from_weak
+     *will return false.
      **/
-    inline bool decref_cown(bool& release_weak)
+    inline bool decref_shared(bool& release_weak)
     {
-      Logging::cout() << "decref_cown " << (void*)this << std::endl;
-      // This always performs the atomic subtraction, since the cown should
-      // see its own rc as zero this is due to how weak reference to cowns
-      // interact.  An attempt to acquire a weak reference will increase the
-      // strong count.
-      // The top bit of the strong count is set to indicate that the strong
-      // count has reached zero, and future weak count increase should fail.
+      Logging::cout() << "decref_shared " << (void*)this << std::endl;
+      // This always performs the atomic subtraction, since the shared object
+      // should see its own rc as zero this is due to how weak reference to
+      // shared objects interact.  An attempt to acquire a weak reference will
+      // increase the strong count. The top bit of the strong count is set to
+      // indicate that the strong count has reached zero, and future weak count
+      // increase should fail.
       assert(debug_rc() != 0);
       assert(get_header().rc < FINISHED_RC);
       assert(get_class() == RegionMD::COWN);
@@ -740,7 +740,7 @@ namespace verona::rt
 
       yield();
 
-      Logging::cout() << "decref_cown part 2" << (void*)this << std::endl;
+      Logging::cout() << "decref_shared part 2" << (void*)this << std::endl;
       size_t zero_rc = (size_t)RegionMD::COWN;
       auto result =
         get_header().rc.compare_exchange_strong(zero_rc, FINISHED_RC);

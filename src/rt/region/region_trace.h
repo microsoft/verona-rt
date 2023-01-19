@@ -171,7 +171,7 @@ namespace verona::rt
     template<TransferOwnership transfer = NoTransfer>
     static void insert(Alloc& alloc, Object* into, Object* o)
     {
-      assert(o->debug_is_immutable() || o->debug_is_cown());
+      assert(o->debug_is_immutable() || o->debug_is_shared());
       RegionTrace* reg = get(into);
 
       Object::RegionMD c;

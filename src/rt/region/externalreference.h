@@ -71,7 +71,7 @@ namespace verona::rt
        */
       static ExternalRef* create(ExternalReferenceTable* ert, Object* o)
       {
-        assert(!o->debug_is_immutable() && !o->debug_is_cown());
+        assert(!o->debug_is_immutable() && !o->debug_is_shared());
         if (o->has_ext_ref())
         {
           auto ext_ref = find_ext_ref(ert, o);

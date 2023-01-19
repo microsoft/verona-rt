@@ -19,7 +19,6 @@ namespace verona::rt
    * [TODO A Notify as another subclass of Shared]
    */
 
-
   class Shared : public Object
   {
   public:
@@ -31,9 +30,9 @@ namespace verona::rt
 
   private:
     /**
-     * Shared object's weak reference count.  This keeps the Shared object itself alive, but not
-     * the data it can reach.  Weak reference can be promoted to strong, if a
-     * strong reference still exists.
+     * Shared object's weak reference count.  This keeps the Shared object
+     *itself alive, but not the data it can reach.  Weak reference can be
+     *promoted to strong, if a strong reference still exists.
      **/
     std::atomic<size_t> weak_count{1};
 
@@ -41,20 +40,18 @@ namespace verona::rt
     static void acquire(Object* o)
     {
       Logging::cout() << "Shared " << o << " acquire" << Logging::endl;
-      // TODO debug_is_cown -> debug_is_shared
-      assert(o->debug_is_cown());
+      assert(o->debug_is_shared());
       o->incref();
     }
 
     static void release(Alloc& alloc, Shared* o)
     {
       Logging::cout() << "Shared " << o << " release" << Logging::endl;
-      assert(o->debug_is_cown());
+      assert(o->debug_is_shared());
 
       // Perform decref
       auto release_weak = false;
-      // TODO decref_cown -> decref_shared
-      bool last = o->decref_cown(release_weak);
+      bool last = o->decref_shared(release_weak);
 
       yield();
 
