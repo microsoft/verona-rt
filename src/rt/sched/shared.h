@@ -208,4 +208,13 @@ namespace verona::rt
       destructor();
     }
   };
+
+  namespace shared
+  {
+    inline void release(Alloc& alloc, Object* o)
+    {
+      assert(o->debug_is_shared());
+      Shared::release(alloc, (Shared*)o);
+    }
+  } // namespace cown
 } // namespace verona::rt

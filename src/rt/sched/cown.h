@@ -202,12 +202,4 @@ namespace verona::rt
     //   return true;
     // }
   };
-
-  namespace cown
-  {
-    inline void release(Alloc& alloc, Cown* o)
-    {
-      Shared::release(alloc, o);
-    }
-  } // namespace cown
 } // namespace verona::rt

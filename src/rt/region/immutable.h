@@ -7,12 +7,12 @@
 
 namespace verona::rt
 {
-  class Cown;
-  namespace cown
+  class Shared;
+  namespace shared
   {
     // This is used only to break a dependency cycle.
-    inline void release(Alloc& alloc, Cown* o);
-  } // namespace cown
+    inline void release(Alloc& alloc, Shared* o);
+  } // namespace shared
 
   class Immutable
   {
@@ -138,7 +138,7 @@ namespace verona::rt
         case Object::SHARED:
         {
           Logging::cout() << "Immutable releasing cown: " << w << Logging::endl;
-          cown::release(alloc, (Cown*)w);
+          shared::release(alloc, w);
           break;
         }
 

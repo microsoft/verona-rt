@@ -290,7 +290,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            cown::release(alloc, (Cown*)f);
+            shared::release(alloc, f);
             break;
           case Object::ISO:
             assert(f != o);
@@ -351,7 +351,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            cown::release(alloc, (Cown*)p);
+            shared::release(alloc, p);
             break;
           default:
             assert(0);
@@ -551,7 +551,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            cown::release(alloc, (Cown*)f);
+            shared::release(alloc, f);
             break;
           case Object::ISO:
             // Deallocation should only happen on an opened region.
@@ -621,7 +621,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            cown::release(alloc, (Cown*)p);
+            shared::release(alloc, p);
             break;
           case Object::ISO:
             //            assert(p != in);

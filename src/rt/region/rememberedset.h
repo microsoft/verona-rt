@@ -139,7 +139,7 @@ namespace verona::rt
         case Object::SHARED:
         {
           Logging::cout() << "RS releasing: cown: " << o << Logging::endl;
-          cown::release(alloc, (Cown*)o);
+          shared::release(alloc, o);
           break;
         }
 
