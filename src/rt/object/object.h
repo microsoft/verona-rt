@@ -38,7 +38,8 @@ namespace verona::rt
    *  Immutable|  Reference count                             | Immutable object
    *  SCC_PTR  |  Union-find parent pointer for SCC           | Immutable object
    *  Pending  |  Depth of longest chain in SCC               | Immutable object
-   *  Cown     |  Reference count                             | Cown object
+   *  Shared   |  Reference count                             | Shared object
+   *           |                                              |  (e.g. Cown) 
    *  Open ISO |  Region specific scratch space               | Root of region
    *
    *
@@ -678,7 +679,8 @@ namespace verona::rt
     // Returns true if you are incrementing from zero.
     inline bool incref()
     {
-      assert((get_class() == RegionMD::RC) || (get_class() == RegionMD::SHARED));
+      assert(
+        (get_class() == RegionMD::RC) || (get_class() == RegionMD::SHARED));
 
       return get_header().rc.fetch_add(ONE_RC) == get_class();
     }

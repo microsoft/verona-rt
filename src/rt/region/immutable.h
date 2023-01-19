@@ -11,7 +11,7 @@ namespace verona::rt
   namespace shared
   {
     // This is used only to break a dependency cycle.
-    inline void release(Alloc& alloc, Shared* o);
+    inline void release(Alloc& alloc, Object* o);
   } // namespace shared
 
   class Immutable
