@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../sched/behaviourcore.h"
+#include "../sched/behaviour.h"
 #include "vobject.h"
 
 namespace verona::rt
