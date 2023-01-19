@@ -91,9 +91,7 @@ namespace verona::rt
   class Cown : public Shared
   {
   public:
-    Cown()
-    {
-    }
+    Cown() {}
 
   private:
     friend Core;

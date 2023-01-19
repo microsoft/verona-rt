@@ -39,7 +39,7 @@ namespace verona::rt
    *  SCC_PTR  |  Union-find parent pointer for SCC           | Immutable object
    *  Pending  |  Depth of longest chain in SCC               | Immutable object
    *  Shared   |  Reference count                             | Shared object
-   *           |                                              |  (e.g. Cown) 
+   *           |                                              |  (e.g. Cown)
    *  Open ISO |  Region specific scratch space               | Root of region
    *
    *
