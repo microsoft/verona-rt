@@ -172,7 +172,6 @@ namespace verona::rt
       // Sub-regions handled by code below.
       finalise(nullptr, dummy);
 
-      // TODO?
       // Release our data.
       ObjectStack f(alloc);
       trace(f);
