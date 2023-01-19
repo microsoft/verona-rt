@@ -98,7 +98,7 @@ namespace verona::rt
     friend Slot;
     template<typename T>
     friend class Promise;
-    friend struct Behaviour;
+    friend struct BehaviourCore;
 
     template<typename T>
     friend class Noticeboard;
