@@ -538,7 +538,7 @@ namespace verona::rt
       get_header().bits = (get_header().bits & ~MASK) | (uint8_t)RegionMD::RC;
     }
 
-    inline void make_cown()
+    inline void make_shared()
     {
       get_header().bits = (size_t)RegionMD::SHARED + ONE_RC;
     }

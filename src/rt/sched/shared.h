@@ -24,8 +24,7 @@ namespace verona::rt
   public:
     Shared()
     {
-      // TODO replace make_cown with make_shared
-      make_cown();
+      make_shared();
     }
 
   private:
@@ -163,6 +162,7 @@ namespace verona::rt
     {
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
 // TODO THINK
+//      Move to finalisers for noticeboards.
 //      flush_all(alloc);
 #endif
       Logging::cout() << "Collecting cown " << this << Logging::endl;
