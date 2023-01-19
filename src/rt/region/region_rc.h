@@ -289,7 +289,7 @@ namespace verona::rt
           case Object::RC:
             f->decref();
             break;
-          case Object::COWN:
+          case Object::SHARED:
             cown::release(alloc, (Cown*)f);
             break;
           case Object::ISO:
@@ -350,7 +350,7 @@ namespace verona::rt
           case Object::RC:
             p->decref();
             break;
-          case Object::COWN:
+          case Object::SHARED:
             cown::release(alloc, (Cown*)p);
             break;
           default:
@@ -550,7 +550,7 @@ namespace verona::rt
           case Object::RC:
             f->decref();
             break;
-          case Object::COWN:
+          case Object::SHARED:
             cown::release(alloc, (Cown*)f);
             break;
           case Object::ISO:
@@ -620,7 +620,7 @@ namespace verona::rt
           case Object::RC:
             p->decref();
             break;
-          case Object::COWN:
+          case Object::SHARED:
             cown::release(alloc, (Cown*)p);
             break;
           case Object::ISO:

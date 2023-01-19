@@ -136,7 +136,7 @@ namespace verona::rt
           break;
         }
 
-        case Object::COWN:
+        case Object::SHARED:
         {
           Logging::cout() << "RS releasing: cown: " << o << Logging::endl;
           cown::release(alloc, (Cown*)o);

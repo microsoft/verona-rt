@@ -135,7 +135,7 @@ namespace verona::rt
           break;
         }
 
-        case Object::COWN:
+        case Object::SHARED:
         {
           Logging::cout() << "Immutable releasing cown: " << w << Logging::endl;
           cown::release(alloc, (Cown*)w);

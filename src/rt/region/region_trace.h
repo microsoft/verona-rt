@@ -422,7 +422,7 @@ namespace verona::rt
             break;
 
           case Object::RC:
-          case Object::COWN:
+          case Object::SHARED:
             RememberedSet::mark(alloc, p);
             break;
 

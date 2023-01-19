@@ -109,7 +109,7 @@ namespace verona::rt
    *    `PENDING` then this is part of an SCC that is still being calculated.
    *    If via a series of zero of more SCC_PTR this points to an
    *    `RC_NON_ATOMIC`, then this is part of a completed SCC.
-   *  * `Object::RC` and `Object::COWN` refer to immutable objects outside the
+   *  * `Object::RC` and `Object::SHARED` refer to immutable objects outside the
    *    current isolate.
    *
    * The objects stack is used to keep track of the set of objects in the
@@ -234,7 +234,7 @@ namespace verona::rt
             }
 
             case Object::RC:
-            case Object::COWN:
+            case Object::SHARED:
             {
               Logging::cout()
                 << "External reference during freeze: " << r << Logging::endl;

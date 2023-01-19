@@ -192,7 +192,7 @@ namespace verona::rt
             Immutable::release(alloc, o);
             break;
 
-          case RegionMD::COWN:
+          case RegionMD::SHARED:
             Logging::cout()
               << "DecRef from " << this << " to " << o << Logging::endl;
             Shared::release(alloc, (Shared*)o);
