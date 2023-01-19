@@ -44,7 +44,7 @@ namespace verona::rt
     }
   };
 
-  struct Behaviour;
+  struct BehaviourCore;
 
   struct Slot
   {
@@ -84,12 +84,12 @@ namespace verona::rt
       return status.load(std::memory_order_relaxed) > 1;
     }
 
-    Behaviour* get_behaviour()
+    BehaviourCore* get_behaviour()
     {
-      return (Behaviour*)status.load(std::memory_order_acquire);
+      return (BehaviourCore*)status.load(std::memory_order_acquire);
     }
 
-    void set_behaviour(Behaviour* b)
+    void set_behaviour(BehaviourCore* b)
     {
       status.store((uintptr_t)b, std::memory_order_release);
     }
@@ -98,7 +98,8 @@ namespace verona::rt
   };
 
   /**
-   * @brief This class implements the `when` construct in the runtime.
+   * @brief This class implements the core logic for the `when` construct in the
+   * runtime.
    *
    * It is based on the using the class MCS Queue Lock to build a dag of
    * behaviours.  Each cown can be seen as a lock, and each behaviour is
@@ -112,8 +113,12 @@ namespace verona::rt
    *   J. M. Mellor-Crummey and M. L. Scott. Algorithms for
    *   scalable synchronization on shared-memory
    *   multiprocessors. ACM TOCS, 9(1):21–65, Feb. 1991
+   *
+   * The class does not instiate the behaviour fully which is done by
+   * the `Behaviour` class. This allows for code reuse with a notification
+   * mechanism.
    */
-  struct Behaviour
+  struct BehaviourCore
   {
     std::atomic<size_t> exec_count_down;
     size_t count;
@@ -129,12 +134,24 @@ namespace verona::rt
      * slots. Two phase locking needs to complete before we can execute the
      * behaviour.
      */
-    Behaviour(size_t count) : exec_count_down(count + 1), count(count) {}
+    BehaviourCore(size_t count) : exec_count_down(count + 1), count(count) {}
 
     Work* as_work()
     {
       return pointer_offset_signed<Work>(
         this, -static_cast<ptrdiff_t>(sizeof(Work)));
+    }
+
+    /**
+     * @brief Given a pointer to a work object converts it to a
+     * BehaviourCore pointer.
+     *
+     * This is inherently unsafe, and should only be used when it is known the
+     * work object was constructed using `make`.
+     */
+    static BehaviourCore* from_work(Work* w)
+    {
+      return pointer_offset<BehaviourCore>(w, sizeof(Work));
     }
 
     /**
@@ -154,50 +171,40 @@ namespace verona::rt
         Scheduler::schedule(as_work());
     }
 
-    template<typename Be>
-    static void invoke(Work* work)
-    {
-      // Dispatch to the body of the behaviour.
-      Behaviour* behaviour = pointer_offset<Behaviour>(work, sizeof(Work));
-      Slot* slots = pointer_offset<Slot>(behaviour, sizeof(Behaviour));
-      Be* body = pointer_offset<Be>(slots, sizeof(Slot) * behaviour->count);
-      (*body)();
-
-      // Behaviour is done, we can resolve successors.
-      for (size_t i = 0; i < behaviour->count; i++)
-      {
-        slots[i].release();
-      }
-
-      // Dealloc behaviour
-      body->~Be();
-      work->dealloc();
-    }
-
     // TODO: When C++ 20 move to span.
     Slot* get_slots()
     {
-      return pointer_offset<Slot>(this, sizeof(Behaviour));
+      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
     }
 
-    template<typename Be, typename... Args>
-    static Behaviour* make(size_t count, Args... args)
+    template<typename T = void>
+    T* get_body()
     {
-      size_t size =
-        sizeof(Work) + sizeof(Behaviour) + (sizeof(Slot) * count) + sizeof(Be);
+      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
+      return pointer_offset<T>(slots, sizeof(Slot) * count);
+    }
 
+    /**
+     * @brief Constructs a behaviour.  Leaves space for the closure.
+     *
+     * @param count - Number of slots to allocate, i.e. how many cowns to wait
+     * for.
+     * @param f - The function to execute once all the behaviours dependencies
+     * are ready.
+     * @param payload - The size of the payload to allocate.
+     * @return BehaviourCore* - the pointer to the behaviour object.
+     */
+    static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
+    {
       // Manual memory layout of the behaviour structure.
       //   | Work | Behaviour | Slot ... Slot | Body |
+      size_t size =
+        sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
       void* base = ThreadAlloc::get().alloc(size);
-      void* base_behaviour = pointer_offset(base, sizeof(Work));
-      void* base_slots = pointer_offset(base_behaviour, sizeof(Behaviour));
-      void* base_body = pointer_offset(base_slots, sizeof(Slot) * count);
 
-      Work* work = new (base) Work(invoke<Be>);
-
-      Behaviour* behaviour = new (base_behaviour) Behaviour(count);
-
-      new (base_body) Be(std::forward<Args>(args)...);
+      Work* work = new (base) Work(f);
+      void* base_behaviour = from_work(work);
+      BehaviourCore* behaviour = new (base_behaviour) BehaviourCore(count);
 
       // These assertions are basically checking that we won't break any
       // alignment assumptions on Be.  If we add some actual alignment, then
@@ -206,72 +213,13 @@ namespace verona::rt
         sizeof(Slot) % sizeof(void*) == 0,
         "Slot size must be a multiple of pointer size");
       static_assert(
-        sizeof(Behaviour) % sizeof(void*) == 0,
+        sizeof(BehaviourCore) % sizeof(void*) == 0,
         "Behaviour size must be a multiple of pointer size");
       static_assert(
         sizeof(Work) % sizeof(void*) == 0,
         "Work size must be a multiple of pointer size");
-      static_assert(
-        alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
 
       return behaviour;
-    }
-
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(Cown* cown, Args&&... args)
-    {
-      schedule<Behaviour, transfer, Args...>(
-        1, &cown, std::forward<Args>(args)...);
-    }
-
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(size_t count, Cown** cowns, Args&&... args)
-    {
-      // TODO Remove vector allocation here.  This is a temporary fix to
-      // as we transition to using Request through the code base.
-      auto& alloc = ThreadAlloc::get();
-      Request* requests = (Request*)alloc.alloc(count * sizeof(Request));
-
-      for (size_t i = 0; i < count; ++i)
-        requests[i] = Request::write(cowns[i]);
-
-      schedule<Behaviour, transfer, Args...>(
-        count, requests, std::forward<Args>(args)...);
-
-      alloc.dealloc(requests);
-    }
-
-    /**
-     * Sends a multi-message to the first cown we want to acquire.
-     *
-     * Pass `transfer = YesTransfer` as a template argument if the
-     * caller is transfering ownership of a reference count on each cown to
-     * this method.
-     **/
-    template<
-      class Be,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(size_t count, Request* requests, Args&&... args)
-    {
-      Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
-                      << Logging::endl;
-
-      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
-
-      auto* slots = body->get_slots();
-      for (size_t i = 0; i < count; i++)
-      {
-        new (&slots[i]) Slot(requests[i].cown());
-      }
-
-      schedule<transfer>(body);
     }
 
     /**
@@ -318,7 +266,7 @@ namespace verona::rt
      * scheduler will release the RC.
      */
     template<TransferOwnership transfer = NoTransfer>
-    static void schedule(Behaviour* body)
+    static void schedule(BehaviourCore* body)
     {
       auto count = body->count;
       auto slots = body->get_slots();
@@ -402,6 +350,21 @@ namespace verona::rt
       yield();
       body->resolve(ec);
     }
+
+    /**
+     * @brief Release all slots in the behaviour.
+     *
+     * This is should be called when the behaviour has executed.
+     */
+    void release_all()
+    {
+      auto slots = get_slots();
+      // Behaviour is done, we can resolve successors.
+      for (size_t i = 0; i < count; i++)
+      {
+        slots[i].release();
+      }
+    }
   };
 
   inline void Slot::release()
@@ -439,4 +402,101 @@ namespace verona::rt
     get_behaviour()->resolve();
     yield();
   }
+
+  /**
+   * This class provides the full `when` functionality.  It
+   * provides the closure and lifetime management for the class.
+   *
+   */
+  class Behaviour : public BehaviourCore
+  {
+    template<typename Be>
+    static void invoke(Work* work)
+    {
+      // Dispatch to the body of the behaviour.
+      BehaviourCore* behaviour = BehaviourCore::from_work(work);
+      Be* body = behaviour->get_body<Be>();
+      (*body)();
+
+      behaviour->release_all();
+
+      // Dealloc behaviour
+      body->~Be();
+      work->dealloc();
+    }
+
+  public:
+    template<typename Be, typename... Args>
+    static Behaviour* make(size_t count, Args... args)
+    {
+      auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
+
+      new (behaviour_core->get_body()) Be(std::forward<Args>(args)...);
+
+      // These assertions are basically checking that we won't break any
+      // alignment assumptions on Be.  If we add some actual alignment, then
+      // this can be improved.
+      static_assert(
+        alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
+
+      return (Behaviour*)behaviour_core;
+    }
+
+    template<
+      class Behaviour,
+      TransferOwnership transfer = NoTransfer,
+      typename... Args>
+    static void schedule(Cown* cown, Args&&... args)
+    {
+      schedule<Behaviour, transfer, Args...>(
+        1, &cown, std::forward<Args>(args)...);
+    }
+
+    template<
+      class Behaviour,
+      TransferOwnership transfer = NoTransfer,
+      typename... Args>
+    static void schedule(size_t count, Cown** cowns, Args&&... args)
+    {
+      // TODO Remove vector allocation here.  This is a temporary fix to
+      // as we transition to using Request through the code base.
+      auto& alloc = ThreadAlloc::get();
+      Request* requests = (Request*)alloc.alloc(count * sizeof(Request));
+
+      for (size_t i = 0; i < count; ++i)
+        requests[i] = Request::write(cowns[i]);
+
+      schedule<Behaviour, transfer, Args...>(
+        count, requests, std::forward<Args>(args)...);
+
+      alloc.dealloc(requests);
+    }
+
+    /**
+     * Sends a multi-message to the first cown we want to acquire.
+     *
+     * Pass `transfer = YesTransfer` as a template argument if the
+     * caller is transfering ownership of a reference count on each cown to
+     * this method.
+     **/
+    template<
+      class Be,
+      TransferOwnership transfer = NoTransfer,
+      typename... Args>
+    static void schedule(size_t count, Request* requests, Args&&... args)
+    {
+      Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
+                      << Logging::endl;
+
+      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
+
+      auto* slots = body->get_slots();
+      for (size_t i = 0; i < count; i++)
+      {
+        new (&slots[i]) Slot(requests[i].cown());
+      }
+
+      BehaviourCore::schedule<transfer>(body);
+    }
+  };
 } // namespace verona::rt
