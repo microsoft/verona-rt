@@ -419,7 +419,7 @@ namespace verona::rt
         yield();
         Logging::cout() << "No more work for cown " << cown << Logging::endl;
         // Success, no successor, release scheduler threads reference count.
-        cown::release(ThreadAlloc::get(), cown);
+        shared::release(ThreadAlloc::get(), cown);
         return;
       }
 

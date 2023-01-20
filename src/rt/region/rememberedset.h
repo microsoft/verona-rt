@@ -55,7 +55,7 @@ namespace verona::rt
     template<TransferOwnership transfer>
     void insert(Alloc& alloc, Object* o)
     {
-      assert(o->debug_is_rc() || o->debug_is_cown());
+      assert(o->debug_is_rc() || o->debug_is_shared());
 
       // If the caller is not transfering ownership of a refcount, i.e., the
       // object is being added to the region but not dropped from somewhere,
@@ -79,7 +79,7 @@ namespace verona::rt
      */
     void mark(Alloc& alloc, Object* o)
     {
-      assert(o->debug_is_rc() || o->debug_is_cown());
+      assert(o->debug_is_rc() || o->debug_is_shared());
 
       auto r = hash_set->insert(alloc, o);
       if (r.first)
@@ -136,10 +136,10 @@ namespace verona::rt
           break;
         }
 
-        case Object::COWN:
+        case Object::SHARED:
         {
           Logging::cout() << "RS releasing: cown: " << o << Logging::endl;
-          cown::release(alloc, (Cown*)o);
+          shared::release(alloc, o);
           break;
         }
 

@@ -38,7 +38,8 @@ namespace verona::rt
    *  Immutable|  Reference count                             | Immutable object
    *  SCC_PTR  |  Union-find parent pointer for SCC           | Immutable object
    *  Pending  |  Depth of longest chain in SCC               | Immutable object
-   *  Cown     |  Reference count                             | Cown object
+   *  Shared   |  Reference count                             | Shared object
+   *           |                                              |  (e.g. Cown)
    *  Open ISO |  Region specific scratch space               | Root of region
    *
    *
@@ -138,7 +139,7 @@ namespace verona::rt
       ISO = 0x4,
       PENDING = 0x5,
       NONATOMIC_RC = 0x6,
-      COWN = 0x7,
+      SHARED = 0x7,
       OPEN_ISO = 0x8 // TODO This is a problem for 32bit platforms. We need to
                      // fix as part of major refactor of header layout.
     };
@@ -161,8 +162,8 @@ namespace verona::rt
           return os << "PENDING";
         case RegionMD::NONATOMIC_RC:
           return os << "NONATOMIC_RC";
-        case RegionMD::COWN:
-          return os << "COWN";
+        case RegionMD::SHARED:
+          return os << "SHARED";
         default:
           abort();
       }
@@ -342,9 +343,9 @@ namespace verona::rt
       }
     }
 
-    bool debug_is_cown()
+    bool debug_is_shared()
     {
-      return get_class() == RegionMD::COWN;
+      return get_class() == RegionMD::SHARED;
     }
 
     bool debug_is_rc()
@@ -389,6 +390,7 @@ namespace verona::rt
 
   private:
     friend class Cown;
+    friend class Shared;
     friend void notify(Cown*);
     friend class Immutable;
     friend class Freeze;
@@ -537,9 +539,9 @@ namespace verona::rt
       get_header().bits = (get_header().bits & ~MASK) | (uint8_t)RegionMD::RC;
     }
 
-    inline void make_cown()
+    inline void make_shared()
     {
-      get_header().bits = (size_t)RegionMD::COWN + ONE_RC;
+      get_header().bits = (size_t)RegionMD::SHARED + ONE_RC;
     }
 
     inline bool is_pending()
@@ -677,7 +679,8 @@ namespace verona::rt
     // Returns true if you are incrementing from zero.
     inline bool incref()
     {
-      assert((get_class() == RegionMD::RC) || (get_class() == RegionMD::COWN));
+      assert(
+        (get_class() == RegionMD::RC) || (get_class() == RegionMD::SHARED));
 
       return get_header().rc.fetch_add(ONE_RC) == get_class();
     }
@@ -687,7 +690,7 @@ namespace verona::rt
       // This does not perform the atomic subtraction if rc == 1 on entry.
       // Otherwise, will perform the atomic subtraction, which may be the
       // last one given other concurrent decrefs.
-      assert(get_class() == RegionMD::RC || get_class() == RegionMD::COWN);
+      assert(get_class() == RegionMD::RC || get_class() == RegionMD::SHARED);
 
       size_t done_rc = (size_t)get_class() + ONE_RC;
 
@@ -711,26 +714,26 @@ namespace verona::rt
      * reference count can no longer have new strong references taken out.
      **/
     static constexpr size_t FINISHED_RC =
-      (((size_t)1) << (((sizeof(size_t)) * 8) - 1)) + (size_t)RegionMD::COWN;
+      (((size_t)1) << (((sizeof(size_t)) * 8) - 1)) + (size_t)RegionMD::SHARED;
 
     /**
-     * Returns true, if this was the last decref on the cown.  If this returns
-     * true all future, and parallel, calls to incref_cown_from_weak will return
-     * false.
+     * Returns true, if this was the last decref on the shared object.  If this
+     *returns true all future, and parallel, calls to acquire_strong_from_weak
+     *will return false.
      **/
-    inline bool decref_cown(bool& release_weak)
+    inline bool decref_shared(bool& release_weak)
     {
-      Logging::cout() << "decref_cown " << (void*)this << std::endl;
-      // This always performs the atomic subtraction, since the cown should
-      // see its own rc as zero this is due to how weak reference to cowns
-      // interact.  An attempt to acquire a weak reference will increase the
-      // strong count.
-      // The top bit of the strong count is set to indicate that the strong
-      // count has reached zero, and future weak count increase should fail.
+      Logging::cout() << "decref_shared " << (void*)this << std::endl;
+      // This always performs the atomic subtraction, since the shared object
+      // should see its own rc as zero this is due to how weak reference to
+      // shared objects interact.  An attempt to acquire a weak reference will
+      // increase the strong count. The top bit of the strong count is set to
+      // indicate that the strong count has reached zero, and future weak count
+      // increase should fail.
       assert(debug_rc() != 0);
       assert(get_header().rc < FINISHED_RC);
-      assert(get_class() == RegionMD::COWN);
-      static constexpr size_t DONE_RC = (size_t)RegionMD::COWN + ONE_RC;
+      assert(get_class() == RegionMD::SHARED);
+      static constexpr size_t DONE_RC = (size_t)RegionMD::SHARED + ONE_RC;
 
       size_t prev_rc = get_header().rc.fetch_sub(ONE_RC);
 
@@ -739,8 +742,8 @@ namespace verona::rt
 
       yield();
 
-      Logging::cout() << "decref_cown part 2" << (void*)this << std::endl;
-      size_t zero_rc = (size_t)RegionMD::COWN;
+      Logging::cout() << "decref_shared part 2" << (void*)this << std::endl;
+      size_t zero_rc = (size_t)RegionMD::SHARED;
       auto result =
         get_header().rc.compare_exchange_strong(zero_rc, FINISHED_RC);
       release_weak = !result;
@@ -767,7 +770,7 @@ namespace verona::rt
 
       yield();
 
-      size_t ZERO_RC = (size_t)RegionMD::COWN;
+      size_t ZERO_RC = (size_t)RegionMD::SHARED;
       if (old == ZERO_RC)
       {
         reacquire_weak = true;
@@ -804,7 +807,7 @@ namespace verona::rt
   public:
     inline bool cown_zero_rc()
     {
-      assert(get_class() == RegionMD::COWN);
+      assert(get_class() == RegionMD::SHARED);
 
       return get_header().rc.load(std::memory_order_relaxed) == FINISHED_RC;
     }
