@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include <debug/harness.h>
 // Harness must come before tests.
+#include "./notify_alternate.h"
 #include "./notify_basic.h"
-//#include "./notify_coalesce.h"
-#include "./notify_empty_queue.h"
 #include "./notify_interleave.h"
 
 int main(int argc, char** argv)
@@ -13,7 +12,11 @@ int main(int argc, char** argv)
 
   harness.run(notify_basic::basic_test);
 
-  harness.run(notify_interleave::run_test);
+  Logging::cout() << "Non-interleaved test" << Logging::endl;
+  harness.run(notify_interleave::run_test, false);
+
+  Logging::cout() << "Interleaved test" << Logging::endl;
+  harness.run(notify_interleave::run_test, true);
 
   harness.run(notify_empty_queue::run_test);
 

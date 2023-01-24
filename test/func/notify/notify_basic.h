@@ -5,14 +5,7 @@ namespace notify_basic
   bool g_called = false;
 
   struct A : public VCown<A>
-  {
-    void notified(Object* o)
-    {
-      auto a = (A*)o;
-      (void)a;
-      g_called = true;
-    }
-  };
+  {};
 
   A* g_a = nullptr;
 
@@ -22,9 +15,13 @@ namespace notify_basic
 
     g_a = new A;
 
-    notify(g_a);
+    auto notify = make_notification(g_a, []() { g_called = true; });
+
+    notify->notify();
+
     schedule_lambda(g_a, []() {});
 
     Cown::release(alloc, g_a);
+    Shared::release(alloc, notify);
   }
 }

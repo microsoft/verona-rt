@@ -69,25 +69,13 @@ struct Poller : VCown<Poller>
       }
     }
   }
-
-  void notified(Object* o)
-  {
-    Poller* p = reinterpret_cast<Poller*>(o);
-
-    if (should_schedule_if_notified)
-    {
-      // No need to disable notifications here because the external source
-      // delivers a single-shot notification
-      should_schedule_if_notified = false;
-      schedule_lambda(p, [=]() { p->main_poller(); });
-    }
-  }
 };
 
 struct ExternalSource
 {
   Poller* p;
   std::atomic<bool> notifications_on;
+  Notification* n;
 
   ExternalSource(Poller* p_) : p(p_), notifications_on(false)
   {
@@ -110,7 +98,7 @@ struct ExternalSource
     }
 
     if (notifications_on.exchange(false))
-      notify(p);
+      n->notify();
 
 #ifdef USE_SYSTEMATIC_TESTING
     Systematic::yield();
@@ -127,8 +115,9 @@ struct ExternalSource
     }
 
     if (notifications_on.exchange(false))
-      notify(p);
+      n->notify();
 
+    Shared::release(alloc, n);
     Cown::release(alloc, p);
 
     // Notify runtime external IO thread has completed.
@@ -162,7 +151,19 @@ void test(SystematicTestHarness* harness)
   auto* p = new (alloc) Poller();
   auto es = std::make_shared<ExternalSource>(p);
 
+  Notification* n = make_notification(p, [p]() {
+    if (p->should_schedule_if_notified)
+    {
+      // No need to disable notifications here because the external source
+      // delivers a single-shot notification
+      p->should_schedule_if_notified = false;
+      schedule_lambda(p, [=]() { p->main_poller(); });
+    }
+  });
+
   p->es = es;
+  es->n = n;
+
   schedule_lambda<YesTransfer>(p, [=]() {
     // Start IO Thread
     Scheduler::add_external_event_source();
