@@ -568,6 +568,12 @@ namespace Logging
   {
     ExceptionHandler(nullptr);
   }
+
+  inline static void timeout(HWND, UINT, UINT_PTR, DWORD)
+  {
+    std::cerr << "Timeout" << std::endl;
+    abort();
+  }
 #endif
 
   inline static void enable_crash_logging()
@@ -576,6 +582,9 @@ namespace Logging
     printf("Enable crash logging\n");
     AddVectoredExceptionHandler(0, &ExceptionHandler);
     signal(SIGABRT, signal_handler);
+    // TODO: This is not really the right place, but this file needs splitting
+    // into platform specific files, and the general logging code.
+    SetTimer(NULL, 1, 3900, timeout);
 #elif defined(CI_BUILD) && defined(USE_EXECINFO)
     static struct sigaction sa;
     sa.sa_sigaction = signal_handler;
