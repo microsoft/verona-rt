@@ -69,15 +69,15 @@ find_program(LLDB NAMES lldb)
 # For CI builds attempt to run inside LLDB to get more information
 # for crashes.
 if (VERONA_CI_BUILD AND (NOT LLDB STREQUAL LLDB-NOTFOUND))
-# Test if lldb actually works.  Windows gives a dll exception in CI
-# for the lldb run.
-execute_process(COMMAND ${LLDB} -v RESULT_VARIABLE LLDB_EXIT_CODE)
-if (${LLDB_EXIT_CODE} EQUAL 0)
-  message(STATUS "Running runtime tests inside '${LLDB}'")
-  set (TESTRUNNER ${LLDB} "-batch" "--one-line" "run" "--one-line-on-crash" "thread backtrace all" "--one-line-on-crash" "quit 1" "--")
-else()
-  message(STATUS "Not using '${LLDB}' to run runtime tests failed with: " ${LLDB_EXIT_CODE})
-endif()
+  # Test if lldb actually works.  Windows gives a dll exception in CI
+  # for the lldb run.
+  execute_process(COMMAND ${LLDB} -v RESULT_VARIABLE LLDB_EXIT_CODE)
+  if (${LLDB_EXIT_CODE} EQUAL 0)
+    message(STATUS "Running runtime tests inside '${LLDB}'")
+    set (TESTRUNNER ${LLDB} "-batch" "--one-line" "run" "--one-line-on-crash" "thread backtrace all" "--one-line-on-crash" "quit 1" "--")
+  else()
+    message(STATUS "Not using '${LLDB}' to run runtime tests failed with: " ${LLDB_EXIT_CODE})
+  endif()
 endif()
 
 add_test(${TESTNAME} ${TESTRUNNER} func-sys-hashmap --seed_count ${CHUNK})

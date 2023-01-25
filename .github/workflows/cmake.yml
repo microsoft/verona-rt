@@ -25,7 +25,7 @@ jobs:
         include:
           - platform: "ubuntu-latest"
             cmake-flags: "-G Ninja"
-            dependencies: "sudo apt install ninja-build"
+            dependencies: "sudo apt install ninja-build lldb"
           
           - variant: "Sanitizer"
             platform: "ubuntu-latest"
