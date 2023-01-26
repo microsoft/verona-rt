@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../sched/behaviour.h"
+#include "../sched/notification.h"
 #include "vobject.h"
 
 namespace verona::rt
@@ -35,9 +36,13 @@ namespace verona::rt
     Scheduler::schedule(w);
   }
 
-  // TODO Temporary until we actually design notify correctly.
-  inline void notify(Cown* p)
+  // TODO super minimal version initially, just to get the tests working.
+  // Should be expanded to cover multiple cowns.
+  template<typename T>
+  inline Notification* make_notification(Cown* cown, T&& f)
   {
-    schedule_lambda(p, [p = p]() { p->notified(); });
+    Request requests[] = {Request::write(cown)};
+    return Notification::make<T>(1, requests, std::forward<T>(f));
   }
+
 } // namespace verona::rt

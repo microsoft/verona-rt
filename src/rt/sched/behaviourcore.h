@@ -95,6 +95,11 @@ namespace verona::rt
     }
 
     void release();
+
+    void reset()
+    {
+      status.store(0, std::memory_order_release);
+    }
   };
 
   /**
@@ -268,6 +273,7 @@ namespace verona::rt
     template<TransferOwnership transfer = NoTransfer>
     static void schedule(BehaviourCore* body)
     {
+      Logging::cout() << "BehaviourCore::schedule " << body << Logging::endl;
       auto count = body->count;
       auto slots = body->get_slots();
 
@@ -364,6 +370,20 @@ namespace verona::rt
       {
         slots[i].release();
       }
+    }
+
+    /**
+     * Reset the behaviour to look like it has never been scheduled.
+     */
+    void reset()
+    {
+      // Reset status on slots.
+      for (size_t i = 0; i < count; i++)
+      {
+        get_slots()[i].reset();
+      }
+
+      exec_count_down = count + 1;
     }
   };
 
