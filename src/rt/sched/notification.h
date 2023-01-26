@@ -22,12 +22,12 @@ namespace verona::rt
     enum class Status
     {
       /// Specifies a notification has been requested since it last started to
-      /// run.
+      /// run. Hence, it has been scheduled or is about to be.
       Requested,
-      /// Specifies a notification is currently running, and requests have been
-      /// made since it started
+      /// Specifies a notification is currently running, and no requests have
+      /// been made since it started
       Running,
-      /// Specifies that no notification is running or requested.
+      /// Specifies that the notification is not running and not requested.
       Waiting,
     };
 
@@ -38,7 +38,7 @@ namespace verona::rt
     BehaviourCore* behaviour = nullptr;
 
     /**
-     * The destructor for the notification.
+     * The descriptor for the notification.
      */
     template<typename Be>
     static const Descriptor* descriptor()
