@@ -15,6 +15,22 @@ ProcessorCount(N)
 set (CON_CORES 2 ${N})
 endif()
 
+# Look for lldb 
+find_program(LLDB NAMES lldb)
+# For CI builds attempt to run inside LLDB to get more information
+# for crashes.
+if (VERONA_CI_BUILD AND (NOT LLDB STREQUAL LLDB-NOTFOUND))
+  # Test if lldb actually works.  Windows gives a dll exception in CI
+  # for the lldb run.
+  execute_process(COMMAND ${LLDB} -v RESULT_VARIABLE LLDB_EXIT_CODE)
+  if (${LLDB_EXIT_CODE} EQUAL 0)
+    message(STATUS "Running runtime tests inside '${LLDB}'")
+    set (TESTRUNNER ${LLDB} "-batch" "--one-line" "run" "--one-line-on-crash" "thread backtrace all" "--one-line-on-crash" "quit 1" "--")
+  else()
+    message(STATUS "Not using '${LLDB}' to run runtime tests failed with: " ${LLDB_EXIT_CODE})
+  endif()
+endif()
+
 add_custom_target(rt_tests)
 
 set(TESTDIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -33,7 +49,7 @@ foreach(TEST_MODE "sys" "con")
     if (${TEST_MODE} STREQUAL "sys")
       target_compile_definitions(${TESTNAME} PRIVATE USE_SYSTEMATIC_TESTING)
     else()
-      add_test("runtime/${TESTNAME}" ${TESTNAME})
+      add_test("runtime/${TESTNAME}" ${TESTRUNNER} ${TESTNAME})
       if (VERONA_CI_BUILD)
         target_compile_definitions(${TESTNAME} PRIVATE USE_FLIGHT_RECORDER)
       endif ()
@@ -62,23 +78,6 @@ set (TOP_SEED 3)
 else ()
 set (TOP_SEED 20)
 endif ()
-
-# Look for lldb 
-find_program(LLDB NAMES lldb)
-
-# For CI builds attempt to run inside LLDB to get more information
-# for crashes.
-if (VERONA_CI_BUILD AND (NOT LLDB STREQUAL LLDB-NOTFOUND))
-  # Test if lldb actually works.  Windows gives a dll exception in CI
-  # for the lldb run.
-  execute_process(COMMAND ${LLDB} -v RESULT_VARIABLE LLDB_EXIT_CODE)
-  if (${LLDB_EXIT_CODE} EQUAL 0)
-    message(STATUS "Running runtime tests inside '${LLDB}'")
-    set (TESTRUNNER ${LLDB} "-batch" "--one-line" "run" "--one-line-on-crash" "thread backtrace all" "--one-line-on-crash" "quit 1" "--")
-  else()
-    message(STATUS "Not using '${LLDB}' to run runtime tests failed with: " ${LLDB_EXIT_CODE})
-  endif()
-endif()
 
 add_test(${TESTNAME} ${TESTRUNNER} func-sys-hashmap --seed_count ${CHUNK})
 
@@ -223,7 +222,7 @@ foreach(CORES 1 2 3 4)
 foreach(SEED RANGE 1 2)
   MATH(EXPR SEEDLOWER "${SEED} * 10")
   SET (TESTNAME "runtime/func-sys-promise_${CORES}_${SEEDLOWER}")
-  add_test(${TESTNAME} func-sys-promise --cores ${CORES} --seed ${SEEDLOWER} --seed_count 10)
+  add_test(${TESTNAME} ${TESTRUNNER} func-sys-promise --cores ${CORES} --seed ${SEEDLOWER} --seed_count 10)
 endforeach()
 endforeach()
 
@@ -231,7 +230,7 @@ foreach(CORES 1 2 3 4)
 foreach(SEED RANGE 1 5)
   MATH(EXPR SEEDLOWER "${SEED} * 1000")
   SET (TESTNAME "runtime/func-sys-external_event_source_${CORES}_${SEED}")
-  add_test(${TESTNAME} func-sys-external_event_source --cores ${CORES} --seed_count 1000 --seed ${SEEDLOWER})
+  add_test(${TESTNAME} ${TESTRUNNER} func-sys-external_event_source --cores ${CORES} --seed_count 1000 --seed ${SEEDLOWER})
 endforeach()
 endforeach()
 
@@ -239,7 +238,7 @@ foreach(CORES 1 2 3 4)
 foreach(SEED RANGE 1 5)
   MATH(EXPR SEEDLOWER "${SEED} * 1")
   SET (TESTNAME "runtime/func-con-external_event_source_${CORES}_${SEED}")
-  add_test(${TESTNAME} func-con-external_event_source --cores ${CORES} --seed_count 1 --seed ${SEEDLOWER})
+  add_test(${TESTNAME} ${TESTRUNNER} func-con-external_event_source --cores ${CORES} --seed_count 1 --seed ${SEEDLOWER})
 endforeach()
 endforeach()
 
@@ -247,6 +246,6 @@ foreach(CORES 1 2 3 4)
 foreach(SEED RANGE 1 2)
   MATH(EXPR SEEDLOWER "${SEED} * 10")
   SET (TESTNAME "runtime/func-sys-early_release_${CORES}_${SEED}")
-  add_test(${TESTNAME} func-sys-early_release --cores ${CORES} --seed ${SEEDLOWER} --seed_count 10)
+  add_test(${TESTNAME} ${TESTRUNNER} func-sys-early_release --cores ${CORES} --seed ${SEEDLOWER} --seed_count 10)
 endforeach()
 endforeach()
