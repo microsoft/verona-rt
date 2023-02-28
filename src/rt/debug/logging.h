@@ -584,7 +584,7 @@ namespace Logging
     signal(SIGABRT, signal_handler);
     // TODO: This is not really the right place, but this file needs splitting
     // into platform specific files, and the general logging code.
-    SetTimer(NULL, 1, 3900, timeout);
+    SetTimer(NULL, 1, 3, timeout);
 #elif defined(CI_BUILD) && defined(USE_EXECINFO)
     static struct sigaction sa;
     sa.sa_sigaction = signal_handler;
