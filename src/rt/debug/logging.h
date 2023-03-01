@@ -579,7 +579,7 @@ namespace Logging
     signal(SIGABRT, signal_handler);
     // TODO: This is not really the right place, but this file needs splitting
     // into platform specific files, and the general logging code.
-    std::thread([](){
+    std::thread([]() {
       printf("Set timeout\n");
       auto hTimer = CreateWaitableTimer(NULL, FALSE, TEXT("Timeout"));
       if (hTimer == NULL)
