@@ -1,50 +1,4 @@
 /**
- *  Used to provide a stable order over. It is based initially on hashCode. If there 
- *  is a hashcode collision, then we use a counter to disambiguate between
- *  the two objects. Alternatively, we could just use an atomic on allocation. Here
- *  the aim is to reduce the likelyhood of that atomic. 
- **/
-class StableOrder : IComparable
-{
-    // Used to disambiguate between two cowns that have the same hashcode.
-    private static volatile int counter = 0;
-
-    // If we get a hashcode collision, then we need to use an additional value
-    // to distinguish between the two objects. We don't want to use this from
-    // the start as it requires Interlocked operations to create it.
-    private Int64 collision = 0;
-
-    private void EnsureCollisionSet()
-    {
-        if (collision == 0)
-        {
-            collision = Interlocked.Increment(ref counter);
-        }
-    }
-
-    public int CompareTo(object? obj)
-    {
-        if (obj == null) return 1;
-
-        var result = this.GetHashCode().CompareTo(obj.GetHashCode());
-        if (result != 0) return result;
-
-        if (obj is StableOrder sobj)
-        {
-            // We are comparing two cowns with the same hashcode. We need to
-            // create a unique value for each cown to disambiguate between
-            // them.
-            EnsureCollisionSet();
-            sobj.EnsureCollisionSet();
-
-            return collision.CompareTo(sobj.collision);
-        }
-
-        return 1;
-    }
-}
-
-/**
  *   Common part of a cown that is independent of the data the cown is storing.
  *
  *   Just contains a pointer to the last behaviour's request for this cown.
@@ -67,15 +21,38 @@ class Behaviour
     // This is used to release the cowns to the subseqeuent behaviours.
     Request[] requests;
 
-    internal Behaviour(Action t, Request[] r)
+    internal Behaviour(Action t, CownBase[] cowns)
     {
         thunk = t;
-        requests = r;
         // We add an additional count, so that the 2PL is finished
-        // before we start running the thunk.
-        // Note: this is probably not required in a GCed language,
-        // but the C++ version definitely requires it.
-        count = r.Count() + 1;
+        // before we start running the thunk. Without this, the calls to
+        // Release at the end of the thunk could race with the calls to 
+        // FinishEnqueue in the 2PL.
+        count = cowns.Count() + 1;
+
+        Array.Sort(cowns);
+        requests = new Request[cowns.Length];
+        for (int i = 0; i < cowns.Length; i++)
+        {
+            requests[i] = new Request(this, cowns[i]);
+        }
+
+        // Complete first phase of 2PL enqueuing on all cowns.
+        for (int i = 0; i < cowns.Length; i++)
+        {
+            requests[i].StartEnqueue();
+        }
+
+        // Complete second phase of 2PL enqueuing on all cowns.
+        for (int i = 0; i < cowns.Length; i++)
+        {
+            requests[i].FinishEnqueue();
+        }
+
+        // Resolve the additional request.
+        resolve_one();
+
+        // Prevent runtime exiting until this has run.
         Terminator.Increment();
     }
 
@@ -104,7 +81,7 @@ class Behaviour
 class Request
 {
 // Disable warning, these objects (wait,last) are used as special values, and 
-// their fields are never inspected.
+// their fields are never inspected so can ignore null pointer warnings.
 #pragma warning disable CS8625    
     // Special request to represent that this is part way through an enqueue
     // operation and subsequent requests should wait to obey the 2PL.
@@ -187,28 +164,7 @@ class When
 {
     private static void schedule(Action thunk, params CownBase[] cowns)
     {
-        Array.Sort(cowns);
-        var requests = new Request[cowns.Length];
-        var b = new Behaviour(thunk, requests);
-        for (int i = 0; i < cowns.Length; i++)
-        {
-            requests[i] = new Request(b, cowns[i]);
-        }
-
-        // Complete first phase of 2PL enqueuing on all cowns.
-        for (int i = 0; i < cowns.Length; i++)
-        {
-            requests[i].StartEnqueue();
-        }
-
-        // Complete second phase of 2PL enqueuing on all cowns.
-        for (int i = 0; i < cowns.Length; i++)
-        {
-            requests[i].FinishEnqueue();
-        }
-
-        // Resolve the additional request.
-        b.resolve_one();
+        new Behaviour(thunk, cowns);
     }
 
     public static Action<Action> when()
@@ -241,33 +197,5 @@ class When
             var thunk = () => f(t1.value, t2.value, t3.value);
             schedule(thunk, t1, t2, t3);
         };
-    }
-}
-
-// This class detects termination of the program.
-// Effectively just a reference count, and a way to wait for it to
-// reach 0.
-class Terminator
-{
-    private static volatile int count = 1;
-    private static ManualResetEvent mre = new ManualResetEvent(false);
-
-    public static void Wait()
-    {
-        Decrement();
-        mre.WaitOne();
-    }
-
-    public static void Increment()
-    {
-        Interlocked.Increment(ref count);
-    }
-
-    public static void Decrement()
-    {
-        if (Interlocked.Decrement(ref count) == 0)
-        {
-            mre.Set();
-        }
     }
 }
