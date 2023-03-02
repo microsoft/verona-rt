@@ -12,6 +12,7 @@
 #  include <DbgHelp.h>
 #  include <csignal>
 #  pragma comment(lib, "dbghelp.lib")
+#  include <thread>
 #elif defined(USE_EXECINFO)
 #  include "threadping.h"
 
@@ -576,6 +577,39 @@ namespace Logging
     printf("Enable crash logging\n");
     AddVectoredExceptionHandler(0, &ExceptionHandler);
     signal(SIGABRT, signal_handler);
+    // TODO: This is not really the right place, but this file needs splitting
+    // into platform specific files, and the general logging code.
+    std::thread([]() {
+      printf("Set timeout\n");
+      auto hTimer = CreateWaitableTimer(NULL, FALSE, TEXT("Timeout"));
+      if (hTimer == NULL)
+      {
+        printf("CreateWaitableTimer failed (%d)\n", GetLastError());
+        return;
+      }
+
+      LARGE_INTEGER liDueTime;
+      // CI timeout is set to 400 seconds, so we set the timer to 390 seconds
+      // to ensure we get time to dump the flight recorder.
+      // Negative value means relative time.
+      int64_t _SECOND = 10'000'000;
+      liDueTime.QuadPart = -390 * _SECOND;
+
+      if (!SetWaitableTimer(hTimer, &liDueTime, 0, NULL, NULL, FALSE))
+      {
+        printf("SetWaitableTimer failed (%d)\n", GetLastError());
+        return;
+      }
+
+      if (WaitForSingleObject(hTimer, INFINITE) != WAIT_OBJECT_0)
+      {
+        printf("WaitForSingleObject failed (%d)\n", GetLastError());
+        return;
+      }
+
+      puts("Timeout\n");
+      abort();
+    }).detach();
 #elif defined(CI_BUILD) && defined(USE_EXECINFO)
     static struct sigaction sa;
     sa.sa_sigaction = signal_handler;
