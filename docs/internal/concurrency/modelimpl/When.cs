@@ -126,6 +126,13 @@ class Request
         next.behaviour.resolve_one();
     }
 
+    /**
+     *   Start the first phase of the 2PL enqueue operation.
+     *
+     *   This enqueues the request onto the cown.  It will only return
+     *   once any previous behaviour on this cown has finished enqueueing
+     *   on all its required cowns.  This ensures that the 2PL is obeyed.
+     */
     internal void StartEnqueue()
     {
         prev = Interlocked.Exchange<Request?>(ref target.last, this);
@@ -140,6 +147,13 @@ class Request
         while (prev.next != READY) { }
     }
 
+    /**
+     *  Finish the second phase of the 2PL enqueue operation.
+     *
+     *  This will set the next pointer of the previous request to this
+     *  request.  It sets the next pointer of this request to READY, so
+     *  subsequent behaviours on this cown can continue there 2PL enqueue.
+     */
     internal void FinishEnqueue()
     {
         if (prev != null)
@@ -154,12 +168,14 @@ class Request
 
 class Cown<T> : CownBase
 {
-
     internal T value;
 
     public Cown(T v) { value = v; }
 }
 
+/**
+ * This class provides the when() function for various arities.
+ */
 class When
 {
     private static void schedule(Action thunk, params CownBase[] cowns)

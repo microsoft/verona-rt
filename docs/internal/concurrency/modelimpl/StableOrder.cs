@@ -1,8 +1,12 @@
 /**
- *  Used to provide a stable order over. It is based initially on hashCode. If there 
+ *  Used to provide a stable order over object.
+ * 
+ *  It initially uses HashCode to provide an order. If there 
  *  is a hashcode collision, then we use a counter to disambiguate between
- *  the two objects. Alternatively, we could just use an atomic on allocation. Here
- *  the aim is to reduce the likelyhood of that atomic. 
+ *  the two objects.
+ * 
+ *  Alternatively, we could just use an atomic on allocation. The design here
+ *  aims to reduce the likelyhood of having to perform the atomic increment. 
  **/
 class StableOrder : IComparable
 {
