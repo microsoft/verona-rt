@@ -22,7 +22,8 @@ class StableOrder : IComparable
     {
         if (collision == 0)
         {
-            collision = Interlocked.Increment(ref counter);
+            var n = Interlocked.Increment(ref counter);
+            Interlocked.CompareExchange(ref collision, n, 0);
         }
     }
 
