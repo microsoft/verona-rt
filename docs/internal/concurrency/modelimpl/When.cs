@@ -11,6 +11,12 @@ class CownBase : StableOrder
     volatile internal Request? last = null;
 }
 
+/**
+ *  Behaviour that captures the content of a when body.
+ *
+ *  It contains all the state required to run the body, and release the
+ *  cowns when the body has finished.
+ */
 class Behaviour
 {
     // The body of the behaviour.
@@ -37,20 +43,28 @@ class Behaviour
         {
             requests[i] = new Request(this, cowns[i]);
         }
+    }
 
+    // Schedule this behaviour
+    // Performs two phase locking (2PL) over the enqueuing of the requests.
+    // This ensures that the overall effect of the enqueue is atomic.
+    internal void Schedule()
+    {
         // Complete first phase of 2PL enqueuing on all cowns.
-        for (int i = 0; i < cowns.Length; i++)
+        foreach (var r in requests)
         {
-            requests[i].StartEnqueue();
+            r.StartEnqueue();
         }
 
         // Complete second phase of 2PL enqueuing on all cowns.
-        for (int i = 0; i < cowns.Length; i++)
+        foreach (var r in requests)
         {
-            requests[i].FinishEnqueue();
+            r.FinishEnqueue();
         }
 
-        // Resolve the additional request.
+        // Resolve the additional request. [See comment in the Constructor]
+        // All the cowns may already be resolved, in which case, this will
+        // schedule the task.
         resolve_one();
 
         // Prevent runtime exiting until this has run.
@@ -81,9 +95,9 @@ class Behaviour
 
 class Request
 {
-// Disable warning, these objects (wait,last) are used as special values, and 
-// their fields are never inspected so can ignore null pointer warnings.
-#pragma warning disable CS8625    
+    // Disable warning, these objects (wait,last) are used as special values, and 
+    // their fields are never inspected so can ignore null pointer warnings.
+#pragma warning disable CS8625
     // Special request to represent that this is part way through an enqueue
     // operation and subsequent requests should wait to obey the 2PL.
     static Request WAIT = new Request(null, null);
@@ -181,7 +195,7 @@ class When
 {
     public static Action<Action> when()
     {
-        return f => new Behaviour(() => { f(); });
+        return f => new Behaviour(() => { f(); }).Schedule();
     }
 
     public static Action<Action<T>> when<T>(Cown<T> t)
@@ -189,7 +203,7 @@ class When
         return f =>
         {
             var thunk = () => f(t.value);
-            new Behaviour(thunk, t);
+            new Behaviour(thunk, t).Schedule();
         };
     }
 
@@ -198,7 +212,7 @@ class When
         return (f) =>
         {
             var thunk = () => f(t1.value, t2.value);
-            new Behaviour(thunk, t1, t2);
+            new Behaviour(thunk, t1, t2).Schedule();
         };
     }
 
@@ -207,7 +221,7 @@ class When
         return (f) =>
         {
             var thunk = () => f(t1.value, t2.value, t3.value);
-            new Behaviour(thunk, t1, t2, t3);
+            new Behaviour(thunk, t1, t2, t3).Schedule();
         };
     }
 }
