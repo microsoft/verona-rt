@@ -21,7 +21,8 @@ class Behaviour
     // This is used to release the cowns to the subseqeuent behaviours.
     Request[] requests;
 
-    internal Behaviour(Action t, CownBase[] cowns)
+    // Creates and schedules a new Behaviour.
+    internal Behaviour(Action t, params CownBase[] cowns)
     {
         thunk = t;
         // We add an additional count, so that the 2PL is finished
@@ -178,14 +179,9 @@ class Cown<T> : CownBase
  */
 class When
 {
-    private static void schedule(Action thunk, params CownBase[] cowns)
-    {
-        new Behaviour(thunk, cowns);
-    }
-
     public static Action<Action> when()
     {
-        return f => schedule(() => { f(); });
+        return f => new Behaviour(() => { f(); });
     }
 
     public static Action<Action<T>> when<T>(Cown<T> t)
@@ -193,7 +189,7 @@ class When
         return f =>
         {
             var thunk = () => f(t.value);
-            schedule(thunk, t);
+            new Behaviour(thunk, t);
         };
     }
 
@@ -202,7 +198,7 @@ class When
         return (f) =>
         {
             var thunk = () => f(t1.value, t2.value);
-            schedule(thunk, t1, t2);
+            new Behaviour(thunk, t1, t2);
         };
     }
 
@@ -211,7 +207,7 @@ class When
         return (f) =>
         {
             var thunk = () => f(t1.value, t2.value, t3.value);
-            schedule(thunk, t1, t2, t3);
+            new Behaviour(thunk, t1, t2, t3);
         };
     }
 }
