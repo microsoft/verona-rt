@@ -195,7 +195,7 @@ class When
 {
     public static Action<Action> when()
     {
-        return f => new Behaviour(() => { f(); }).Schedule();
+        return f => new Behaviour(f).Schedule();
     }
 
     public static Action<Action<T>> when<T>(Cown<T> t)
