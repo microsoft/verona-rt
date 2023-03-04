@@ -41,7 +41,7 @@ class Behaviour
         requests = new Request[cowns.Length];
         for (int i = 0; i < cowns.Length; i++)
         {
-            requests[i] = new Request(this, cowns[i]);
+            requests[i] = new Request(cowns[i]);
         }
     }
 
@@ -53,7 +53,7 @@ class Behaviour
         // Complete first phase of 2PL enqueuing on all cowns.
         foreach (var r in requests)
         {
-            r.StartEnqueue();
+            r.StartEnqueue(this);
         }
 
         // Complete second phase of 2PL enqueuing on all cowns.
@@ -95,40 +95,25 @@ class Behaviour
 
 class Request
 {
-    // Disable warning, these objects (wait,last) are used as special values, and 
-    // their fields are never inspected so can ignore null pointer warnings.
-#pragma warning disable CS8625
-    // Special request to represent that this is part way through an enqueue
-    // operation and subsequent requests should wait to obey the 2PL.
-    static Request WAIT = new Request(null, null);
-    // Used to represent that this the 2PL is complete, and subsequent request
-    // can be enqueued.
-    static Request READY = new Request(null, null);
-    // Pointer to the next request in the queue. May take the special values of
-    // wait and last if the next value is not yet known.
-#pragma warning restore CS8625
-    volatile Request next = WAIT;
+    // Pointer to the next behaviour in the queue.
+    volatile Behaviour? next = null;
+
+    // Flag to indicate the associated behaviour to this request has been
+    // scheduled
+    volatile bool scheduled = false;
 
     // The cown that this request is for.
     CownBase target;
 
-    // The behaviour that this request is for.
-    Behaviour behaviour;
-
-    // This a local state to connect the two phases of the 2PL together.
-    // Could use `next` but it would complicate the understanding of the code.
-    Request? prev = null;
-
-    public Request(Behaviour b, CownBase t)
+    public Request(CownBase t)
     {
-        behaviour = b;
         target = t;
     }
 
     internal void Release()
     {
         // This code is effectively a MCS-style queue lock release.
-        if (next == READY)
+        if (next == null)
         {
             if (Interlocked.CompareExchange<Request?>(ref target.last, null, this) == this)
             {
@@ -136,9 +121,9 @@ class Request
             }
 
             // Spin waiting for this to be set to something else.
-            while (next == READY) { }
+            while (next == null) { }
         }
-        next.behaviour.resolve_one();
+        next.resolve_one();
     }
 
     /**
@@ -148,9 +133,9 @@ class Request
      *   once any previous behaviour on this cown has finished enqueueing
      *   on all its required cowns.  This ensures that the 2PL is obeyed.
      */
-    internal void StartEnqueue()
+    internal void StartEnqueue(Behaviour behaviour)
     {
-        prev = Interlocked.Exchange<Request?>(ref target.last, this);
+        var prev = Interlocked.Exchange<Request?>(ref target.last, this);
 
         if (prev == null)
         {
@@ -158,26 +143,21 @@ class Request
             return;
         }
 
+        prev.next = behaviour;
+
         // Spin wait here.
-        while (prev.next != READY) { }
+        while (!prev.scheduled) { }
     }
 
     /**
      *  Finish the second phase of the 2PL enqueue operation.
      *
-     *  This will set the next pointer of the previous request to this
-     *  request.  It sets the next pointer of this request to READY, so
-     *  subsequent behaviours on this cown can continue there 2PL enqueue.
+     *  This will set the scheduled flag, so subsequent behaviours on this
+     *  cown can continue the 2PL enqueue.
      */
     internal void FinishEnqueue()
     {
-        if (prev != null)
-            prev.next = this;
-
-        next = READY;
-
-        // Needed otherwise GC will never collect any requests as they will all be in a linked list.
-        prev = null;
+        scheduled = true;
     }
 }
 
