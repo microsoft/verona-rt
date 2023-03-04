@@ -120,8 +120,8 @@ class Request
                 return;
             }
 
-            // Spin waiting for this to be set to something else.
-            while (next == null) { }
+            var w = new SpinWait();
+            while (next == null) { w.SpinOnce(); }
         }
         next.resolve_one();
     }
@@ -145,8 +145,8 @@ class Request
 
         prev.next = behaviour;
 
-        // Spin wait here.
-        while (!prev.scheduled) { }
+        var w = new SpinWait();
+        while (!prev.scheduled) { w.SpinOnce(); }
     }
 
     /**
