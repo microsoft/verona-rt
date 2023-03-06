@@ -1,33 +1,51 @@
-/**
- *   Common part of a cown that is independent of the data the cown is storing.
- *
- *   Just contains a pointer to the last behaviour's request for this cown.
- */
+/// <summary>
+///   Common part of a cown that is independent of the data the cown is storing.
+/// </summary>
+/// <remarks>
+///  Just contains a pointer to the last behaviour's request for this cown.
+/// </remarks>
 class CownBase : StableOrder
 {
-    // Points to the end of the queue of requests for this cown.
-    // If it is null, then the cown is not currently in use by 
-    // any behaviour.
+    /// <summary>
+    ///   Points to the end of the queue of requests for this cown.
+    /// </summary>
+    /// <remarks>
+    ///  If it is null, then the cown is not currently in use by
+    ///  any behaviour.
+    /// </remarks>
     volatile internal Request? last = null;
 }
 
-/**
- *  Behaviour that captures the content of a when body.
- *
- *  It contains all the state required to run the body, and release the
- *  cowns when the body has finished.
- */
+/// <summary>
+///   Behaviour that cpatures the content of a when body.
+/// </summary>
+/// <remarks>
+///   It contains all the state required to run the body, and release the
+///   cowns when the body has finished.
+/// </remarks>
 class Behaviour
 {
-    // The body of the behaviour.
+    /// <summary>
+    ///   The body of the behaviour.
+    /// </summary>
     Action thunk;
-    // How many requests are outstanding for the behaviour.
+
+    /// <summary>
+    ///   How many requests are outstanding for the behaviour.
+    /// </summary>
     int count;
-    // The set of requests for this behaviour.
-    // This is used to release the cowns to the subseqeuent behaviours.
+    
+    /// <summary>
+    ///   The set of requests for this behaviour.
+    /// </summary>
+    /// <remarks>
+    ///  This is used to release the cowns to the subseqeuent behaviours.
+    /// </remarks>
     Request[] requests;
 
-    // Creates and schedules a new Behaviour.
+    /// <summary>
+    ///  Creates and schedules a new Behaviour.
+    /// </summary>
     internal Behaviour(Action t, params CownBase[] cowns)
     {
         thunk = t;
@@ -45,9 +63,13 @@ class Behaviour
         }
     }
 
-    // Schedule this behaviour
-    // Performs two phase locking (2PL) over the enqueuing of the requests.
-    // This ensures that the overall effect of the enqueue is atomic.
+    /// <summary>
+    ///   Schedules the behaviour.
+    /// </summary>
+    /// <remarks>
+    ///  Performs two phase locking (2PL) over the enqueuing of the requests.
+    ///  This ensures that the overall effect of the enqueue is atomic.
+    /// </remarks>
     internal void Schedule()
     {
         // Complete first phase of 2PL enqueuing on all cowns.
@@ -71,7 +93,13 @@ class Behaviour
         Terminator.Increment();
     }
 
-    // Called when a request is at the head of the queue for a particular cown.
+    /// <summary>
+    ///   Resolves a single outstanding request for this behaviour.
+    /// </summary>
+    /// <remarks>
+    ///  Called when a request is at the head of the queue for a particular cown.
+    ///  If this is the last request, then the thunk is scheduled.
+    /// </remarks>
     internal void resolve_one()
     {
         if (Interlocked.Decrement(ref count) != 0)
@@ -93,16 +121,26 @@ class Behaviour
     }
 }
 
+/// <summary>
+///   A request for a cown.
+/// </summary>
+/// <remarks>
+///   This is used to wait for a cown to be available for a particular behaviour.
+/// </remarks>
 class Request
 {
-    // Pointer to the next behaviour in the queue.
+    /// <summary>Pointer to the next behaviour in the queue.</summary>
     volatile Behaviour? next = null;
 
-    // Flag to indicate the associated behaviour to this request has been
-    // scheduled
+    /// <summary>
+    ///  Flag to indicate the associated behaviour to this request has been
+    ///  scheduled
+    /// </summary>
     volatile bool scheduled = false;
 
-    // The cown that this request is for.
+    /// <summary>
+    ///   The cown that this request is for.
+    /// </summary>
     CownBase target;
 
     public Request(CownBase t)
@@ -110,6 +148,15 @@ class Request
         target = t;
     }
 
+    /// <summary>
+    ///   Release the cown to the next behaviour.
+    /// </summary>
+    /// <remarks>
+    ///  This is called when the associated behaviour has completed, and thus can 
+    ///  allow any waiting behaviour to run.
+    /// 
+    ///  If there is no next behaviour, then the cown's `last` pointer is set to null.
+    /// </remarks>
     internal void Release()
     {
         // This code is effectively a MCS-style queue lock release.
@@ -120,19 +167,22 @@ class Request
                 return;
             }
 
+            // Wait for the next pointer to be set. The target.last is no longer us
+            // so this should not take long.
             var w = new SpinWait();
             while (next == null) { w.SpinOnce(); }
         }
         next.resolve_one();
     }
 
-    /**
-     *   Start the first phase of the 2PL enqueue operation.
-     *
-     *   This enqueues the request onto the cown.  It will only return
-     *   once any previous behaviour on this cown has finished enqueueing
-     *   on all its required cowns.  This ensures that the 2PL is obeyed.
-     */
+    /// <summary>
+    ///  Start the first phase of the 2PL enqueue operation.
+    /// </summary>
+    /// <remarks>
+    ///  This enqueues the request onto the cown.  It will only return
+    ///  once any previous behaviour on this cown has finished enqueueing
+    ///  on all its required cowns.  This ensures that the 2PL is obeyed.
+    /// </remarks>
     internal void StartEnqueue(Behaviour behaviour)
     {
         var prev = Interlocked.Exchange<Request?>(ref target.last, this);
@@ -149,18 +199,24 @@ class Request
         while (!prev.scheduled) { w.SpinOnce(); }
     }
 
-    /**
-     *  Finish the second phase of the 2PL enqueue operation.
-     *
-     *  This will set the scheduled flag, so subsequent behaviours on this
-     *  cown can continue the 2PL enqueue.
-     */
+    /// <summary>
+    ///   Finish the second phase of the 2PL enqueue operation.
+    /// </summary>
+    /// <remarks>
+    ///   This will set the scheduled flag, so subsequent behaviours on this
+    ///   cown can continue the 2PL enqueue.
+    /// </remarks>
     internal void FinishEnqueue()
     {
         scheduled = true;
     }
 }
 
+/// <summary>
+///   Cown that wraps a value.  The value should only be accessed inside
+///   a when() block.
+/// </summary>
+/// <typeparam name="T">The type that is wrapped by the cown.</typeparam>
 class Cown<T> : CownBase
 {
     internal T value;
@@ -168,9 +224,9 @@ class Cown<T> : CownBase
     public Cown(T v) { value = v; }
 }
 
-/**
- * This class provides the when() function for various arities.
- */
+/// <summary>
+///   This class proviated the when() function for various arities.
+/// </summary>
 class When
 {
     public static Action<Action> when()

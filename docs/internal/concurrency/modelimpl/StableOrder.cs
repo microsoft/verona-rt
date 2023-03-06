@@ -1,14 +1,20 @@
-/**
- *  Used to provide a stable order over object.
- * 
- *  Simple implementation that uses an atomic global counter at construction time.
- **/
+ /// <summary>
+ ///   Used to provide a stable order over object.
+ /// </summary>
+ /// <remarks>
+ /// Simple implementation that uses an atomic global counter at construction time.
+ /// </remarks>
 class StableOrder : IComparable
 {
-    // Source of unique identities. (Assuming not wrapping around a 64bit counter.)
+    /// <summary>
+    ///     Source of unique identities.
+    /// </summary>
+    /// <remarks>
+    ///  Assuming not wrapping around a 64bit counter.
+    /// </remarks>
     private static volatile int counter = 0;
 
-    // The identity of this object.
+    /// <summary>The identity of this object.</summary>
     private Int64 identity = 0;
 
     protected StableOrder()
