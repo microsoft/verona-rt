@@ -87,7 +87,7 @@ class Behaviour
         // Resolve the additional request. [See comment in the Constructor]
         // All the cowns may already be resolved, in which case, this will
         // schedule the task.
-        resolve_one();
+        ResolveOne();
 
         // Prevent runtime exiting until this has run.
         Terminator.Increment();
@@ -100,7 +100,7 @@ class Behaviour
     ///  Called when a request is at the head of the queue for a particular cown.
     ///  If this is the last request, then the thunk is scheduled.
     /// </remarks>
-    internal void resolve_one()
+    internal void ResolveOne()
     {
         if (Interlocked.Decrement(ref count) != 0)
             return;
@@ -172,7 +172,7 @@ class Request
             var w = new SpinWait();
             while (next == null) { w.SpinOnce(); }
         }
-        next.resolve_one();
+        next.ResolveOne();
     }
 
     /// <summary>
@@ -189,7 +189,7 @@ class Request
 
         if (prev == null)
         {
-            behaviour.resolve_one();
+            behaviour.ResolveOne();
             return;
         }
 
@@ -235,7 +235,7 @@ class When
     }
 
     public static Action<Action<T>> when<T>(Cown<T> t)
-    {
+    { 
         return f =>
         {
             var thunk = () => f(t.value);
