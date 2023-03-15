@@ -161,6 +161,9 @@ namespace verona::rt
     /// Used to allow ejection from other threads.
     AsymmetricLock lock;
 
+    /// Used to stop advance_is_sensible always firing.
+    size_t sensible_threshold = 0;
+
     /// Used to check that all threads are in a particular state.
     /// Forward reference due to requiring the LocalEpochPool to
     /// find all LocalEpochs.
@@ -271,7 +274,11 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       return Systematic::coin(2);
 #else
-      return *get_pressure(2) % 128 == 0;
+      constexpr size_t PERIOD = 128;
+      auto result = *get_pressure(2) > sensible_threshold; 
+      if (result)
+        sensible_threshold += PERIOD;
+      return result;
 #endif
     }
 
