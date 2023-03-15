@@ -277,7 +277,7 @@ namespace verona::rt
       return Systematic::coin(2);
 #else
       constexpr size_t PERIOD = 128;
-      auto result = *get_pressure(2) > sensible_threshold; 
+      auto result = *get_pressure(2) > sensible_threshold;
       if (result)
         sensible_threshold += PERIOD;
       return result;
