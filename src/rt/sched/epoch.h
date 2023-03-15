@@ -266,6 +266,8 @@ namespace verona::rt
       index = (index + 1) & 3;
 
       debug_check_count();
+
+      sensible_threshold = 0;
     }
 
     // TODO: Add a proper heuristic here
