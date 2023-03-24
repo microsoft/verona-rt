@@ -311,7 +311,6 @@ namespace verona::rt
 
       yield();
 
-
       // Work has become available, we shouldn't pause.
       if (check_for_work())
         return false;
@@ -412,7 +411,7 @@ namespace verona::rt
       // Our work will be visible to any thread at this point.
       if (SNMALLOC_LIKELY(local_unpause_epoch == local_pause_epoch))
         return false;
-      
+
       return unpause_slow();
     }
 
