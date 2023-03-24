@@ -44,7 +44,7 @@ namespace verona::rt
     template<typename Owner>
     friend class Noticeboard;
 
-    static constexpr uint64_t TSC_QUIESCENCE_TIMEOUT = 10'000'000;
+    static constexpr uint64_t TSC_QUIESCENCE_TIMEOUT = 1'000'000;
 
     Core* core = nullptr;
 #ifdef USE_SYSTEMATIC_TESTING
@@ -90,14 +90,10 @@ namespace verona::rt
       Logging::cout() << "Enqueue work " << w << Logging::endl;
 
       // If we already have a work item then we need to enqueue it.
-      if (next_work != nullptr)
-        core->q.enqueue(next_work);
+      return_next_work();
 
       // Save work item locally, this is used for batching.
       next_work = w;
-
-      if (Scheduler::get().unpause())
-        core->stats.unpause();
     }
 
     static inline void schedule_lifo(Core* c, Work* w)
@@ -128,6 +124,8 @@ namespace verona::rt
       {
         core->q.enqueue(next_work);
         next_work = nullptr;
+        if (Scheduler::get().unpause())
+          core->stats.unpause();
       }
     }
 
@@ -204,7 +202,7 @@ namespace verona::rt
 #endif
       size_t batch = BATCH_SIZE;
       Work* work;
-      while (work = get_work(batch))
+      while ((work = get_work(batch)))
       {
         Logging::cout() << "Schedule work " << work << Logging::endl;
 

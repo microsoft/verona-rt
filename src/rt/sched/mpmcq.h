@@ -76,14 +76,13 @@ namespace verona::rt
      */
     void enqueue(T* node)
     {
-      node->next_in_queue = nullptr;
-      std::atomic_thread_fence(std::memory_order_release);
-      auto b = back.exchange(node, std::memory_order_relaxed);
+      node->next_in_queue.store(nullptr, std::memory_order_relaxed);
+      auto b = back.exchange(node, std::memory_order_seq_cst);
       // The element we are writing into must have made its next pointer null
       // before exchanging into the structure, as the element cannot be removed
       // if it has a null next pointer, we know the write is safe.
       assert(b->next_in_queue == nullptr);
-      b->next_in_queue.store(node, std::memory_order_relaxed);
+      b->next_in_queue.store(node, std::memory_order_release);
     }
 
     void enqueue_front(T* node)
@@ -92,14 +91,16 @@ namespace verona::rt
 
       do
       {
-        node->next_in_queue = cmp.ptr();
+        node->next_in_queue.store(cmp.ptr(), std::memory_order_relaxed);
       } while (!cmp.store_conditional(node));
+      // TODO: Add this into the ABA protection.
+      // Requires snmalloc PR to add store_conditional to take a memory_order.
+      std::atomic_thread_fence(std::memory_order_seq_cst);
     }
 
     /**
      * Take an element from the queue.
      * This may spuriosly fail and surrounding code should be prepared for that.
-     *
      */
     T* dequeue(Alloc& alloc)
     {
@@ -117,7 +118,7 @@ namespace verona::rt
       {
         fnt = cmp.ptr();
         // This operation is memory safe due to holding the epoch.
-        next = fnt->next_in_queue;
+        next = fnt->next_in_queue.load(std::memory_order_acquire);
 
         // If next is nullptr, then this is most likely the next entry has not
         // been enqueued.  Due to the non-linearisable nature, there may be

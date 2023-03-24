@@ -305,17 +305,12 @@ namespace verona::rt
       yield();
 
       // Notify that we are trying to pause this thread.
-      pause_epoch++;
+      // Strong barrier to ensure that this is visible to all threads before
+      // we actually attempt to sleep.
+      pause_epoch.fetch_add(1, std::memory_order_seq_cst);
 
       yield();
 
-      // Strong barrier to ensure that this is visible to all threads before
-      // we actually attempt to sleep.
-#ifndef USE_SYSTEMATIC_TESTING
-      // This has no effect as execution is sequentialised with systematic
-      // testing. and causes bad performance.
-      Barrier::memory();
-#endif
 
       // Work has become available, we shouldn't pause.
       if (check_for_work())
@@ -368,30 +363,17 @@ namespace verona::rt
       return true;
     }
 
-    bool unpause()
+    SNMALLOC_SLOW_PATH
+    bool unpause_slow()
     {
-      Logging::cout() << "unpause()" << Logging::endl;
-
-      // Work should be added before checking for the runtime_pause.
-      Barrier::compiler();
-
-      // The order of these loads does not mater.
-      // They have been placed in the least helpful order to flush out bugs.
-      auto local_pause_epoch = pause_epoch.load(std::memory_order_relaxed);
-      yield();
-      auto local_unpause_epoch = unpause_epoch.load(std::memory_order_relaxed);
-
-      // Exit early if we think no threads are trying to sleep.
-      // Our work will be visible to any thread at this point.
-      if (local_unpause_epoch == local_pause_epoch)
-        return false;
+      auto local_unpause_epoch = unpause_epoch.load(std::memory_order_acquire);
 
       yield();
 
       // Ensure our reading of pause_epoch occurred after
       // unpaused_epoch.  This is required to ensure we are going to
       // monotonically increase unpause_epoch.
-      local_pause_epoch = pause_epoch.load(std::memory_order_acquire);
+      auto local_pause_epoch = pause_epoch.load(std::memory_order_acquire);
 
       yield();
 
@@ -411,6 +393,27 @@ namespace verona::rt
       }
       // Another thread won the CAS race, and is responsible for waking up.
       return false;
+    }
+
+    SNMALLOC_FAST_PATH
+    bool unpause()
+    {
+      Logging::cout() << "unpause()" << Logging::endl;
+      // Adding work using seq_cst so will be visible
+      // to other modifying the epochs.
+
+      // The order of these loads does not mater.
+      // They have been placed in the least helpful order to flush out bugs.
+      auto local_pause_epoch = pause_epoch.load(std::memory_order_relaxed);
+      yield();
+      auto local_unpause_epoch = unpause_epoch.load(std::memory_order_relaxed);
+
+      // Exit early if we think no threads are trying to sleep.
+      // Our work will be visible to any thread at this point.
+      if (SNMALLOC_LIKELY(local_unpause_epoch == local_pause_epoch))
+        return false;
+      
+      return unpause_slow();
     }
 
     void init_barrier()
