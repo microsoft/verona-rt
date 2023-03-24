@@ -575,7 +575,7 @@ namespace Logging
   inline static void enable_crash_logging()
   {
 #ifdef CI_BUILD
-    std::thread([](){
+    std::thread([]() {
       std::this_thread::sleep_for(std::chrono::seconds(390));
       printf("Timeout\n");
       abort();
