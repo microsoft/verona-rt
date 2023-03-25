@@ -184,6 +184,7 @@ namespace verona::rt
       node->o = p;
       dec_list.enqueue(node);
       (*get_to_dec(2))++;
+      (*get_pressure(2))++;
       debug_check_count();
     }
 
@@ -473,11 +474,8 @@ namespace verona::rt
     {
       refresh(a);
 
-      if (advance_is_sensible())
-      {
-        if (try_advance_global_epoch(advance_is_urgent()))
-          refresh(a);
-      }
+      if (try_advance_global_epoch(advance_is_urgent()))
+        refresh(a);
     }
 
     void debug_check_count()

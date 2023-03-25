@@ -18,6 +18,8 @@ void test_epoch()
   void* special = alloc.alloc(size);
   void* obj = nullptr;
 
+  std::cout << "Start epoch test" << std::endl;
+
   {
     MeasureTime m;
     m << "with_epoch   ";
