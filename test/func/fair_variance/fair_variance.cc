@@ -67,13 +67,13 @@ void assert_variance()
   check(min != 0 && max != 0);
   // printf("%f\n", (max - min)/max);
   // variance should be less than 15%
+  for (int i = 0; i < n_cowns; i++)
+  {
+    printf("cown[%d] took %f\n", i, elapsed_secs[i]);
+  }
   if ((max - min) / max > 0.15)
   {
     printf("(max - min) / max = %f\n", (max - min) / max);
-    for (int i = 0; i < n_cowns; i++)
-    {
-      printf("cown[%d] took %f\n", i, elapsed_secs[i]);
-    }
     printf("variance too large");
     check(false);
   }

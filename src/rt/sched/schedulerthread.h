@@ -90,14 +90,10 @@ namespace verona::rt
       Logging::cout() << "Enqueue work " << w << Logging::endl;
 
       // If we already have a work item then we need to enqueue it.
-      if (next_work != nullptr)
-        core->q.enqueue(next_work);
+      return_next_work();
 
       // Save work item locally, this is used for batching.
       next_work = w;
-
-      if (Scheduler::get().unpause())
-        core->stats.unpause();
     }
 
     static inline void schedule_lifo(Core* c, Work* w)
@@ -122,6 +118,68 @@ namespace verona::rt
       t->run_inner(startup, args...);
     }
 
+    void return_next_work()
+    {
+      if (next_work != nullptr)
+      {
+        core->q.enqueue(next_work);
+        next_work = nullptr;
+        if (Scheduler::get().unpause())
+          core->stats.unpause();
+      }
+    }
+
+    static constexpr size_t BATCH_SIZE = 100;
+    Work* get_work(size_t& batch)
+    {
+      // Check if we have a thread-local work item to use that is not subject
+      // to work stealing.  This is batched, and should not happen more than
+      // BATCH_SIZE times in a row.
+      if (next_work != nullptr && batch != 0)
+      {
+        batch--;
+        return std::exchange(next_work, nullptr);
+      }
+
+      batch = BATCH_SIZE;
+
+      if (core->should_steal_for_fairness)
+      {
+        // Can race with other threads on the same core.
+        // This is a heuristic, so we don't care.
+        core->should_steal_for_fairness = false;
+        auto work = try_steal();
+        if (work != nullptr)
+        {
+          return_next_work();
+          return work;
+        }
+      }
+
+      auto work = core->q.dequeue(*alloc);
+      if (work != nullptr)
+      {
+        return_next_work();
+        return work;
+      }
+
+      // Our queue is effectively empty, so this is like receiving a token,
+      // try a steal.
+      work = try_steal();
+      if (work != nullptr)
+      {
+        return_next_work();
+        return work;
+      }
+
+      if (next_work != nullptr)
+      {
+        return std::exchange(next_work, nullptr);
+      }
+
+      return steal();
+    }
+
     /**
      * Startup is supplied to initialise thread local state before the runtime
      * starts.
@@ -142,55 +200,10 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       Systematic::attach_systematic_thread(local_systematic);
 #endif
-      constexpr size_t BATCH_SIZE = 100;
       size_t batch = BATCH_SIZE;
-      while (true)
+      Work* work;
+      while ((work = get_work(batch)))
       {
-        Work* work = nullptr;
-
-        if (core->should_steal_for_fairness)
-        {
-          // Can race with other threads on the same core.
-          // This is a heuristic, so we don't care.
-          core->should_steal_for_fairness = false;
-          fast_steal(work);
-        }
-
-        // Check if we have a thread-local work item to use that is not subject
-        // to work stealing.  This is batched, and should not happen more than
-        // BATCH_SIZE times in a row.
-        if (next_work != nullptr)
-        {
-          if (work != nullptr || batch-- == 0)
-          {
-            core->q.enqueue(next_work);
-            batch = BATCH_SIZE;
-          }
-          else
-            work = next_work;
-          next_work = nullptr;
-        }
-        else
-        {
-          batch = BATCH_SIZE;
-        }
-
-        if (work == nullptr)
-        {
-          work = core->q.dequeue(*alloc);
-          if (work != nullptr)
-            Logging::cout() << "Pop work " << work << Logging::endl;
-        }
-
-        if (work == nullptr)
-        {
-          work = steal();
-
-          // If we can't steal, we are done.
-          if (work == nullptr)
-            break;
-        }
-
         Logging::cout() << "Schedule work " << work << Logging::endl;
 
         work->run();
@@ -216,11 +229,9 @@ namespace verona::rt
       Scheduler::local() = nullptr;
     }
 
-    bool fast_steal(Work*& result)
+    Work* try_steal()
     {
-      // auto cur_victim = victim;
-      Work* work;
-
+      Work* work = nullptr;
       // Try to steal from the victim thread.
       if (victim != core)
       {
@@ -231,15 +242,13 @@ namespace verona::rt
           // stats.steal();
           Logging::cout() << "Fast-steal work " << work << " from "
                           << victim->affinity << Logging::endl;
-          result = work;
-          return true;
         }
       }
 
-      // We were unable to steal, move to the next victim thread.
+      // Move to the next victim thread.
       victim = victim->next;
 
-      return false;
+      return work;
     }
 
     Work* steal()

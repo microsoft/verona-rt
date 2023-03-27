@@ -161,6 +161,9 @@ namespace verona::rt
     /// Used to allow ejection from other threads.
     AsymmetricLock lock;
 
+    /// Used to stop advance_is_sensible always firing.
+    size_t sensible_threshold = 0;
+
     /// Used to check that all threads are in a particular state.
     /// Forward reference due to requiring the LocalEpochPool to
     /// find all LocalEpochs.
@@ -181,6 +184,7 @@ namespace verona::rt
       node->o = p;
       dec_list.enqueue(node);
       (*get_to_dec(2))++;
+      (*get_pressure(2))++;
       debug_check_count();
     }
 
@@ -263,6 +267,8 @@ namespace verona::rt
       index = (index + 1) & 3;
 
       debug_check_count();
+
+      sensible_threshold = 0;
     }
 
     // TODO: Add a proper heuristic here
@@ -271,7 +277,11 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
       return Systematic::coin(2);
 #else
-      return *get_pressure(2) % 128 == 0;
+      constexpr size_t PERIOD = 128;
+      auto result = *get_pressure(2) > sensible_threshold;
+      if (result)
+        sensible_threshold += PERIOD;
+      return result;
 #endif
     }
 
@@ -464,11 +474,8 @@ namespace verona::rt
     {
       refresh(a);
 
-      if (advance_is_sensible())
-      {
-        if (try_advance_global_epoch(advance_is_urgent()))
-          refresh(a);
-      }
+      if (try_advance_global_epoch(advance_is_urgent()))
+        refresh(a);
     }
 
     void debug_check_count()
