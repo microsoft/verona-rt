@@ -81,7 +81,7 @@ namespace verona::rt
 
       Barrier::compiler();
 
-      if (external_lock.load(std::memory_order_relaxed))
+      if (external_lock.load(std::memory_order_acquire))
       {
         internal_acquire_rare();
       }
