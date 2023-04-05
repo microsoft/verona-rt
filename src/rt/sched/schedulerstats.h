@@ -138,6 +138,7 @@ namespace verona::rt
         // Output headers for initial dump
         // Keep in sync with data dump
         csv << "SchedulerStats"
+            << "Tag"
             << "DumpID"
             << "Steal"
             << "LIFO"
@@ -146,17 +147,18 @@ namespace verona::rt
             << "Cown count" << std::endl;
 
         csv << "BehaviourStats"
+            << "Tag"
             << "DumpID"
             << "Cowns"
             << "Count" << std::endl;
       }
 
-      csv << "SchedulerStats" << dumpid << steal_count << lifo_count
+      csv << "SchedulerStats" << get_tag() << dumpid << steal_count << lifo_count
           << pause_count << unpause_count << cown_count << std::endl;
 
       for (size_t i = 0; i < behaviour_count.size(); i++)
         if (behaviour_count[i] != 0)
-          csv << "BehaviourStats" << dumpid << i << behaviour_count[i]
+          csv << "BehaviourStats" << get_tag() << dumpid << i << behaviour_count[i]
               << std::endl;
 
       steal_count = 0;
@@ -181,6 +183,12 @@ namespace verona::rt
     {
       static SchedulerStats global;
       return global;
+    }
+
+    static const char*& get_tag()
+    {
+      static const char* tag = "";
+      return tag;
     }
   };
 } // namespace verona::rt
