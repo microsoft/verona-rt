@@ -185,9 +185,9 @@ namespace verona::rt
       return global;
     }
 
-    static const char*& get_tag()
+    static std::string& get_tag()
     {
-      static const char* tag = "";
+      static std::string tag = "";
       return tag;
     }
   };
