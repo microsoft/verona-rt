@@ -108,6 +108,8 @@ namespace verona::cpp
     template<typename F>
     void operator<<(F&& f)
     {
+      Scheduler::stats().behaviour(sizeof...(Args));
+
       if constexpr (sizeof...(Args) == 0)
       {
         verona::rt::schedule_lambda(std::forward<F>(f));

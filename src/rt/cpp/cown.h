@@ -367,6 +367,7 @@ namespace verona::cpp
       "Cannot make a cown of const type as this conflicts with read acquire "
       "encoding trick. If we hit this assertion, raise an issue explaining the "
       "use case.");
+    Scheduler::stats().cown();
     return cown_ptr<T>(new ActualCown<T>(std::forward<Args>(ts)...));
   }
 
