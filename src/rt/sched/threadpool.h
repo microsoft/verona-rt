@@ -269,6 +269,8 @@ namespace verona::rt
       Epoch::flush(ThreadAlloc::get());
 
       core_pool.clear();
+
+      SchedulerStats::dump_global(std::cout, incarnation - 2);
     }
 
     static bool debug_not_running()
@@ -438,6 +440,15 @@ namespace verona::rt
         barrier_incarnation++;
         h.unpause_all();
       }
+    }
+
+  public:
+    static SchedulerStats& stats()
+    {
+      auto* l = local();
+      if (l != nullptr)
+        return l->get_stats();
+      return SchedulerStats::get_global();
     }
   };
 } // namespace verona::rt

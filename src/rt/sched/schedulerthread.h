@@ -309,6 +309,14 @@ namespace verona::rt
 
       return nullptr;
     }
+
+    SchedulerStats& get_stats()
+    {
+      if (core != nullptr)
+        return core->stats;
+
+      return SchedulerStats::get_global();
+    }
   };
 
   using Scheduler = ThreadPool<SchedulerThread>;
