@@ -148,15 +148,15 @@ namespace verona::rt
 
         for (size_t i = 0; i < behaviour_count.size(); i++)
           csv << i;
-            
+
         csv << std::endl;
       }
 
-      csv << "SchedulerStats" << get_tag() << dumpid << steal_count << lifo_count
-          << pause_count << unpause_count << cown_count;
-          
+      csv << "SchedulerStats" << get_tag() << dumpid << steal_count
+          << lifo_count << pause_count << unpause_count << cown_count;
+
       for (size_t i = 0; i < behaviour_count.size(); i++)
-        csv << behaviour_count[i];    
+        csv << behaviour_count[i];
       csv << std::endl;
 
       steal_count = 0;
@@ -167,7 +167,7 @@ namespace verona::rt
 
       for (size_t i = 0; i < behaviour_count.size(); i++)
         behaviour_count[i] = 0;
-#endif  
+#endif
     }
 
     static void dump_global(std::ostream& o, uint64_t dumpid)
