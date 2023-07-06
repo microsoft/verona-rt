@@ -330,8 +330,8 @@ namespace verona::cpp
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&...);
 
-    template<typename...>
-    friend class When;
+    template<typename F, typename... Args2>
+    friend class WhenBuilder;
   };
 
   /* A cown_ptr<const T> is used to mark that the cown is being accessed as
@@ -402,9 +402,9 @@ namespace verona::cpp
   template<typename T>
   class acquired_cown
   {
-    /// Needed to build one from inside a `when`
-    template<typename...>
-    friend class When;
+    /// Needed to build one from inside a `WhenBuilder`
+    template<typename F, typename... Args2>
+    friend class WhenBuilder;
 
   private:
     /// Underlying cown that has been acquired.

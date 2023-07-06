@@ -94,7 +94,7 @@ void test_body()
 
 void test1()
 {
-  when() << test_body;
+  when() << [](){ test_body(); };
 }
 
 int verona_main(SystematicTestHarness& harness)

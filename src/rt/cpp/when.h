@@ -25,8 +25,11 @@ namespace verona::cpp
   public:
     Access(const cown_ptr<T>& c) : t(c.allocated_cown) {}
 
-    template<typename... Args>
-    friend class When;
+    template<typename F, typename... Args>
+    friend class WhenBuilder;
+
+    //template<typename... Args>
+    //friend class When;
   };
 
   template<typename... Args>
@@ -52,7 +55,6 @@ namespace verona::cpp
     public:
     WhenBuilderBatch(Args&&... args) : when_batch(std::forward<Args>(args)...)
     {
-      std::cout << "Calling when builder batch constructor\n";
       mark_as_batch();
     }
 
@@ -60,7 +62,6 @@ namespace verona::cpp
 
     ~WhenBuilderBatch()
     {
-      std::cout << "Calling when builder batch destructor\n";
     }
 
     // FIXME: Overload + operator for WhenBuilderBatch + WhenBuilder
@@ -69,81 +70,19 @@ namespace verona::cpp
   template<typename F, typename... Args>
   class WhenBuilder
   {
-    template<typename... Args2>
-    friend class WhenBuilderBatch;
-
-    std::tuple<Access<Args>...> cown_tuple;
-    F f;
-    bool part_of_batch;
-
-  public:
-    WhenBuilder(F&& f_) : f(f_), part_of_batch(false)
-    {
-      std::cout << "Calling when builder constructor fn\n";
-    }
-
-    WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
-    : f(f_), cown_tuple(cown_tuple_), part_of_batch(false)
-    {
-      std::cout << "Calling when builder constructor complex\n";
-    }
-
-    WhenBuilder(WhenBuilder&& o) : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
-    {
-      std::cout << "Calling when builder move constructor\n";
-    }
-
-    WhenBuilder(const WhenBuilder&) = delete;
-
-    ~WhenBuilder()
-    {
-      std::cout << "Calling when builder destructor\n";
-      if (part_of_batch)
-        std::cout << "part of batch. Don't do anything\n";
-      else
-        std::cout << "Not part of batch. Do something\n";
-
-    }
-
-    template<typename B>
-    auto operator+(B&& wb)
-    {
-      return WhenBuilderBatch(std::move(*this), std::move(wb));
-    }
-  };
-
-  /**
-   * Class for staging the when creation.
-   *
-   * Do not call directly use `when`
-   *
-   * This provides an operator << to apply the closure.  This allows the
-   * argument order to be more sensible, as variadic arguments have to be last.
-   *
-   *   when (cown1, ..., cownn) << closure;
-   *
-   * Allows the variadic number of cowns to occur before the closure.
-   */
-  template<typename... Args>
-  class When
-  {
     template<class T>
     struct is_read_only : std::false_type
     {};
     template<class T>
     struct is_read_only<Access<const T>> : std::true_type
     {};
-
-    // Note only requires friend when Args2 == Args
-    // but C++ doesn't like this.
     template<typename... Args2>
-    friend auto when(Args2&&... args);
 
-    /**
-     * Internally uses AcquiredCown.  The cown is only acquired after the
-     * behaviour is scheduled.
-     */
+    friend class WhenBuilderBatch;
+
     std::tuple<Access<Args>...> cown_tuple;
+    F f;
+    bool part_of_batch;
 
     /**
      * This uses template programming to turn the std::tuple into a C style
@@ -170,8 +109,6 @@ namespace verona::cpp
       }
     }
 
-    When(Access<Args>... args) : cown_tuple(args...) {}
-
     /**
      * Converts a single `cown_ptr` into a `acquired_cown`.
      *
@@ -184,19 +121,27 @@ namespace verona::cpp
       return acquired_cown<C>(*c.t);
     }
 
-  public:
-    /**
-     * Applies the closure to schedule the behaviour on the set of cowns.
-     */
-    template<typename F>
-    void operator<<(F&& f)
-    {
-      Scheduler::stats().behaviour(sizeof...(Args));
 
-      if constexpr (sizeof...(Args) == 0)
-      {
-        verona::rt::schedule_lambda(std::forward<F>(f));
-      }
+  public:
+    WhenBuilder(F&& f_) : f(f_), part_of_batch(false)
+    {
+    }
+
+    WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
+    : f(std::move(f_)), cown_tuple(cown_tuple_), part_of_batch(false)
+    {
+    }
+
+    WhenBuilder(WhenBuilder&& o) : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
+    {
+    }
+
+    WhenBuilder(const WhenBuilder&) = delete;
+
+    ~WhenBuilder()
+    {
+      if (part_of_batch)
+        std::cout << "part of batch. Don't do anything\n";
       else
       {
         verona::rt::Request requests[sizeof...(Args)];
@@ -216,46 +161,62 @@ namespace verona::cpp
             std::apply(lift_f, cown_tuple);
           });
       }
+
     }
 
+    template<typename B>
+    auto operator+(B&& wb)
+    {
+      return WhenBuilderBatch(std::move(*this), std::move(wb));
+    }
+  };
+
+  /**
+   * Class for staging the when creation.
+   *
+   * Do not call directly use `when`
+   *
+   * This provides an operator << to apply the closure.  This allows the
+   * argument order to be more sensible, as variadic arguments have to be last.
+   *
+   *   when (cown1, ..., cownn) << closure;
+   *
+   * Allows the variadic number of cowns to occur before the closure.
+   */
+  template<typename... Args>
+  class When
+  {
+    // Note only requires friend when Args2 == Args
+    // but C++ doesn't like this.
+    template<typename... Args2>
+    friend auto when(Args2&&... args);
+
+    /**
+     * Internally uses AcquiredCown.  The cown is only acquired after the
+     * behaviour is scheduled.
+     */
+    std::tuple<Access<Args>...> cown_tuple;
+
+    When(Access<Args>... args) : cown_tuple(args...) {}
+
+  public:
     template<typename F>
-    WhenBuilder<F, Args...> operator>>(F&& f)
+    WhenBuilder<F, Args...> operator<<(F&& f)
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
       if constexpr (sizeof...(Args) == 0)
       {
-        std::cout << "Construct empty when builder\n";
         return WhenBuilder(std::move(f));
       }
       else
       {
-        std::cout << "Construct non-empty when builder\n";
-#if 0
-        verona::rt::Request requests[sizeof...(Args)];
-        array_assign(requests);
-
-        verona::rt::schedule_lambda(
-          sizeof...(Args),
-          requests,
-          [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f =
-                             std::forward<F>(f)](Access<Args>... args) mutable {
-              f(access_to_acquired<Args>(args)...);
-            };
-
-            std::apply(lift_f, cown_tuple);
-          });
-#endif
         return WhenBuilder(std::move(f), std::move(cown_tuple));
       }
     }
 
     ~When()
     {
-      std::cout << "Destructor run\n";
     }
   };
 
