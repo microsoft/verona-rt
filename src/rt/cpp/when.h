@@ -29,6 +29,89 @@ namespace verona::cpp
     friend class When;
   };
 
+  template<typename... Args>
+  class WhenBuilderBatch
+  {
+    std::tuple<Args&&...> when_batch;
+
+    template<size_t index = 0>
+    void mark_as_batch(void)
+    {
+      if constexpr (index >= sizeof...(Args))
+      {
+        return;
+      }
+      else
+      {
+        auto&& w = std::get<index>(when_batch);
+        w.part_of_batch = true;
+        mark_as_batch<index + 1>();
+      }
+    }
+
+    public:
+    WhenBuilderBatch(Args&&... args) : when_batch(std::forward<Args>(args)...)
+    {
+      std::cout << "Calling when builder batch constructor\n";
+      mark_as_batch();
+    }
+
+    WhenBuilderBatch(const WhenBuilderBatch&) = delete;
+
+    ~WhenBuilderBatch()
+    {
+      std::cout << "Calling when builder batch destructor\n";
+    }
+
+    // FIXME: Overload + operator for WhenBuilderBatch + WhenBuilder
+  };
+
+  template<typename F, typename... Args>
+  class WhenBuilder
+  {
+    template<typename... Args2>
+    friend class WhenBuilderBatch;
+
+    std::tuple<Access<Args>...> cown_tuple;
+    F f;
+    bool part_of_batch;
+
+  public:
+    WhenBuilder(F&& f_) : f(f_), part_of_batch(false)
+    {
+      std::cout << "Calling when builder constructor fn\n";
+    }
+
+    WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
+    : f(f_), cown_tuple(cown_tuple_), part_of_batch(false)
+    {
+      std::cout << "Calling when builder constructor complex\n";
+    }
+
+    WhenBuilder(WhenBuilder&& o) : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
+    {
+      std::cout << "Calling when builder move constructor\n";
+    }
+
+    WhenBuilder(const WhenBuilder&) = delete;
+
+    ~WhenBuilder()
+    {
+      std::cout << "Calling when builder destructor\n";
+      if (part_of_batch)
+        std::cout << "part of batch. Don't do anything\n";
+      else
+        std::cout << "Not part of batch. Do something\n";
+
+    }
+
+    template<typename B>
+    auto operator+(B&& wb)
+    {
+      return WhenBuilderBatch(std::move(*this), std::move(wb));
+    }
+  };
+
   /**
    * Class for staging the when creation.
    *
@@ -133,6 +216,46 @@ namespace verona::cpp
             std::apply(lift_f, cown_tuple);
           });
       }
+    }
+
+    template<typename F>
+    WhenBuilder<F, Args...> operator>>(F&& f)
+    {
+      Scheduler::stats().behaviour(sizeof...(Args));
+
+      if constexpr (sizeof...(Args) == 0)
+      {
+        std::cout << "Construct empty when builder\n";
+        return WhenBuilder(std::move(f));
+      }
+      else
+      {
+        std::cout << "Construct non-empty when builder\n";
+#if 0
+        verona::rt::Request requests[sizeof...(Args)];
+        array_assign(requests);
+
+        verona::rt::schedule_lambda(
+          sizeof...(Args),
+          requests,
+          [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
+            /// Effectively converts ActualCown<T>... to
+            /// acquired_cown... .
+            auto lift_f = [f =
+                             std::forward<F>(f)](Access<Args>... args) mutable {
+              f(access_to_acquired<Args>(args)...);
+            };
+
+            std::apply(lift_f, cown_tuple);
+          });
+#endif
+        return WhenBuilder(std::move(f), std::move(cown_tuple));
+      }
+    }
+
+    ~When()
+    {
+      std::cout << "Destructor run\n";
     }
   };
 
