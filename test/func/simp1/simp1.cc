@@ -25,7 +25,9 @@ void test_body()
 
   when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 
-  //(when(log) >> [=](auto) { Logging::cout() << "log" << Logging::endl; }) + (when() >> [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  when() << [=]() { std::cout << "Foo empty!\n"; };
+
+  (when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) + (when() << [=]() { Logging::cout() << "log" << Logging::endl; });
 
   std::cout << "Foo\n";
 }

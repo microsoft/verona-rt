@@ -3,6 +3,7 @@
 #pragma once
 
 #include "cown.h"
+#include "../sched/behaviour.h"
 
 #include <functional>
 #include <tuple>
@@ -52,6 +53,23 @@ namespace verona::cpp
       }
     }
 
+    template<size_t index = 0>
+    void create_behaviour(Behaviour **barray)
+    {
+      if constexpr (index >= sizeof...(Args))
+      {
+        return;
+      }
+      else
+      {
+        auto&& w = std::get<index>(when_batch);
+        // Add the behaviour here
+        auto t = w.to_tuple();
+        barray[index] = Behaviour::prepare_to_schedule<typename std::remove_reference<decltype(std::get<2>(t))>::type>(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+        mark_as_batch<index + 1>();
+      }
+    }
+
     public:
     WhenBuilderBatch(Args&&... args) : when_batch(std::forward<Args>(args)...)
     {
@@ -62,6 +80,9 @@ namespace verona::cpp
 
     ~WhenBuilderBatch()
     {
+      std::cout << "Need to process a batch schedule. Will populate an array of bodies...\n";
+      Behaviour *barray[std::tuple_size<decltype(when_batch)>{}];
+      create_behaviour(barray);
     }
 
     // FIXME: Overload + operator for WhenBuilderBatch + WhenBuilder
@@ -121,27 +142,55 @@ namespace verona::cpp
       return acquired_cown<C>(*c.t);
     }
 
+    auto to_tuple()
+    {
+      if constexpr (sizeof...(Args) == 0)
+      {
+        return std::make_tuple(std::forward<F>(f));
+      }
+      else
+      {
+        verona::rt::Request requests[sizeof...(Args)];
+        array_assign(requests);
+
+        return std::make_tuple(sizeof...(Args),
+          requests,
+          [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
+            /// Effectively converts ActualCown<T>... to
+            /// acquired_cown... .
+            auto lift_f = [f =
+                             std::forward<F>(f)](Access<Args>... args) mutable {
+              f(access_to_acquired<Args>(args)...);
+            };
+
+            std::apply(lift_f, cown_tuple);
+          });
+      }
+    }
+
 
   public:
-    WhenBuilder(F&& f_) : f(f_), part_of_batch(false)
-    {
-    }
+    WhenBuilder(F&& f_) : f(std::move(f_)), part_of_batch(false)
+    {}
 
     WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
     : f(std::move(f_)), cown_tuple(cown_tuple_), part_of_batch(false)
-    {
-    }
+    {}
 
     WhenBuilder(WhenBuilder&& o) : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
-    {
-    }
+    {}
 
     WhenBuilder(const WhenBuilder&) = delete;
 
     ~WhenBuilder()
     {
       if (part_of_batch)
-        std::cout << "part of batch. Don't do anything\n";
+        return;
+
+      if constexpr (sizeof...(Args) == 0)
+      {
+        verona::rt::schedule_lambda(std::forward<F>(f));
+      }
       else
       {
         verona::rt::Request requests[sizeof...(Args)];
@@ -161,7 +210,6 @@ namespace verona::cpp
             std::apply(lift_f, cown_tuple);
           });
       }
-
     }
 
     template<typename B>
@@ -207,7 +255,7 @@ namespace verona::cpp
 
       if constexpr (sizeof...(Args) == 0)
       {
-        return WhenBuilder(std::move(f));
+        return WhenBuilder(std::forward<F>(f));
       }
       else
       {
@@ -216,8 +264,7 @@ namespace verona::cpp
     }
 
     ~When()
-    {
-    }
+    {}
   };
 
   /**

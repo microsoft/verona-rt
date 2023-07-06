@@ -81,6 +81,24 @@ namespace verona::rt
      * caller is transfering ownership of a reference count on each cown to
      * this method.
      **/
+
+    template<
+      class Be,
+      TransferOwnership transfer = NoTransfer,
+      typename... Args>
+    static Behaviour* prepare_to_schedule(size_t count, Request* requests, Args&&... args)
+    {
+      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
+
+      auto* slots = body->get_slots();
+      for (size_t i = 0; i < count; i++)
+      {
+        new (&slots[i]) Slot(requests[i].cown());
+      }
+
+      return body;
+    }
+
     template<
       class Be,
       TransferOwnership transfer = NoTransfer,
@@ -90,13 +108,7 @@ namespace verona::rt
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
-
-      auto* slots = body->get_slots();
-      for (size_t i = 0; i < count; i++)
-      {
-        new (&slots[i]) Slot(requests[i].cown());
-      }
+      auto body = prepare_to_schedule<Be, transfer, Args...>(count, requests, std::forward<Args>(args)...);
 
       BehaviourCore::schedule<transfer>(body);
     }
