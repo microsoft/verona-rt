@@ -86,7 +86,8 @@ namespace verona::rt
       class Be,
       TransferOwnership transfer = NoTransfer,
       typename... Args>
-    static Behaviour* prepare_to_schedule(size_t count, Request* requests, Args&&... args)
+    static Behaviour*
+    prepare_to_schedule(size_t count, Request* requests, Args&&... args)
     {
       auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
 
@@ -108,7 +109,8 @@ namespace verona::rt
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto body = prepare_to_schedule<Be, transfer, Args...>(count, requests, std::forward<Args>(args)...);
+      auto body = prepare_to_schedule<Be, transfer, Args...>(
+        count, requests, std::forward<Args>(args)...);
 
       BehaviourCore::schedule<transfer>(body);
     }

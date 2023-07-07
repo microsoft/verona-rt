@@ -28,9 +28,6 @@ namespace verona::cpp
 
     template<typename F, typename... Args>
     friend class WhenBuilder;
-
-    //template<typename... Args>
-    //friend class When;
   };
 
   template<typename... Args>
@@ -54,7 +51,7 @@ namespace verona::cpp
     }
 
     template<size_t index = 0>
-    void create_behaviour(Behaviour **barray)
+    void create_behaviour(BehaviourCore** barray)
     {
       if constexpr (index >= sizeof...(Args))
       {
@@ -65,12 +62,14 @@ namespace verona::cpp
         auto&& w = std::get<index>(when_batch);
         // Add the behaviour here
         auto t = w.to_tuple();
-        barray[index] = Behaviour::prepare_to_schedule<typename std::remove_reference<decltype(std::get<2>(t))>::type>(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+        barray[index] = Behaviour::prepare_to_schedule<
+          typename std::remove_reference<decltype(std::get<2>(t))>::type>(
+          std::get<0>(t), std::get<1>(t), std::get<2>(t));
         mark_as_batch<index + 1>();
       }
     }
 
-    public:
+  public:
     WhenBuilderBatch(Args&&... args) : when_batch(std::forward<Args>(args)...)
     {
       mark_as_batch();
@@ -80,9 +79,12 @@ namespace verona::cpp
 
     ~WhenBuilderBatch()
     {
-      std::cout << "Need to process a batch schedule. Will populate an array of bodies...\n";
-      Behaviour *barray[std::tuple_size<decltype(when_batch)>{}];
+      std::cout << "Need to process a batch schedule. Will populate an array "
+                   "of bodies...\n";
+      BehaviourCore* barray[sizeof...(Args)];
       create_behaviour(barray);
+
+      BehaviourCore::schedule_many(barray, sizeof...(Args));
     }
 
     // FIXME: Overload + operator for WhenBuilderBatch + WhenBuilder
@@ -153,7 +155,8 @@ namespace verona::cpp
         verona::rt::Request requests[sizeof...(Args)];
         array_assign(requests);
 
-        return std::make_tuple(sizeof...(Args),
+        return std::make_tuple(
+          sizeof...(Args),
           requests,
           [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
             /// Effectively converts ActualCown<T>... to
@@ -168,16 +171,15 @@ namespace verona::cpp
       }
     }
 
-
   public:
-    WhenBuilder(F&& f_) : f(std::move(f_)), part_of_batch(false)
-    {}
+    WhenBuilder(F&& f_) : f(std::move(f_)), part_of_batch(false) {}
 
     WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
     : f(std::move(f_)), cown_tuple(cown_tuple_), part_of_batch(false)
     {}
 
-    WhenBuilder(WhenBuilder&& o) : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
+    WhenBuilder(WhenBuilder&& o)
+    : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
     {}
 
     WhenBuilder(const WhenBuilder&) = delete;
@@ -263,8 +265,7 @@ namespace verona::cpp
       }
     }
 
-    ~When()
-    {}
+    ~When() {}
   };
 
   /**

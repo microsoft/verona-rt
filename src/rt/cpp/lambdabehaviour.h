@@ -36,16 +36,6 @@ namespace verona::rt
     Scheduler::schedule(w);
   }
 
-  template<typename... Args>
-  static void schedule_lambda_many(Args... args)
-  {
-    (
-     [&](auto&& input) {
-     std::cout << "There are " << std::get<0>(input) << "cowns in this request\n";
-     }(std::forward<Args>(args)),
-     ...);
-  }
-
   // TODO super minimal version initially, just to get the tests working.
   // Should be expanded to cover multiple cowns.
   template<typename T>
