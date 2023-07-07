@@ -46,6 +46,12 @@ namespace verona::cpp
       {
         auto&& w = std::get<index>(when_batch);
         w.part_of_batch = true;
+
+        static_assert(
+          std::tuple_size<decltype(w.cown_tuple)>{} > 0,
+          "It does not make sense to atomically schedule a behaviour without a "
+          "cown dependency");
+
         mark_as_batch<index + 1>();
       }
     }
@@ -65,7 +71,7 @@ namespace verona::cpp
         barray[index] = Behaviour::prepare_to_schedule<
           typename std::remove_reference<decltype(std::get<2>(t))>::type>(
           std::get<0>(t), std::get<1>(t), std::get<2>(t));
-        mark_as_batch<index + 1>();
+        create_behaviour<index + 1>(barray);
       }
     }
 
@@ -79,8 +85,6 @@ namespace verona::cpp
 
     ~WhenBuilderBatch()
     {
-      std::cout << "Need to process a batch schedule. Will populate an array "
-                   "of bodies...\n";
       BehaviourCore* barray[sizeof...(Args)];
       create_behaviour(barray);
 
@@ -105,6 +109,7 @@ namespace verona::cpp
 
     std::tuple<Access<Args>...> cown_tuple;
     F f;
+    verona::rt::Request requests[sizeof...(Args)];
     bool part_of_batch;
 
     /**
@@ -152,7 +157,6 @@ namespace verona::cpp
       }
       else
       {
-        verona::rt::Request requests[sizeof...(Args)];
         array_assign(requests);
 
         return std::make_tuple(

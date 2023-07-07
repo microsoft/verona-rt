@@ -20,14 +20,22 @@ void test_body()
   Logging::cout() << "test_body()" << Logging::endl;
 
   auto log = make_cown<Body>();
+  auto log2 = make_cown<Body>();
 
-  (when(log) << [=](auto) {
-   for (int i=0;i<1000;i++)
-    std::cout << "Behaviour 1\n";
+  (when(log) <<
+   [=](auto b) {
+     for (int i = 0; i < 10; i++)
+     {
+       std::cout << "Behaviour 1\n";
+       sleep(1);
+     }
    }) +
-   (when() << [=]() {
-   for (int i=0;i<1000;i++)
-    std::cout << "Behaviour 2\n";
+    (when(log2) << [=](auto) {
+      for (int i = 0; i < 10; i++)
+      {
+        std::cout << "Behaviour 2\n";
+        sleep(1);
+      }
     });
 
   std::cout << "Foo\n";

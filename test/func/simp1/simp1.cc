@@ -22,14 +22,6 @@ void test_body()
   auto log = make_cown<Body>();
 
   when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-
-  when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-
-  when() << [=]() { std::cout << "Foo empty!\n"; };
-
-  (when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) + (when() << [=]() { Logging::cout() << "log" << Logging::endl; });
-
-  std::cout << "Foo\n";
 }
 
 int main(int argc, char** argv)

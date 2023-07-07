@@ -367,23 +367,30 @@ namespace verona::rt
       for (size_t i = 0; i < body_count; i++)
         count += bodies[i]->count;
 
+      // Execution count - we will remove at least
+      // one from the execution count on finishing phase 2 of the
+      // 2PL. This ensures that the behaviour cannot be
+      // deallocated until we finish phase 2.
+      StackArray<size_t> ec(body_count);
+      for (size_t i = 0; i < body_count; i++)
+        ec[i] = 1;
+
       // Really want a dynamically sized stack allocation here.
-      StackArray<std::tuple<size_t, Slot*, BehaviourCore*>> indexes(count);
+      StackArray<std::tuple<size_t, Slot*>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
       {
         auto slots = bodies[i]->get_slots();
         for (size_t j = 0; j < bodies[i]->count; j++)
         {
-          std::get<0>(indexes[idx]) = idx;
+          std::get<0>(indexes[idx]) = i;
           std::get<1>(indexes[idx]) = &slots[j];
-          std::get<2>(indexes[idx]) = bodies[i];
           idx++;
         }
       }
       auto compare = [](
-                       const std::tuple<size_t, Slot*, BehaviourCore*> i,
-                       const std::tuple<size_t, Slot*, BehaviourCore*> j) {
+                       const std::tuple<size_t, Slot*> i,
+                       const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
         return std::get<1>(i)->cown->id() > std::get<1>(j)->cown->id();
 #else
@@ -394,19 +401,14 @@ namespace verona::rt
       if (count > 1)
         std::sort(indexes.get(), indexes.get() + count, compare);
 
-      // Execution count - we will remove at least
-      // one from the execution count on finishing phase 2 of the
-      // 2PL. This ensures that the behaviour cannot be
-      // deallocated until we finish phase 2.
-      size_t ec = 1;
-
       // First phase - Acquire phase.
       for (size_t i = 0; i < count; i++)
       {
         auto cown = std::get<1>(indexes[i])->cown;
-        auto body = std::get<2>(indexes[i]);
+        auto body = bodies[std::get<0>(indexes[i])];
         auto prev = cown->last_slot.exchange(
           std::get<1>(indexes[i]), std::memory_order_acq_rel);
+        auto* ec_ptr = &ec[std::get<0>(indexes[i])];
 
         yield();
 
@@ -414,7 +416,7 @@ namespace verona::rt
         {
           Logging::cout() << "Acquired cown: " << cown << " for behaviour "
                           << body << Logging::endl;
-          ec++;
+          (*ec_ptr)++;
           if (transfer == NoTransfer)
           {
             yield();
@@ -462,7 +464,7 @@ namespace verona::rt
       for (size_t i = 0; i < body_count; i++)
       {
         yield();
-        bodies[i]->resolve(ec);
+        bodies[i]->resolve(ec[i]);
       }
     }
 
