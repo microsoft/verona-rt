@@ -402,6 +402,7 @@ namespace verona::rt
         std::sort(indexes.get(), indexes.get() + count, compare);
 
       // First phase - Acquire phase.
+      Cown *prev_cown = nullptr;
       for (size_t i = 0; i < count; i++)
       {
         auto cown = std::get<1>(indexes[i])->cown;
@@ -422,6 +423,7 @@ namespace verona::rt
             yield();
             Cown::acquire(cown);
           }
+          prev_cown = cown;
           continue;
         }
 
@@ -429,11 +431,15 @@ namespace verona::rt
                         << " for behaviour " << body << Logging::endl;
 
         yield();
-        while (prev->is_wait())
+        if (prev_cown != cown)
         {
-          // Wait for the previous behaviour to finish adding to first phase.
-          Aal::pause();
-          Systematic::yield_until([prev]() { return !prev->is_wait(); });
+          while (prev->is_wait())
+          {
+            // Wait for the previous behaviour to finish adding to first phase.
+            Aal::pause();
+            Systematic::yield_until([prev]() { return !prev->is_wait(); });
+            std::cout << "blocked here\n";
+          }
         }
 
         if (transfer == YesTransfer)
@@ -444,6 +450,8 @@ namespace verona::rt
         yield();
         prev->set_behaviour(body);
         yield();
+
+        prev_cown = cown;
       }
 
       // Second phase - Release phase.
@@ -458,7 +466,8 @@ namespace verona::rt
         auto slot = std::get<1>(indexes[i]);
         Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
-        slot->set_ready();
+        if (slot->is_wait())
+          slot->set_ready();
       }
 
       for (size_t i = 0; i < body_count; i++)
