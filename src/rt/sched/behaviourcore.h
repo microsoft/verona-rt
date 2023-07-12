@@ -376,7 +376,7 @@ namespace verona::rt
         ec[i] = 1;
 
       // Really want a dynamically sized stack allocation here.
-      StackArray<std::tuple<size_t, Slot*>> indexes(count);
+      StackArray<std::tuple<size_t, Slot*, size_t>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
       {
@@ -385,20 +385,21 @@ namespace verona::rt
         {
           std::get<0>(indexes[idx]) = i;
           std::get<1>(indexes[idx]) = &slots[j];
+          std::get<2>(indexes[idx]) = idx;
           idx++;
         }
       }
       auto compare = [](
-                       const std::tuple<size_t, Slot*> i,
-                       const std::tuple<size_t, Slot*> j) {
+                       const std::tuple<size_t, Slot*, size_t> i,
+                       const std::tuple<size_t, Slot*, size_t> j) {
 #ifdef USE_SYSTEMATIC_TESTING
         return std::get<1>(i)->cown->id() == std::get<1>(j)->cown->id() ?
-          i > j :
-          std::get<1>(i)->cown->id() > std::get<1>(j)->cown->id();
+          std::get<2>(i) < std::get<2>(j) :
+          std::get<1>(i)->cown->id() < std::get<1>(j)->cown->id();
 #else
         return std::get<1>(i)->cown == std::get<1>(j)->cown ?
-          i > j :
-          std::get<1>(i)->cown > std::get<1>(j)->cown;
+          std::get<2>(i) < std::get<2>(j) :
+          std::get<1>(i)->cown < std::get<1>(j)->cown;
 #endif
       };
 
@@ -406,28 +407,47 @@ namespace verona::rt
         std::sort(indexes.get(), indexes.get() + count, compare);
 
       // First phase - Acquire phase.
-      Cown* prev_cown = nullptr;
-      for (size_t i = 0; i < count; i++)
+      size_t i = 0;
+      while (i < count)
       {
         auto cown = std::get<1>(indexes[i])->cown;
         auto body = bodies[std::get<0>(indexes[i])];
-        auto prev = cown->last_slot.exchange(
-          std::get<1>(indexes[i]), std::memory_order_acq_rel);
-        auto* ec_ptr = &ec[std::get<0>(indexes[i])];
+        auto last_slot = std::get<1>(indexes[i]);
+        auto first_body = body;
+        size_t ii = i;
+        while (i < count - 1)
+        {
+          auto cown_next = std::get<1>(indexes[i + 1])->cown;
+          if (cown_next != cown)
+            break;
 
+          body = bodies[std::get<0>(indexes[i + 1])];
+          last_slot->set_behaviour(body);
+
+          last_slot = std::get<1>(indexes[i + 1]);
+          // cown = cown_next;
+          i++;
+        }
+        i++;
+
+        auto prev =
+          cown->last_slot.exchange(last_slot, std::memory_order_acq_rel);
+
+        // set_behaviour to the fist_slot
         yield();
-
         if (prev == nullptr)
         {
+          // this is wrong - should only do it for the last one
           Logging::cout() << "Acquired cown: " << cown << " for behaviour "
                           << body << Logging::endl;
-          (*ec_ptr)++;
+
+          ec[std::get<0>(indexes[ii])]++;
+
           if (transfer == NoTransfer)
           {
             yield();
             Cown::acquire(cown);
           }
-          prev_cown = cown;
           continue;
         }
 
@@ -435,27 +455,25 @@ namespace verona::rt
                         << " for behaviour " << body << Logging::endl;
 
         yield();
-        if (prev_cown != cown)
+        while (prev->is_wait())
         {
-          while (prev->is_wait())
-          {
-            // Wait for the previous behaviour to finish adding to first phase.
-            Aal::pause();
-            Systematic::yield_until([prev]() { return !prev->is_wait(); });
-            std::cout << "blocked here\n";
-          }
+          // Wait for the previous behaviour to finish adding to first phase.
+          Aal::pause();
+          Systematic::yield_until([prev]() { return !prev->is_wait(); });
+          std::cout << "blocked here\n";
         }
 
         if (transfer == YesTransfer)
         {
-          Cown::release(ThreadAlloc::get(), cown);
+          for (size_t j = 0; j < count; j++)
+          {
+            Cown::release(ThreadAlloc::get(), cown);
+          }
         }
 
         yield();
-        prev->set_behaviour(body);
+        prev->set_behaviour(first_body);
         yield();
-
-        prev_cown = cown;
       }
 
       // Second phase - Release phase.
