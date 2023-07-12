@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "cown.h"
 #include "../sched/behaviour.h"
+#include "cown.h"
 
 #include <functional>
 #include <tuple>
