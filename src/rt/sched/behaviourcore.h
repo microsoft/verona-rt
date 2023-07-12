@@ -392,9 +392,9 @@ namespace verona::rt
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
-        return std::get<1>(i)->cown->id() > std::get<1>(j)->cown->id();
+        return std::get<1>(i)->cown->id() == std::get<1>(j)->cown->id() ? i>j : std::get<1>(i)->cown->id() > std::get<1>(j)->cown->id();
 #else
-        return std::get<1>(i)->cown > std::get<1>(j)->cown;
+        return std::get<1>(i)->cown == std::get<1>(j)->cown ? i>j : std::get<1>(i)->cown > std::get<1>(j)->cown;
 #endif
       };
 
