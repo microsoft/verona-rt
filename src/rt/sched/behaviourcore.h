@@ -413,7 +413,7 @@ namespace verona::rt
         auto body = bodies[std::get<0>(indexes[i])];
         auto last_slot = std::get<1>(indexes[i]);
         auto first_body = body;
-        size_t ii = i;
+        size_t first_chain_index = i;
         while (i < count - 1)
         {
           auto cown_next = std::get<1>(indexes[i + 1])->cown;
@@ -424,7 +424,6 @@ namespace verona::rt
           last_slot->set_behaviour(body);
 
           last_slot = std::get<1>(indexes[i + 1]);
-          // cown = cown_next;
           i++;
         }
         i++;
@@ -440,7 +439,7 @@ namespace verona::rt
           Logging::cout() << "Acquired cown: " << cown << " for behaviour "
                           << body << Logging::endl;
 
-          ec[std::get<0>(indexes[ii])]++;
+          ec[std::get<0>(indexes[first_chain_index])]++;
 
           if (transfer == NoTransfer)
           {
