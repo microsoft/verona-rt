@@ -94,6 +94,8 @@ struct Up
       if (m->parent->acquire_strong_from_weak())
       {
         Behaviour::schedule<Up, YesTransfer>(m->parent, m->parent);
+        // FIXME: To be removed when YesTransfer works again
+        verona::rt::Cown::release(ThreadAlloc::get(), m->parent);
       }
     }
   }
@@ -137,6 +139,8 @@ void run_test()
 
   Behaviour::schedule<Down>(t, t);
   Behaviour::schedule<Down, YesTransfer>(t, t);
+  // FIXME: To be removed when YesTransfer works again
+  verona::rt::Cown::release(ThreadAlloc::get(), t);
 }
 
 int main(int argc, char** argv)

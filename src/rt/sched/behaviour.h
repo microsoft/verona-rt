@@ -114,7 +114,8 @@ namespace verona::rt
 
       BehaviourCore *arr[] = {body};
 
-      BehaviourCore::schedule_many<transfer>(arr, 1);
+      // FIXME: The transfer argument is ignored for the moment
+      BehaviourCore::schedule_many(arr, 1);
     }
   };
 } // namespace verona::rt

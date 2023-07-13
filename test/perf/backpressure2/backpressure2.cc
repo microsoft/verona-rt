@@ -155,6 +155,8 @@ int main(int argc, char** argv)
     auto* s = new (alloc) Sender(
       std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
     Behaviour::schedule<Send, YesTransfer>(s, s);
+    // FIXME: To be removed when YesTransfer works again
+    Cown::release(alloc, s);
   }
 
   for (auto* r : receiver_set)

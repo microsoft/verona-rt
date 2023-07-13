@@ -270,7 +270,6 @@ namespace verona::rt
      * perform an acquire. When the execution of a chain completes, then the
      * scheduler will release the RC.
      */
-    template<TransferOwnership transfer = NoTransfer>
     static void schedule_many(BehaviourCore** bodies, size_t body_count)
     {
       Logging::cout() << "BehaviourCore::schedule_many" << body_count
@@ -354,11 +353,8 @@ namespace verona::rt
 
           ec[std::get<0>(indexes[first_chain_index])]++;
 
-          if (transfer == NoTransfer)
-          {
-            yield();
-            Cown::acquire(cown);
-          }
+          yield();
+          Cown::acquire(cown);
           continue;
         }
 
@@ -371,12 +367,6 @@ namespace verona::rt
           // Wait for the previous behaviour to finish adding to first phase.
           Aal::pause();
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
-          std::cout << "blocked here\n";
-        }
-
-        if (transfer == YesTransfer)
-        {
-          Cown::release(ThreadAlloc::get(), cown);
         }
 
         yield();
