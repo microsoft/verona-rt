@@ -463,10 +463,7 @@ namespace verona::rt
 
         if (transfer == YesTransfer)
         {
-          for (size_t j = 0; j < count; j++)
-          {
-            Cown::release(ThreadAlloc::get(), cown);
-          }
+          Cown::release(ThreadAlloc::get(), cown);
         }
 
         yield();
