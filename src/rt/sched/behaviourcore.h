@@ -376,7 +376,7 @@ namespace verona::rt
         ec[i] = 1;
 
       // Really want a dynamically sized stack allocation here.
-      StackArray<std::tuple<size_t, Slot*, size_t>> indexes(count);
+      StackArray<std::tuple<size_t, Slot*>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
       {
@@ -385,20 +385,19 @@ namespace verona::rt
         {
           std::get<0>(indexes[idx]) = i;
           std::get<1>(indexes[idx]) = &slots[j];
-          std::get<2>(indexes[idx]) = idx;
           idx++;
         }
       }
       auto compare = [](
-                       const std::tuple<size_t, Slot*, size_t> i,
-                       const std::tuple<size_t, Slot*, size_t> j) {
+                       const std::tuple<size_t, Slot*> i,
+                       const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
         return std::get<1>(i)->cown->id() == std::get<1>(j)->cown->id() ?
-          std::get<2>(i) < std::get<2>(j) :
+          std::get<0>(i) < std::get<0>(j) :
           std::get<1>(i)->cown->id() < std::get<1>(j)->cown->id();
 #else
         return std::get<1>(i)->cown == std::get<1>(j)->cown ?
-          std::get<2>(i) < std::get<2>(j) :
+          std::get<0>(i) < std::get<0>(j) :
           std::get<1>(i)->cown < std::get<1>(j)->cown;
 #endif
       };
