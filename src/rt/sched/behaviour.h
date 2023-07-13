@@ -109,10 +109,12 @@ namespace verona::rt
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto body = prepare_to_schedule<Be, transfer, Args...>(
+      auto* body = prepare_to_schedule<Be, transfer, Args...>(
         count, requests, std::forward<Args>(args)...);
 
-      BehaviourCore::schedule<transfer>(body);
+      BehaviourCore *arr[] = {body};
+
+      BehaviourCore::schedule_many<transfer>(arr, 1);
     }
   };
 } // namespace verona::rt
