@@ -33,7 +33,7 @@ namespace verona::cpp
   template<typename... Args>
   class Batch
   {
-    std::tuple<Args&&...> when_batch;
+    std::tuple<Args...> when_batch;
     bool part_of_larger_batch = false;
 
     template<typename... Args2>
