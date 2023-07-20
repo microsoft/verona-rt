@@ -29,7 +29,7 @@ namespace verona::rt
 
   public:
     template<typename Be, typename... Args>
-    static Behaviour* make(size_t count, Args... args)
+    static Behaviour* make(size_t count, Args&&... args)
     {
       auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
 

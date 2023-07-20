@@ -27,34 +27,17 @@ namespace verona::cpp
     Access(const cown_ptr<T>& c) : t(c.allocated_cown) {}
 
     template<typename F, typename... Args>
-    friend class WhenBuilder;
+    friend class When;
   };
 
   template<typename... Args>
-  class WhenBuilderBatch
+  class Batch
   {
     std::tuple<Args&&...> when_batch;
+    bool part_of_larger_batch = false;
 
-    template<size_t index = 0>
-    void mark_as_batch(void)
-    {
-      if constexpr (index >= sizeof...(Args))
-      {
-        return;
-      }
-      else
-      {
-        auto&& w = std::get<index>(when_batch);
-        w.part_of_batch = true;
-
-        static_assert(
-          std::tuple_size<decltype(w.cown_tuple)>{} > 0,
-          "It does not make sense to atomically schedule a behaviour without a "
-          "cown dependency");
-
-        mark_as_batch<index + 1>();
-      }
-    }
+    template<typename... Args2>
+    friend class Batch;
 
     template<size_t index = 0>
     void create_behaviour(BehaviourCore** barray)
@@ -70,32 +53,41 @@ namespace verona::cpp
         auto t = w.to_tuple();
         barray[index] = Behaviour::prepare_to_schedule<
           typename std::remove_reference<decltype(std::get<2>(t))>::type>(
-          std::get<0>(t), std::get<1>(t), std::get<2>(t));
+          std::move(std::get<0>(t)), std::move(std::get<1>(t)), std::move(std::get<2>(t)));
         create_behaviour<index + 1>(barray);
       }
     }
 
   public:
-    WhenBuilderBatch(Args&&... args) : when_batch(std::forward<Args>(args)...)
+    Batch(std::tuple<Args...> args) : when_batch(std::move(args)) { }
+
+    Batch(const Batch&) = delete;
+
+    ~Batch()
     {
-      mark_as_batch();
+      if constexpr (sizeof...(Args) > 0)
+      {
+        if (part_of_larger_batch)
+          return;
+
+        BehaviourCore* barray[sizeof...(Args)];
+        create_behaviour(barray);
+
+        BehaviourCore::schedule_many(barray, sizeof...(Args));
+      }
     }
 
-    WhenBuilderBatch(const WhenBuilderBatch&) = delete;
-
-    ~WhenBuilderBatch()
-    {
-      BehaviourCore* barray[sizeof...(Args)];
-      create_behaviour(barray);
-
-      BehaviourCore::schedule_many(barray, sizeof...(Args));
+    template<typename... Args2>
+    auto operator+(Batch<Args2...>&& wb)
+    { 
+      wb.part_of_larger_batch = true;
+      this->part_of_larger_batch = true;     
+      return Batch<Args..., Args2...>(std::tuple_cat(std::move(this->when_batch), std::move(wb.when_batch)));
     }
-
-    // FIXME: Overload + operator for WhenBuilderBatch + WhenBuilder
   };
 
   template<typename F, typename... Args>
-  class WhenBuilder
+  class When
   {
     template<class T>
     struct is_read_only : std::false_type
@@ -105,12 +97,11 @@ namespace verona::cpp
     {};
     template<typename... Args2>
 
-    friend class WhenBuilderBatch;
+    friend class Batch;
 
     std::tuple<Access<Args>...> cown_tuple;
     F f;
     verona::rt::Request requests[sizeof...(Args)];
-    bool part_of_batch;
 
     /**
      * This uses template programming to turn the std::tuple into a C style
@@ -162,67 +153,31 @@ namespace verona::cpp
         return std::make_tuple(
           sizeof...(Args),
           requests,
-          [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
+          [f = std::move(f), cown_tuple = cown_tuple]() mutable {
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
             auto lift_f = [f =
-                             std::forward<F>(f)](Access<Args>... args) mutable {
-              f(access_to_acquired<Args>(args)...);
+                             std::move(f)](Access<Args>... args) mutable {
+              std::move(f)(access_to_acquired<Args>(args)...);
             };
 
-            std::apply(lift_f, cown_tuple);
+            std::apply(std::move(lift_f), cown_tuple);
           });
       }
     }
 
   public:
-    WhenBuilder(F&& f_) : f(std::move(f_)), part_of_batch(false) {}
+    When(F&& f_) : f(std::forward<F>(f_)) {}
 
-    WhenBuilder(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
-    : f(std::move(f_)), cown_tuple(cown_tuple_), part_of_batch(false)
+    When(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
+    : f(std::forward<F>(f_)), cown_tuple(cown_tuple_)
     {}
 
-    WhenBuilder(WhenBuilder&& o)
-    : cown_tuple(std::move(o.cown_tuple)), f(std::move(o.f))
+    When(When&& o)
+    : cown_tuple(std::move(o.cown_tuple)), f(std::forward<F>(o.f))
     {}
 
-    WhenBuilder(const WhenBuilder&) = delete;
-
-    ~WhenBuilder()
-    {
-      if (part_of_batch)
-        return;
-
-      if constexpr (sizeof...(Args) == 0)
-      {
-        verona::rt::schedule_lambda(std::forward<F>(f));
-      }
-      else
-      {
-        verona::rt::Request requests[sizeof...(Args)];
-        array_assign(requests);
-
-        verona::rt::schedule_lambda(
-          sizeof...(Args),
-          requests,
-          [f = std::forward<F>(f), cown_tuple = cown_tuple]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f =
-                             std::forward<F>(f)](Access<Args>... args) mutable {
-              f(access_to_acquired<Args>(args)...);
-            };
-
-            std::apply(lift_f, cown_tuple);
-          });
-      }
-    }
-
-    template<typename B>
-    auto operator+(B&& wb)
-    {
-      return WhenBuilderBatch(std::move(*this), std::move(wb));
-    }
+    When(const When&) = delete;
   };
 
   /**
@@ -238,7 +193,7 @@ namespace verona::cpp
    * Allows the variadic number of cowns to occur before the closure.
    */
   template<typename... Args>
-  class When
+  class PreWhen
   {
     // Note only requires friend when Args2 == Args
     // but C++ doesn't like this.
@@ -251,38 +206,44 @@ namespace verona::cpp
      */
     std::tuple<Access<Args>...> cown_tuple;
 
-    When(Access<Args>... args) : cown_tuple(args...) {}
+    PreWhen(Access<Args>... args) : cown_tuple(args...) {}
 
   public:
     template<typename F>
-    WhenBuilder<F, Args...> operator<<(F&& f)
+    auto operator<<(F&& f)
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
       if constexpr (sizeof...(Args) == 0)
       {
-        return WhenBuilder(std::forward<F>(f));
+        // Execute now atomic batch makes no sense.
+        verona::rt::schedule_lambda(std::forward<F>(f));
+        return Batch(std::make_tuple());
       }
       else
       {
-        return WhenBuilder(std::move(f), std::move(cown_tuple));
+        return Batch(std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
       }
     }
-
-    ~When() {}
   };
 
   /**
    * Template deduction guide for when.
    */
   template<typename... Args>
-  When(Access<Args>...)->When<Args...>;
+  PreWhen(Access<Args>...)->PreWhen<Args...>;
 
   /**
    * Template deduction guide for Access.
    */
   template<typename T>
   Access(const cown_ptr<T>&)->Access<T>;
+
+  /**
+   * Template deduction guide for Batch.
+   */
+  template<typename... Args>
+  Batch(std::tuple<Args...>)->Batch<Args...>;
 
   /**
    * Implements a Verona-like `when` statement.
@@ -298,6 +259,6 @@ namespace verona::cpp
   template<typename... Args>
   auto when(Args&&... args)
   {
-    return When(Access(args)...);
+    return PreWhen(Access(args)...);
   }
 } // namespace verona::cpp
