@@ -34,7 +34,7 @@ void test_body()
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
-       // sleep(1);
+        // sleep(1);
       }
     });
 }
@@ -69,7 +69,7 @@ void test_body_smart()
   auto ptr = std::make_unique<int>(42);
 
   (when(log) <<
-   [=, ptr=std::move(ptr)](auto b) {
+   [=, ptr = std::move(ptr)](auto b) {
      std::cout << "ptr = " << *ptr << std::endl;
      for (int i = 0; i < 10; i++)
      {
@@ -81,7 +81,7 @@ void test_body_smart()
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
-       // sleep(1);
+        // sleep(1);
       }
     });
 }

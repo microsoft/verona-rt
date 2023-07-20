@@ -112,7 +112,7 @@ namespace verona::rt
       auto* body = prepare_to_schedule<Be, transfer, Args...>(
         count, requests, std::forward<Args>(args)...);
 
-      BehaviourCore *arr[] = {body};
+      BehaviourCore* arr[] = {body};
 
       // FIXME: The transfer argument is ignored for the moment
       BehaviourCore::schedule_many(arr, 1);

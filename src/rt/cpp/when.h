@@ -53,13 +53,15 @@ namespace verona::cpp
         auto t = w.to_tuple();
         barray[index] = Behaviour::prepare_to_schedule<
           typename std::remove_reference<decltype(std::get<2>(t))>::type>(
-          std::move(std::get<0>(t)), std::move(std::get<1>(t)), std::move(std::get<2>(t)));
+          std::move(std::get<0>(t)),
+          std::move(std::get<1>(t)),
+          std::move(std::get<2>(t)));
         create_behaviour<index + 1>(barray);
       }
     }
 
   public:
-    Batch(std::tuple<Args...> args) : when_batch(std::move(args)) { }
+    Batch(std::tuple<Args...> args) : when_batch(std::move(args)) {}
 
     Batch(const Batch&) = delete;
 
@@ -79,10 +81,11 @@ namespace verona::cpp
 
     template<typename... Args2>
     auto operator+(Batch<Args2...>&& wb)
-    { 
+    {
       wb.part_of_larger_batch = true;
-      this->part_of_larger_batch = true;     
-      return Batch<Args..., Args2...>(std::tuple_cat(std::move(this->when_batch), std::move(wb.when_batch)));
+      this->part_of_larger_batch = true;
+      return Batch<Args..., Args2...>(
+        std::tuple_cat(std::move(this->when_batch), std::move(wb.when_batch)));
     }
   };
 
@@ -156,8 +159,7 @@ namespace verona::cpp
           [f = std::move(f), cown_tuple = cown_tuple]() mutable {
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
-            auto lift_f = [f =
-                             std::move(f)](Access<Args>... args) mutable {
+            auto lift_f = [f = std::move(f)](Access<Args>... args) mutable {
               std::move(f)(access_to_acquired<Args>(args)...);
             };
 
@@ -222,7 +224,8 @@ namespace verona::cpp
       }
       else
       {
-        return Batch(std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        return Batch(
+          std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
       }
     }
   };
