@@ -26,15 +26,15 @@ void test_body()
    [=](auto b) {
      for (int i = 0; i < 10; i++)
      {
-       std::cout << "Behaviour 1\n";
-       sleep(1);
+       Logging::cout() << "Behaviour 1\n";
+       // sleep(1);
      }
    }) +
     (when(log2) << [=](auto) {
       for (int i = 0; i < 10; i++)
       {
-        std::cout << "Behaviour 2\n";
-        sleep(1);
+        Logging::cout() << "Behaviour 2\n";
+       // sleep(1);
       }
     });
 }
@@ -49,19 +49,41 @@ void test_body_same()
    [=](auto b) {
      for (int i = 0; i < 10; i++)
      {
-       std::cout << "Behaviour 1\n";
-       sleep(1);
+       Logging::cout() << "Behaviour 1" << Logging::endl;
      }
    }) +
     (when(log) << [=](auto) {
       for (int i = 0; i < 10; i++)
       {
-        std::cout << "Behaviour 2\n";
-        sleep(1);
+        Logging::cout() << "Behaviour 2" << Logging::endl;
       }
     });
+}
 
-  std::cout << "Foo\n";
+void test_body_smart()
+{
+  Logging::cout() << "test_body_smart()" << Logging::endl;
+
+  auto log = make_cown<Body>();
+  auto log2 = make_cown<Body>();
+  auto ptr = std::make_unique<int>(42);
+
+  (when(log) <<
+   [=, ptr=std::move(ptr)](auto b) {
+     std::cout << "ptr = " << *ptr << std::endl;
+     for (int i = 0; i < 10; i++)
+     {
+       Logging::cout() << "Behaviour 1\n";
+       // sleep(1);
+     }
+   }) +
+    (when(log2) << [=](auto) {
+      for (int i = 0; i < 10; i++)
+      {
+        Logging::cout() << "Behaviour 2\n";
+       // sleep(1);
+      }
+    });
 }
 
 int main(int argc, char** argv)
@@ -70,6 +92,7 @@ int main(int argc, char** argv)
 
   harness.run(test_body);
   harness.run(test_body_same);
+  harness.run(test_body_smart);
 
   return 0;
 }
