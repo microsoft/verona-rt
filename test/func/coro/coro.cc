@@ -67,15 +67,15 @@ void test_body()
   auto log1 = make_cown<Body>();
 
 
-  auto coro = [=](acquired_cown<Body> * acq) -> coroutine {
+  auto coro = [=](acquired_cown<Body> & acq) -> coroutine {
 
-    Logging::cout() << "counter = " << acq->get_ref().counter << Logging::endl;
+    Logging::cout() << "counter = " << acq->counter << Logging::endl;
 
-    acq->get_ref().counter++;
+    acq->counter++;
     verona::rt::behaviour_yielded = true;
     co_await std::suspend_always{};
 
-    Logging::cout() << "counter = " << acq->get_ref().counter << Logging::endl;
+    Logging::cout() << "counter = " << acq->counter << Logging::endl;
     Logging::cout() << "end" << Logging::endl;
   };
 
@@ -85,7 +85,7 @@ void test_body()
     
     if (coro_ptr->initialized == false)
     {
-      *coro_ptr = std::move(coro(&l));
+      *coro_ptr = std::move(coro(l));
       coro_ptr->resume();
     }
     else
