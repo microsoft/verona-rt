@@ -69,7 +69,9 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Install build dependencies
-      run: sudo apt install clang-format-15
+      run: |
+        sudo apt update
+        sudo apt install clang-format-15
 
     # We don't need to do the build for this job, but we need to configure it to get the clangformat
     # and copyright targets
