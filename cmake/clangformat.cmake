@@ -15,7 +15,7 @@ macro(clangformat_targets)
   # If we've found a clang-format tool, generate a target for it, otherwise emit
   # a warning.
   if (${CLANG_FORMAT} STREQUAL "CLANG_FORMAT-NOTFOUND")
-    message(WARNING "Not generating clangformat target, must have clang-format-9 in the PATH")
+    message(WARNING "Not generating clangformat target, must have clang-format-15 in the PATH")
   else ()
     message(STATUS "Generating clangformat target using ${CLANG_FORMAT}")
     find_package(Git)
