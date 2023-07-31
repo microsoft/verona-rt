@@ -118,9 +118,8 @@ namespace
     typedef CXCursor first_argument;
     typedef CXCursor second_argument;
     typedef bool result_type;
-    result_type
-    operator()(first_argument const& c, second_argument const& c1) const
-      noexcept
+    result_type operator()(
+      first_argument const& c, second_argument const& c1) const noexcept
     {
       return clang_equalCursors(c, c1);
     }

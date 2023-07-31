@@ -61,8 +61,7 @@ void test_race1()
   // External thread
   auto et = std::thread([&go, &lock, &protected_value]() {
     while (!go)
-    {
-    } // Spin until internal thread has acquired the lock
+    {} // Spin until internal thread has acquired the lock
     lock.external_acquire();
     protected_value++;
     lock.external_release();

@@ -63,9 +63,12 @@ jobs:
 
   # Job to run clang-format and report errors
   format:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
+    -name: Install build dependencies
+      run: sudo apt install clang-format-9
 
     # We don't need to do the build for this job, but we need to configure it to get the clangformat
     # and copyright targets

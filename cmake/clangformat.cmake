@@ -9,8 +9,8 @@ macro(clangformat_targets)
   # This can always be overridden with `-DCLANG_FORMAT=/path/to/clang-format` if
   # need be.
   find_program(CLANG_FORMAT NAMES
-    clang-format-9
-    clang-format90)
+    clang-format-15
+    clang-format150)
 
   # If we've found a clang-format tool, generate a target for it, otherwise emit
   # a warning.
