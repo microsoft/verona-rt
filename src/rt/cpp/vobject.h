@@ -88,12 +88,12 @@ namespace verona::rt
 
     static Descriptor* desc()
     {
-      static Descriptor desc = {vsizeof<T>,
-                                gc_trace,
-                                has_finaliser<T>::value ? gc_final : nullptr,
-                                has_notified<T>::value ? gc_notified : nullptr,
-                                has_destructor<T>::value ? gc_destructor :
-                                                           nullptr};
+      static Descriptor desc = {
+        vsizeof<T>,
+        gc_trace,
+        has_finaliser<T>::value ? gc_final : nullptr,
+        has_notified<T>::value ? gc_notified : nullptr,
+        has_destructor<T>::value ? gc_destructor : nullptr};
 
       return &desc;
     }

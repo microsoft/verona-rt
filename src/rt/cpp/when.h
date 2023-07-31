@@ -140,13 +140,13 @@ namespace verona::cpp
    * Template deduction guide for when.
    */
   template<typename... Args>
-  When(Access<Args>...)->When<Args...>;
+  When(Access<Args>...) -> When<Args...>;
 
   /**
    * Template deduction guide for Access.
    */
   template<typename T>
-  Access(const cown_ptr<T>&)->Access<T>;
+  Access(const cown_ptr<T>&) -> Access<T>;
 
   /**
    * Implements a Verona-like `when` statement.
