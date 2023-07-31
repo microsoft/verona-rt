@@ -33,7 +33,16 @@ namespace verona::cpp
   template<typename... Args>
   class Batch
   {
+    /// This is a tuple of
+    ///    (exists Ts. When<Ts>)
+    /// As existential types are not supported this is using inferred template
+    /// parameters.
     std::tuple<Args...> when_batch;
+
+    /// This is used to prevent the destructor from scheduling the behaviour
+    /// more than once.
+    /// If this batch is combined with another batch, then the destructor of
+    /// the uncombined batches should not run.
     bool part_of_larger_batch = false;
 
     template<typename... Args2>
@@ -89,6 +98,11 @@ namespace verona::cpp
     }
   };
 
+  /**
+   * Represents a single when statement.
+   *
+   * It carries all the information needed to create the behaviour.
+   */
   template<typename F, typename... Args>
   class When
   {
@@ -102,8 +116,15 @@ namespace verona::cpp
 
     friend class Batch;
 
+    /// Set of cowns used by this behaviour.
     std::tuple<Access<Args>...> cown_tuple;
+
+    /// The closure to be executed.
     F f;
+
+    /// Used as a temporary to build the behaviour.
+    /// The stack lifetime is tricky, and this avoids
+    /// a heap allocation.
     verona::rt::Request requests[sizeof...(Args)];
 
     /**
