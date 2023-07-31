@@ -246,7 +246,7 @@ namespace verona::cpp
    * Template deduction guide for Batch.
    */
   template<typename... Args>
-  Batch(std::tuple<Args...>)->Batch<Args...>;
+  Batch(std::tuple<Args...>) -> Batch<Args...>;
 
   /**
    * Implements a Verona-like `when` statement.
