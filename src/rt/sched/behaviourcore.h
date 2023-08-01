@@ -343,7 +343,7 @@ namespace verona::rt
         auto prev =
           cown->last_slot.exchange(last_slot, std::memory_order_acq_rel);
 
-        // set_behaviour to the fist_slot
+        // set_behaviour to the first_slot
         yield();
         if (prev == nullptr)
         {
