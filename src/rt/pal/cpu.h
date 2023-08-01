@@ -149,12 +149,12 @@ namespace verona::rt
 
             if (idmask & p->Processor.GroupMask[j].Mask)
             {
-              top->cpus.push_back(
-                CPU{get_numa_node(group, id, numa, numa_count),
-                    get_package(group, id, package, package_count),
-                    group,
-                    id,
-                    hyperthread});
+              top->cpus.push_back(CPU{
+                get_numa_node(group, id, numa, numa_count),
+                get_package(group, id, package, package_count),
+                group,
+                id,
+                hyperthread});
 
               hyperthread = true;
             }
@@ -308,14 +308,14 @@ namespace verona::rt
     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
     static next_info(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX info)
     {
-      return (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(
-        (char*)info + info->Size);
+      return (
+        PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)((char*)info + info->Size);
     }
 
     static void release_info(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX info)
     {
       if (info != nullptr)
-        delete[]((char*)info);
+        delete[] ((char*)info);
     }
 #endif
   };

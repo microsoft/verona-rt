@@ -234,13 +234,13 @@ namespace verona::cpp
    * Template deduction guide for when.
    */
   template<typename... Args>
-  PreWhen(Access<Args>...)->PreWhen<Args...>;
+  PreWhen(Access<Args>...) -> PreWhen<Args...>;
 
   /**
    * Template deduction guide for Access.
    */
   template<typename T>
-  Access(const cown_ptr<T>&)->Access<T>;
+  Access(const cown_ptr<T>&) -> Access<T>;
 
   /**
    * Template deduction guide for Batch.
