@@ -108,12 +108,20 @@ void early_release_test(bool first, bool second)
 
   auto& alloc = ThreadAlloc::get();
   if (first)
+  {
     schedule_lambda<YesTransfer>(a, []() { interleave(); });
+    // FIXME: To be removed when YesTransfer works again
+    Cown::release(alloc, a);
+  }
   else
     Cown::release(alloc, a);
 
   if (second)
+  {
     schedule_lambda<YesTransfer>(b, []() { interleave(); });
+    // FIXME: To be removed when YesTransfer works again
+    Cown::release(alloc, b);
+  }
   else
     Cown::release(alloc, b);
 }

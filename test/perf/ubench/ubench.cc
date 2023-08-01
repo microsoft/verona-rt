@@ -125,6 +125,8 @@ namespace ubench
       std::this_thread::sleep_for(timeout);
       rt::Behaviour::schedule<Stop, rt::YesTransfer>(
         (rt::Cown*)monitor, monitor);
+      // FIXME: To be removed when YesTransfer works again
+      rt::Cown::release(sn::ThreadAlloc::get(), monitor);
     }).detach();
   }
 

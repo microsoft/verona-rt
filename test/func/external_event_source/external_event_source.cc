@@ -172,6 +172,8 @@ void test(SystematicTestHarness* harness)
     // Begin polling behaviour
     p->main_poller();
   });
+  // FIXME: To be removed when YesTransfer works
+  Cown::release(alloc, p);
 }
 
 int main(int argc, char** argv)

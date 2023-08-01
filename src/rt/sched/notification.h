@@ -138,7 +138,7 @@ namespace verona::rt
     {
       assert(status == Status::Requested);
       Logging::cout() << "Notification: Scheduling: " << std::endl;
-      BehaviourCore::schedule<NoTransfer>(behaviour);
+      BehaviourCore::schedule_many(&behaviour, 1);
     }
 
   public:

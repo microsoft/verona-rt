@@ -270,54 +270,91 @@ namespace verona::rt
      * perform an acquire. When the execution of a chain completes, then the
      * scheduler will release the RC.
      */
-    template<TransferOwnership transfer = NoTransfer>
-    static void schedule(BehaviourCore* body)
+    static void schedule_many(BehaviourCore** bodies, size_t body_count)
     {
-      Logging::cout() << "BehaviourCore::schedule " << body << Logging::endl;
-      auto count = body->count;
-      auto slots = body->get_slots();
+      Logging::cout() << "BehaviourCore::schedule_many" << body_count
+                      << Logging::endl;
+
+      size_t count = 0;
+      for (size_t i = 0; i < body_count; i++)
+        count += bodies[i]->count;
+
+      // Execution count - we will remove at least
+      // one from the execution count on finishing phase 2 of the
+      // 2PL. This ensures that the behaviour cannot be
+      // deallocated until we finish phase 2.
+      StackArray<size_t> ec(body_count);
+      for (size_t i = 0; i < body_count; i++)
+        ec[i] = 1;
 
       // Really want a dynamically sized stack allocation here.
-      StackArray<size_t> indexes(count);
-      for (size_t i = 0; i < count; i++)
-        indexes[i] = i;
-
-      auto compare = [slots](const size_t i, const size_t j) {
+      StackArray<std::tuple<size_t, Slot*>> indexes(count);
+      size_t idx = 0;
+      for (size_t i = 0; i < body_count; i++)
+      {
+        auto slots = bodies[i]->get_slots();
+        for (size_t j = 0; j < bodies[i]->count; j++)
+        {
+          std::get<0>(indexes[idx]) = i;
+          std::get<1>(indexes[idx]) = &slots[j];
+          idx++;
+        }
+      }
+      auto compare = [](
+                       const std::tuple<size_t, Slot*> i,
+                       const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
-        return slots[i].cown->id() > slots[j].cown->id();
+        return std::get<1>(i)->cown->id() == std::get<1>(j)->cown->id() ?
+          std::get<0>(i) < std::get<0>(j) :
+          std::get<1>(i)->cown->id() < std::get<1>(j)->cown->id();
 #else
-        return slots[i].cown > slots[j].cown;
+        return std::get<1>(i)->cown == std::get<1>(j)->cown ?
+          std::get<0>(i) < std::get<0>(j) :
+          std::get<1>(i)->cown < std::get<1>(j)->cown;
 #endif
       };
 
       if (count > 1)
         std::sort(indexes.get(), indexes.get() + count, compare);
 
-      // Execution count - we will remove at least
-      // one from the execution count on finishing phase 2 of the
-      // 2PL. This ensures that the behaviour cannot be
-      // deallocated until we finish phase 2.
-      size_t ec = 1;
-
       // First phase - Acquire phase.
-      for (size_t i = 0; i < count; i++)
+      size_t i = 0;
+      while (i < count)
       {
-        auto cown = slots[indexes[i]].cown;
-        auto prev = cown->last_slot.exchange(
-          &slots[indexes[i]], std::memory_order_acq_rel);
+        auto cown = std::get<1>(indexes[i])->cown;
+        auto body = bodies[std::get<0>(indexes[i])];
+        auto last_slot = std::get<1>(indexes[i]);
+        auto first_body = body;
+        size_t first_chain_index = i;
+        while (i < count - 1)
+        {
+          auto cown_next = std::get<1>(indexes[i + 1])->cown;
+          if (cown_next != cown)
+            break;
 
+          body = bodies[std::get<0>(indexes[i + 1])];
+          last_slot->set_behaviour(body);
+
+          last_slot = std::get<1>(indexes[i + 1]);
+          i++;
+        }
+        i++;
+
+        auto prev =
+          cown->last_slot.exchange(last_slot, std::memory_order_acq_rel);
+
+        // set_behaviour to the first_slot
         yield();
-
         if (prev == nullptr)
         {
+          // this is wrong - should only do it for the last one
           Logging::cout() << "Acquired cown: " << cown << " for behaviour "
                           << body << Logging::endl;
-          ec++;
-          if (transfer == NoTransfer)
-          {
-            yield();
-            Cown::acquire(cown);
-          }
+
+          ec[std::get<0>(indexes[first_chain_index])]++;
+
+          yield();
+          Cown::acquire(cown);
           continue;
         }
 
@@ -332,29 +369,32 @@ namespace verona::rt
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
 
-        if (transfer == YesTransfer)
-        {
-          Cown::release(ThreadAlloc::get(), cown);
-        }
-
         yield();
-        prev->set_behaviour(body);
+        prev->set_behaviour(first_body);
         yield();
       }
 
       // Second phase - Release phase.
-      Logging::cout() << "Release phase for behaviour " << body
-                      << Logging::endl;
+      for (size_t i = 0; i < body_count; i++)
+      {
+        Logging::cout() << "Release phase for behaviour " << bodies[i]
+                        << Logging::endl;
+      }
       for (size_t i = 0; i < count; i++)
       {
         yield();
-        Logging::cout() << "Setting slot " << &slots[indexes[i]] << " to ready"
+        auto slot = std::get<1>(indexes[i]);
+        Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
-        slots[i].set_ready();
+        if (slot->is_wait())
+          slot->set_ready();
       }
 
-      yield();
-      body->resolve(ec);
+      for (size_t i = 0; i < body_count; i++)
+      {
+        yield();
+        bodies[i]->resolve(ec[i]);
+      }
     }
 
     /**

@@ -29,7 +29,7 @@ namespace verona::rt
 
   public:
     template<typename Be, typename... Args>
-    static Behaviour* make(size_t count, Args... args)
+    static Behaviour* make(size_t count, Args&&... args)
     {
       auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
 
@@ -81,6 +81,25 @@ namespace verona::rt
      * caller is transfering ownership of a reference count on each cown to
      * this method.
      **/
+
+    template<
+      class Be,
+      TransferOwnership transfer = NoTransfer,
+      typename... Args>
+    static Behaviour*
+    prepare_to_schedule(size_t count, Request* requests, Args&&... args)
+    {
+      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
+
+      auto* slots = body->get_slots();
+      for (size_t i = 0; i < count; i++)
+      {
+        new (&slots[i]) Slot(requests[i].cown());
+      }
+
+      return body;
+    }
+
     template<
       class Be,
       TransferOwnership transfer = NoTransfer,
@@ -90,15 +109,13 @@ namespace verona::rt
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
+      auto* body = prepare_to_schedule<Be, transfer, Args...>(
+        count, requests, std::forward<Args>(args)...);
 
-      auto* slots = body->get_slots();
-      for (size_t i = 0; i < count; i++)
-      {
-        new (&slots[i]) Slot(requests[i].cown());
-      }
+      BehaviourCore* arr[] = {body};
 
-      BehaviourCore::schedule<transfer>(body);
+      // FIXME: The transfer argument is ignored for the moment
+      BehaviourCore::schedule_many(arr, 1);
     }
   };
 } // namespace verona::rt
