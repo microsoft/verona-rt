@@ -41,7 +41,7 @@ namespace verona::rt
 
     void mark_yes_transfer()
     {
-      _cown = (Cown *)((uintptr_t)_cown | YES_TRANSFER_FLAG);
+      _cown = (Cown*)((uintptr_t)_cown | YES_TRANSFER_FLAG);
     }
 
     static Request write(Cown* cown)
@@ -394,7 +394,7 @@ namespace verona::rt
 
           if (yes_count)
           {
-            for (int j=0;j<yes_count - 1;j++)
+            for (int j = 0; j < yes_count - 1; j++)
               Cown::release(ThreadAlloc::get(), cown);
           }
           else
@@ -416,7 +416,7 @@ namespace verona::rt
         }
 
         // Release as many times as indicated
-        for (int j=0;j<yes_count;j++)
+        for (int j = 0; j < yes_count; j++)
           Cown::release(ThreadAlloc::get(), cown);
 
         yield();

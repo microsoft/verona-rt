@@ -94,7 +94,7 @@ namespace verona::rt
       auto* slots = body->get_slots();
       for (size_t i = 0; i < count; i++)
       {
-        auto *s = new (&slots[i]) Slot(requests[i].cown());
+        auto* s = new (&slots[i]) Slot(requests[i].cown());
         if (requests[i].is_yes_transfer())
           s->set_yes_transfer();
       }
