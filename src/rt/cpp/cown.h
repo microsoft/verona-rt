@@ -316,6 +316,10 @@ namespace verona::cpp
 
     ~cown_ptr()
     {
+      if (allocated_cown)
+        std::cout << "Destruct cown_ptr with allocated cown\n";
+      else
+        std::cout << "Destruct cown_ptr without allocated cown\n";
       clear();
     }
 

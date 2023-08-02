@@ -22,9 +22,19 @@ namespace verona::cpp
   class Access
   {
     ActualCown<std::remove_const_t<T>>* t;
+    bool yes_transfer;
 
   public:
-    Access(const cown_ptr<T>& c) : t(c.allocated_cown) {}
+    Access(const cown_ptr<T>& c) : t(c.allocated_cown), yes_transfer(false)
+    {
+      std::cout << "Construct Access with no transfer\n";
+    }
+
+    Access(cown_ptr<T>&& c) : t(c.allocated_cown), yes_transfer(true)
+    {
+      c.allocated_cown = nullptr;
+      std::cout << "Construct Access with transfer\n";
+    }
 
     template<typename F, typename... Args>
     friend class When;
@@ -283,6 +293,7 @@ namespace verona::cpp
   template<typename... Args>
   auto when(Args&&... args)
   {
-    return PreWhen(Access(args)...);
+    return PreWhen(Access(std::forward<Args>(args))...);
   }
+
 } // namespace verona::cpp
