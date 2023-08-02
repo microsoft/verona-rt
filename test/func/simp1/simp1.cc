@@ -22,7 +22,6 @@ void test_body()
   auto log = make_cown<Body>();
 
   when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  when(std::move(log)) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)

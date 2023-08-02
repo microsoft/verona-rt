@@ -27,13 +27,13 @@ namespace verona::cpp
   public:
     Access(const cown_ptr<T>& c) : t(c.allocated_cown), yes_transfer(false)
     {
-      std::cout << "Construct Access with no transfer\n";
+      assert(c.allocated_cown != nullptr);
     }
 
     Access(cown_ptr<T>&& c) : t(c.allocated_cown), yes_transfer(true)
     {
+      assert(c.allocated_cown != nullptr);
       c.allocated_cown = nullptr;
-      std::cout << "Construct Access with transfer\n";
     }
 
     template<typename F, typename... Args>
