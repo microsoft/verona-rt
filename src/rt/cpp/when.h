@@ -157,6 +157,10 @@ namespace verona::cpp
           requests[index] = Request::read(p.t);
         else
           requests[index] = Request::write(p.t);
+
+        if (p.yes_transfer)
+          requests[index].mark_yes_transfer();
+
         assert(requests[index].cown() != nullptr);
         array_assign<index + 1>(requests);
       }

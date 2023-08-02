@@ -16,7 +16,8 @@ namespace verona::rt
   {
     Cown* _cown;
 
-    static constexpr uintptr_t READ_FLAG = 1;
+    static constexpr uintptr_t READ_FLAG = 0x1;
+    static constexpr uintptr_t YES_TRANSFER_FLAG = 0x2;
 
     Request(Cown* cown) : _cown(cown) {}
 
@@ -25,12 +26,22 @@ namespace verona::rt
 
     Cown* cown()
     {
-      return (Cown*)((uintptr_t)_cown & ~READ_FLAG);
+      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | YES_TRANSFER_FLAG));
     }
 
     bool is_read()
     {
       return ((uintptr_t)_cown & READ_FLAG);
+    }
+
+    bool is_yes_transfer()
+    {
+      return ((uintptr_t)_cown & YES_TRANSFER_FLAG);
+    }
+
+    void mark_yes_transfer()
+    {
+      _cown = (Cown *)((uintptr_t)_cown | YES_TRANSFER_FLAG);
     }
 
     static Request write(Cown* cown)
