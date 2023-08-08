@@ -17,7 +17,7 @@ namespace verona::rt
     Cown* _cown;
 
     static constexpr uintptr_t READ_FLAG = 0x1;
-    static constexpr uintptr_t YES_TRANSFER_FLAG = 0x2;
+    static constexpr uintptr_t MOVE_FLAG = 0x2;
 
     Request(Cown* cown) : _cown(cown) {}
 
@@ -26,7 +26,7 @@ namespace verona::rt
 
     Cown* cown()
     {
-      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | YES_TRANSFER_FLAG));
+      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
     }
 
     bool is_read()
@@ -34,14 +34,14 @@ namespace verona::rt
       return ((uintptr_t)_cown & READ_FLAG);
     }
 
-    bool is_yes_transfer()
+    bool is_move()
     {
-      return ((uintptr_t)_cown & YES_TRANSFER_FLAG);
+      return ((uintptr_t)_cown & MOVE_FLAG);
     }
 
-    void mark_yes_transfer()
+    void mark_move()
     {
-      _cown = (Cown*)((uintptr_t)_cown | YES_TRANSFER_FLAG);
+      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
     }
 
     static Request write(Cown* cown)
@@ -61,9 +61,10 @@ namespace verona::rt
   {
     Cown* cown;
     /**
-     * Possible vales before scheduling:
-     *   0 - NoTransfer
-     *   1 - YesTransfer
+     * Possible values before scheduling to communicate memory management
+     * options:
+     *   0 - Borrow
+     *   1 - Move
      *
      * Possible vales after scheduling:
      *   0 - Wait
@@ -84,12 +85,12 @@ namespace verona::rt
       return status.load(std::memory_order_acquire) == 1;
     }
 
-    void set_yes_transfer()
+    void set_move()
     {
       status.store(1, std::memory_order_relaxed);
     }
 
-    void reset_yes_transfer()
+    void reset_status()
     {
       status.store(0, std::memory_order_relaxed);
     }
@@ -375,7 +376,7 @@ namespace verona::rt
 
         // Use the status field to carry the YesTransfer information
         yes_count += last_slot->status;
-        last_slot->reset_yes_transfer();
+        last_slot->reset_status();
 
         auto prev =
           cown->last_slot.exchange(last_slot, std::memory_order_acq_rel);

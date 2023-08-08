@@ -22,15 +22,15 @@ namespace verona::cpp
   class Access
   {
     ActualCown<std::remove_const_t<T>>* t;
-    bool yes_transfer;
+    bool is_move;
 
   public:
-    Access(const cown_ptr<T>& c) : t(c.allocated_cown), yes_transfer(false)
+    Access(const cown_ptr<T>& c) : t(c.allocated_cown), is_move(false)
     {
       assert(c.allocated_cown != nullptr);
     }
 
-    Access(cown_ptr<T>&& c) : t(c.allocated_cown), yes_transfer(true)
+    Access(cown_ptr<T>&& c) : t(c.allocated_cown), is_move(true)
     {
       assert(c.allocated_cown != nullptr);
       c.allocated_cown = nullptr;
@@ -158,8 +158,8 @@ namespace verona::cpp
         else
           requests[index] = Request::write(p.t);
 
-        if (p.yes_transfer)
-          requests[index].mark_yes_transfer();
+        if (p.is_move)
+          requests[index].mark_move();
 
         assert(requests[index].cown() != nullptr);
         array_assign<index + 1>(requests);

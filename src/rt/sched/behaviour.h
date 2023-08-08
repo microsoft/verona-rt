@@ -70,7 +70,7 @@ namespace verona::rt
         requests[i] = Request::write(cowns[i]);
         if constexpr (transfer == YesTransfer)
         {
-          requests[i].mark_yes_transfer();
+          requests[i].mark_move();
         }
       }
 
@@ -81,11 +81,7 @@ namespace verona::rt
     }
 
     /**
-     * Sends a multi-message to the first cown we want to acquire.
-     *
-     * Pass `transfer = YesTransfer` as a template argument if the
-     * caller is transfering ownership of a reference count on each cown to
-     * this method.
+     * Prepare a multimessage
      **/
 
     template<class Be, typename... Args>
@@ -98,8 +94,8 @@ namespace verona::rt
       for (size_t i = 0; i < count; i++)
       {
         auto* s = new (&slots[i]) Slot(requests[i].cown());
-        if (requests[i].is_yes_transfer())
-          s->set_yes_transfer();
+        if (requests[i].is_move())
+          s->set_move();
       }
 
       return body;
