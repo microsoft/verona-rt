@@ -187,8 +187,6 @@ int main(int argc, char** argv)
 
       auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
       Behaviour::schedule<Send, YesTransfer>(s, s);
-      // FIXME: To be removed when YesTransfer works
-      Cown::release(alloc, s);
     }
 
     if (proxy_chain.size() > 0)

@@ -16,7 +16,8 @@ namespace verona::rt
   {
     Cown* _cown;
 
-    static constexpr uintptr_t READ_FLAG = 1;
+    static constexpr uintptr_t READ_FLAG = 0x1;
+    static constexpr uintptr_t MOVE_FLAG = 0x2;
 
     Request(Cown* cown) : _cown(cown) {}
 
@@ -25,12 +26,22 @@ namespace verona::rt
 
     Cown* cown()
     {
-      return (Cown*)((uintptr_t)_cown & ~READ_FLAG);
+      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
     }
 
     bool is_read()
     {
       return ((uintptr_t)_cown & READ_FLAG);
+    }
+
+    bool is_move()
+    {
+      return ((uintptr_t)_cown & MOVE_FLAG);
+    }
+
+    void mark_move()
+    {
+      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
     }
 
     static Request write(Cown* cown)
@@ -50,7 +61,12 @@ namespace verona::rt
   {
     Cown* cown;
     /**
-     * Possible vales:
+     * Possible values before scheduling to communicate memory management
+     * options:
+     *   0 - Borrow
+     *   1 - Move
+     *
+     * Possible vales after scheduling:
      *   0 - Wait
      *   1 - Ready
      *   Behaviour* - Next write
@@ -67,6 +83,16 @@ namespace verona::rt
     bool is_ready()
     {
       return status.load(std::memory_order_acquire) == 1;
+    }
+
+    void set_move()
+    {
+      status.store(1, std::memory_order_relaxed);
+    }
+
+    void reset_status()
+    {
+      status.store(0, std::memory_order_relaxed);
     }
 
     void set_ready()
@@ -326,6 +352,10 @@ namespace verona::rt
         auto last_slot = std::get<1>(indexes[i]);
         auto first_body = body;
         size_t first_chain_index = i;
+
+        size_t yes_count = 0;
+        size_t cown_count = 1;
+
         while (i < count - 1)
         {
           auto cown_next = std::get<1>(indexes[i + 1])->cown;
@@ -333,12 +363,20 @@ namespace verona::rt
             break;
 
           body = bodies[std::get<0>(indexes[i + 1])];
+
+          // Use the status field to carry the YesTransfer information
+          yes_count += last_slot->status;
           last_slot->set_behaviour(body);
 
           last_slot = std::get<1>(indexes[i + 1]);
+          cown_count++;
           i++;
         }
         i++;
+
+        // Use the status field to carry the YesTransfer information
+        yes_count += last_slot->status;
+        last_slot->reset_status();
 
         auto prev =
           cown->last_slot.exchange(last_slot, std::memory_order_acq_rel);
@@ -354,7 +392,16 @@ namespace verona::rt
           ec[std::get<0>(indexes[first_chain_index])]++;
 
           yield();
-          Cown::acquire(cown);
+
+          if (yes_count)
+          {
+            for (int j = 0; j < yes_count - 1; j++)
+              Cown::release(ThreadAlloc::get(), cown);
+          }
+          else
+          {
+            Cown::acquire(cown);
+          }
           continue;
         }
 
@@ -368,6 +415,10 @@ namespace verona::rt
           Aal::pause();
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
+
+        // Release as many times as indicated
+        for (int j = 0; j < yes_count; j++)
+          Cown::release(ThreadAlloc::get(), cown);
 
         yield();
         prev->set_behaviour(first_body);

@@ -47,8 +47,6 @@ struct KeepAlive
   void operator()()
   {
     Behaviour::schedule<Ping, YesTransfer>(c);
-    // FIXME: To be removed when YesTransfer works
-    Cown::release(ThreadAlloc::get(), c);
   }
 };
 

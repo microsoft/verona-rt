@@ -22,9 +22,19 @@ namespace verona::cpp
   class Access
   {
     ActualCown<std::remove_const_t<T>>* t;
+    bool is_move;
 
   public:
-    Access(const cown_ptr<T>& c) : t(c.allocated_cown) {}
+    Access(const cown_ptr<T>& c) : t(c.allocated_cown), is_move(false)
+    {
+      assert(c.allocated_cown != nullptr);
+    }
+
+    Access(cown_ptr<T>&& c) : t(c.allocated_cown), is_move(true)
+    {
+      assert(c.allocated_cown != nullptr);
+      c.allocated_cown = nullptr;
+    }
 
     template<typename F, typename... Args>
     friend class When;
@@ -147,6 +157,10 @@ namespace verona::cpp
           requests[index] = Request::read(p.t);
         else
           requests[index] = Request::write(p.t);
+
+        if (p.is_move)
+          requests[index].mark_move();
+
         assert(requests[index].cown() != nullptr);
         array_assign<index + 1>(requests);
       }
@@ -283,6 +297,7 @@ namespace verona::cpp
   template<typename... Args>
   auto when(Args&&... args)
   {
-    return PreWhen(Access(args)...);
+    return PreWhen(Access(std::forward<Args>(args))...);
   }
+
 } // namespace verona::cpp

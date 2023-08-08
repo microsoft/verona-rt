@@ -66,26 +66,25 @@ namespace verona::rt
       Request* requests = (Request*)alloc.alloc(count * sizeof(Request));
 
       for (size_t i = 0; i < count; ++i)
+      {
         requests[i] = Request::write(cowns[i]);
+        if constexpr (transfer == YesTransfer)
+        {
+          requests[i].mark_move();
+        }
+      }
 
-      schedule<Behaviour, transfer, Args...>(
+      schedule<Behaviour, Args...>(
         count, requests, std::forward<Args>(args)...);
 
       alloc.dealloc(requests);
     }
 
     /**
-     * Sends a multi-message to the first cown we want to acquire.
-     *
-     * Pass `transfer = YesTransfer` as a template argument if the
-     * caller is transfering ownership of a reference count on each cown to
-     * this method.
+     * Prepare a multimessage
      **/
 
-    template<
-      class Be,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
+    template<class Be, typename... Args>
     static Behaviour*
     prepare_to_schedule(size_t count, Request* requests, Args&&... args)
     {
@@ -94,27 +93,25 @@ namespace verona::rt
       auto* slots = body->get_slots();
       for (size_t i = 0; i < count; i++)
       {
-        new (&slots[i]) Slot(requests[i].cown());
+        auto* s = new (&slots[i]) Slot(requests[i].cown());
+        if (requests[i].is_move())
+          s->set_move();
       }
 
       return body;
     }
 
-    template<
-      class Be,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
+    template<class Be, typename... Args>
     static void schedule(size_t count, Request* requests, Args&&... args)
     {
       Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto* body = prepare_to_schedule<Be, transfer, Args...>(
+      auto* body = prepare_to_schedule<Be, Args...>(
         count, requests, std::forward<Args>(args)...);
 
       BehaviourCore* arr[] = {body};
 
-      // FIXME: The transfer argument is ignored for the moment
       BehaviourCore::schedule_many(arr, 1);
     }
   };
