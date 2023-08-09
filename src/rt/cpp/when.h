@@ -14,6 +14,34 @@ namespace verona::cpp
 {
   using namespace verona::rt;
 
+  template<typename T>
+  struct cown_ptr_span
+  {
+    cown_ptr<T>* array;
+    size_t length;
+  };
+
+  template<typename T>
+  struct actual_cown_ptr_span
+  {
+    ActualCown<std::remove_const_t<T>>** array;
+    size_t length;
+  };
+
+  template<typename T>
+  struct acquired_cown_span
+  {
+    acquired_cown<T>* array;
+    size_t length;
+#if 0
+  public:
+    using Type = T;
+    acquired_cown_span(cown_span<T> cs)
+    : lenght(cs.lenght), array(reinterpret_cast<acquired_cown<T>*>(cs.array))
+    {}
+#endif
+  };
+
   /**
    * Used to track the type of access request by embedding const into
    * the type T, or not having const.
@@ -21,16 +49,18 @@ namespace verona::cpp
   template<typename T>
   class Access
   {
+    using Type = T;
     ActualCown<std::remove_const_t<T>>* t;
     bool is_move;
 
   public:
-    Access(const cown_ptr<T>& c) : t(c.allocated_cown), is_move(false)
+    Access(const cown_ptr<T>& c)
+    : t(c.allocated_cown), is_move(false)
     {
       assert(c.allocated_cown != nullptr);
     }
 
-    Access(cown_ptr<T>&& c) : t(c.allocated_cown), is_move(true)
+    Access(cown_ptr<T>&& c) : t(c.allocated_cown)
     {
       assert(c.allocated_cown != nullptr);
       c.allocated_cown = nullptr;
@@ -39,6 +69,35 @@ namespace verona::cpp
     template<typename F, typename... Args>
     friend class When;
   };
+
+  template<typename T>
+  class AccessBatch
+  {
+    actual_cown_ptr_span<T> span;
+    bool is_move;
+
+  public:
+    AccessBatch(cown_ptr_span<T> ptr_span) : is_move(false)
+    {
+      // Allocate the actual_cown and the acquired_cown array
+      // The acquired_cown array is after the actual_cown one
+      span.array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
+        snmalloc::ThreadAlloc::get().alloc(
+          ptr_span.length * (sizeof(ActualCown<std::remove_const_t<T>>*))));
+
+      for (size_t i = 0; i < ptr_span.length; i++)
+      {
+        span.array[i] = ptr_span.array[i].allocated_cown;
+      }
+
+      span.length = ptr_span.length;
+    }
+
+    template<typename F, typename... Args>
+    friend class When;
+  };
+
+
 
   template<typename... Args>
   class Batch
@@ -127,7 +186,7 @@ namespace verona::cpp
     friend class Batch;
 
     /// Set of cowns used by this behaviour.
-    std::tuple<Access<Args>...> cown_tuple;
+    std::tuple<Args...> cown_tuple;
 
     /// The closure to be executed.
     F f;
@@ -166,13 +225,39 @@ namespace verona::cpp
       }
     }
 
+    template<size_t index = 0>
+    size_t get_cown_count(size_t count = 0)
+    {
+      if constexpr (index >= sizeof...(Args))
+      {
+        return count;
+      }
+      else
+      {
+        auto p = std::get<index>(cown_tuple);
+#if 0
+        if (p.is_span)
+          std::cout << "I found a span\n";
+        else
+          std::cout << "I found a normal cown\n";
+#endif
+        return get_cown_count<index + 1>(count + 1);
+      }
+    }
+
     /**
      * Converts a single `cown_ptr` into a `acquired_cown`.
      *
      * Needs to be a separate function for the template parameter to work.
      */
     template<typename C>
-    static acquired_cown<C> access_to_acquired(Access<C> c)
+    static auto access_to_acquired_span(Access<C> c)
+    {
+      return acquired_cown_span<C>{nullptr, 0};
+    }
+
+    template<typename C>
+    static auto access_to_acquired(Access<C> c)
     {
       assert(c.t != nullptr);
       return acquired_cown<C>(*c.t);
@@ -194,8 +279,8 @@ namespace verona::cpp
           [f = std::move(f), cown_tuple = cown_tuple]() mutable {
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
-            auto lift_f = [f = std::move(f)](Access<Args>... args) mutable {
-              std::move(f)(access_to_acquired<Args>(args)...);
+            auto lift_f = [f = std::move(f)](Args... args) mutable {
+              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
             };
 
             std::apply(std::move(lift_f), cown_tuple);
@@ -206,9 +291,14 @@ namespace verona::cpp
   public:
     When(F&& f_) : f(std::forward<F>(f_)) {}
 
-    When(F&& f_, std::tuple<Access<Args>...> cown_tuple_)
+    When(F&& f_, std::tuple<Args...> cown_tuple_)
     : f(std::forward<F>(f_)), cown_tuple(cown_tuple_)
-    {}
+    {
+      if (get_cown_count() > sizeof...(Args))
+      {
+        std::cout << "Will need to allocate more requests";
+      }
+    }
 
     When(When&& o)
     : cown_tuple(std::move(o.cown_tuple)), f(std::forward<F>(o.f))
@@ -241,9 +331,9 @@ namespace verona::cpp
      * Internally uses AcquiredCown.  The cown is only acquired after the
      * behaviour is scheduled.
      */
-    std::tuple<Access<Args>...> cown_tuple;
+    std::tuple<Args...> cown_tuple;
 
-    PreWhen(Access<Args>... args) : cown_tuple(args...) {}
+    PreWhen(Args... args) : cown_tuple(args...) {}
 
   public:
     template<typename F>
@@ -264,12 +354,6 @@ namespace verona::cpp
       }
     }
   };
-
-  /**
-   * Template deduction guide for when.
-   */
-  template<typename... Args>
-  PreWhen(Access<Args>...) -> PreWhen<Args...>;
 
   /**
    * Template deduction guide for Access.

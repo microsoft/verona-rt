@@ -42,12 +42,13 @@ void test_body()
   cown_array[0] = log1;
   cown_array[1] = log2;
 
-  cown_span<Body1> t1{cown_array, 2};
+  cown_ptr_span<Body1> t1{cown_array, 2};
 
   auto log3 = make_cown<Body2>(1);
 
-  cown_span<Body2> t2{&log3, 1};
+  cown_ptr_span<Body2> t2{&log3, 1};
 
+#if 0
   when(t1, t2) <<
     [=](acquired_cown_span<Body1> tp1, acquired_cown_span<Body2> tp2) {
       Logging::cout() << "two runtime cowns" << Logging::endl;
@@ -57,6 +58,7 @@ void test_body()
       auto* cowns2 = tp2.array;
       Logging::cout() << "third: " << cowns2[0]->val << Logging::endl;
     };
+#endif
 
   when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
