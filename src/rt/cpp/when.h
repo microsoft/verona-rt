@@ -54,8 +54,7 @@ namespace verona::cpp
     bool is_move;
 
   public:
-    Access(const cown_ptr<T>& c)
-    : t(c.allocated_cown), is_move(false)
+    Access(const cown_ptr<T>& c) : t(c.allocated_cown), is_move(false)
     {
       assert(c.allocated_cown != nullptr);
     }
@@ -73,6 +72,7 @@ namespace verona::cpp
   template<typename T>
   class AccessBatch
   {
+    using Type = T;
     actual_cown_ptr_span<T> span;
     bool is_move;
 
@@ -93,11 +93,33 @@ namespace verona::cpp
       span.length = ptr_span.length;
     }
 
+    ~AccessBatch()
+    {
+      if (span.array)
+        snmalloc::ThreadAlloc::get().dealloc(span.array);
+    }
+
     template<typename F, typename... Args>
     friend class When;
   };
 
+  template<typename T>
+  auto convert_access(const cown_ptr<T>& c)
+  {
+    return Access<T>(c);
+  }
 
+  template<typename T>
+  auto convert_access(cown_ptr<T>&& c)
+  {
+    return Access<T>(c);
+  }
+
+  template<typename T>
+  auto convert_access(cown_ptr_span<T> c)
+  {
+    return AccessBatch<T>(c);
+  }
 
   template<typename... Args>
   class Batch
@@ -181,8 +203,15 @@ namespace verona::cpp
     template<class T>
     struct is_read_only<Access<const T>> : std::true_type
     {};
-    template<typename... Args2>
 
+    template<class T>
+    struct is_batch : std::false_type
+    {};
+    template<class T>
+    struct is_batch<AccessBatch<T>> : std::true_type
+    {};
+
+    template<typename... Args2>
     friend class Batch;
 
     /// Set of cowns used by this behaviour.
@@ -194,7 +223,12 @@ namespace verona::cpp
     /// Used as a temporary to build the behaviour.
     /// The stack lifetime is tricky, and this avoids
     /// a heap allocation.
-    verona::rt::Request requests[sizeof...(Args)];
+    Request requests[sizeof...(Args)];
+
+    // If cown_ptr spans provided more requests are required
+    // and dynamically allocated
+    Request* req_extended;
+    bool is_req_extended;
 
     /**
      * This uses template programming to turn the std::tuple into a C style
@@ -212,15 +246,24 @@ namespace verona::cpp
       else
       {
         auto p = std::get<index>(cown_tuple);
-        if constexpr (is_read_only<decltype(p)>())
-          requests[index] = Request::read(p.t);
+        if constexpr (is_batch<decltype(p)>())
+        {
+          // FIXME: Assign requests if batch
+          std::cout << "FIXME: Assing request if span\n";
+        }
         else
-          requests[index] = Request::write(p.t);
+        {
+          if constexpr (is_read_only<decltype(p)>())
+            *requests = Request::read(p.t);
+          else
+            *requests = Request::write(p.t);
 
-        if (p.is_move)
-          requests[index].mark_move();
+          if (p.is_move)
+            requests->mark_move();
 
-        assert(requests[index].cown() != nullptr);
+          assert(requests->cown() != nullptr);
+        }
+        requests++;
         array_assign<index + 1>(requests);
       }
     }
@@ -235,13 +278,13 @@ namespace verona::cpp
       else
       {
         auto p = std::get<index>(cown_tuple);
-#if 0
-        if (p.is_span)
-          std::cout << "I found a span\n";
+        size_t to_add;
+        if constexpr (is_batch<decltype(p)>())
+          to_add = p.span.length;
         else
-          std::cout << "I found a normal cown\n";
-#endif
-        return get_cown_count<index + 1>(count + 1);
+          to_add = 1;
+
+        return get_cown_count<index + 1>(count + to_add);
       }
     }
 
@@ -251,8 +294,9 @@ namespace verona::cpp
      * Needs to be a separate function for the template parameter to work.
      */
     template<typename C>
-    static auto access_to_acquired_span(Access<C> c)
+    static auto access_to_acquired(AccessBatch<C> c)
     {
+      std::cout << "FIXME: Implement access to batch\n";
       return acquired_cown_span<C>{nullptr, 0};
     }
 
@@ -271,11 +315,17 @@ namespace verona::cpp
       }
       else
       {
-        array_assign(requests);
+        Request *r;
+        if (is_req_extended)
+          r = req_extended;
+        else
+          r = reinterpret_cast<Request *>(&requests);
+
+        array_assign(r);
 
         return std::make_tuple(
           sizeof...(Args),
-          requests,
+          r,
           [f = std::move(f), cown_tuple = cown_tuple]() mutable {
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
@@ -292,11 +342,14 @@ namespace verona::cpp
     When(F&& f_) : f(std::forward<F>(f_)) {}
 
     When(F&& f_, std::tuple<Args...> cown_tuple_)
-    : f(std::forward<F>(f_)), cown_tuple(cown_tuple_)
+    : f(std::forward<F>(f_)), cown_tuple(cown_tuple_), is_req_extended(false)
     {
-      if (get_cown_count() > sizeof...(Args))
+      const size_t req_count = get_cown_count();
+      if (req_count > sizeof...(Args))
       {
-        std::cout << "Will need to allocate more requests";
+        is_req_extended = true;
+        req_extended = reinterpret_cast<Request*>(
+          snmalloc::ThreadAlloc::get().alloc(req_count * (sizeof(Request))));
       }
     }
 
@@ -305,6 +358,12 @@ namespace verona::cpp
     {}
 
     When(const When&) = delete;
+
+    ~When()
+    {
+      if (is_req_extended)
+        snmalloc::ThreadAlloc::get().dealloc(req_extended);
+    }
   };
 
   /**
@@ -381,7 +440,7 @@ namespace verona::cpp
   template<typename... Args>
   auto when(Args&&... args)
   {
-    return PreWhen(Access(std::forward<Args>(args))...);
+    return PreWhen(convert_access(std::forward<Args>(args))...);
   }
 
 } // namespace verona::cpp

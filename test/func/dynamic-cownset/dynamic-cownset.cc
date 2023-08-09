@@ -60,7 +60,10 @@ void test_body()
     };
 #endif
 
-  when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  // when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  // when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(t1, log1) <<
+    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)

@@ -193,6 +193,9 @@ namespace verona::cpp
     template<typename TT>
     friend class Access;
 
+    template<typename TT>
+    friend class AccessBatch;
+
     /**
      * Internal Verona runtime cown for this type.
      */
