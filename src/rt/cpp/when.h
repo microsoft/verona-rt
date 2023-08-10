@@ -97,6 +97,11 @@ namespace verona::cpp
 
       acq_array =
         reinterpret_cast<acquired_cown<T>*>((char*)(span.array) + actual_size);
+
+      for (size_t i = 0; i < ptr_span.length; i++)
+      {
+        new (&acq_array[i]) acquired_cown<T>(*ptr_span.array[i].allocated_cown);
+      }
     }
 
     ~AccessBatch()
@@ -254,8 +259,15 @@ namespace verona::cpp
         auto p = std::get<index>(cown_tuple);
         if constexpr (is_batch<decltype(p)>())
         {
-          // FIXME: Assign requests if batch
-          std::cout << "FIXME: Assing request if span\n";
+          for (size_t i=0;i<p.span.length;i++)
+          {
+            if constexpr (is_read_only<decltype(p)>())
+              *requests = Request::read(p.span.array[i]);
+            else
+              *requests = Request::write(p.span.array[i]);
+
+            requests++;
+          }
         }
         else
         {
@@ -302,8 +314,7 @@ namespace verona::cpp
     template<typename C>
     static auto access_to_acquired(AccessBatch<C> c)
     {
-      std::cout << "FIXME: Implement access to batch\n";
-      return acquired_cown_span<C>{nullptr, 0};
+      return acquired_cown_span<C>{c.acq_array, c.span.length};
     }
 
     template<typename C>

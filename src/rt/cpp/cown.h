@@ -409,6 +409,9 @@ namespace verona::cpp
     template<typename F, typename... Args2>
     friend class When;
 
+    template<typename T2>
+    friend class AccessBatch;
+
   private:
     /// Underlying cown that has been acquired.
     /// Runtime is actually holding this reference count.
