@@ -281,6 +281,39 @@ namespace verona::cpp
      * The index template parameter is used to perform each the assignment for
      * each index.
      */
+    template<typename C>
+    static void array_assing_helper_access(Request* req, Access<C>& p)
+    {
+      if constexpr (is_read_only<decltype(p)>())
+        *req = Request::read(p.t);
+      else
+        *req = Request::write(p.t);
+
+      if (p.is_move)
+        req->mark_move();
+
+      assert(req->cown() != nullptr);
+    }
+
+    template<typename C>
+    static size_t
+    array_assing_helper_access_batch(Request* req, AccessBatch<C>& p)
+    {
+      size_t it_cnt = 0;
+      for (size_t i = 0; i < p.span.length; i++)
+      {
+        if constexpr (is_read_only<decltype(p)>())
+          *req = Request::read(p.span.array[i]);
+        else
+          *req = Request::write(p.span.array[i]);
+
+        req++;
+        it_cnt++;
+      }
+
+      return it_cnt;
+    }
+
     template<size_t index = 0>
     void array_assign(Request* requests)
     {
@@ -294,27 +327,12 @@ namespace verona::cpp
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
         {
-          for (size_t i = 0; i < p.span.length; i++)
-          {
-            if constexpr (is_read_only<decltype(p)>())
-              *requests = Request::read(p.span.array[i]);
-            else
-              *requests = Request::write(p.span.array[i]);
-
-            requests++;
-          }
+          size_t it_cnt = array_assing_helper_access_batch(requests, p);
+          requests += it_cnt;
         }
         else
         {
-          if constexpr (is_read_only<decltype(p)>())
-            *requests = Request::read(p.t);
-          else
-            *requests = Request::write(p.t);
-
-          if (p.is_move)
-            requests->mark_move();
-
-          assert(requests->cown() != nullptr);
+          array_assing_helper_access(requests, p);
           requests++;
         }
         array_assign<index + 1>(requests);
