@@ -26,6 +26,33 @@ namespace verona::cpp
   {
     ActualCown<std::remove_const_t<T>>** array;
     size_t length;
+
+    actual_cown_ptr_span()
+    {
+      length = 0;
+      array = nullptr;
+    }
+
+    actual_cown_ptr_span(actual_cown_ptr_span&& old)
+    {
+      length = old.length;
+      old.length = 0;
+      array = old.array;
+      old.array = nullptr;
+    }
+
+    actual_cown_ptr_span& operator=(actual_cown_ptr_span&& old)
+    {
+      if (array)
+        snmalloc::ThreadAlloc::get().dealloc(array);
+
+      length = old.length;
+      old.length = 0;
+      array = old.array;
+      old.array = nullptr;
+
+      return *this;
+    }
   };
 
   template<typename T>
@@ -33,13 +60,6 @@ namespace verona::cpp
   {
     acquired_cown<T>* array;
     size_t length;
-#if 0
-  public:
-    using Type = T;
-    acquired_cown_span(cown_span<T> cs)
-    : lenght(cs.lenght), array(reinterpret_cast<acquired_cown<T>*>(cs.array))
-    {}
-#endif
   };
 
   /**
@@ -104,11 +124,28 @@ namespace verona::cpp
       }
     }
 
+    AccessBatch(AccessBatch&& old)
+    {
+      std::cout << "Calling AccessBatch move constructor\n";
+      span = std::move(old.span);
+      acq_array = old.acq_array;
+      old.acq_array = nullptr;
+      is_move = old.is_move;
+    }
+
     ~AccessBatch()
     {
+      std::cout << "Deleting access batch\n";
       if (span.array)
+      {
+        std::cout << "and the array\n";
         snmalloc::ThreadAlloc::get().dealloc(span.array);
+      }
     }
+
+    AccessBatch& operator=(AccessBatch&&) = delete;
+    AccessBatch(const AccessBatch&) = delete;
+    AccessBatch& operator=(const AccessBatch&) = delete;
 
     template<typename F, typename... Args>
     friend class When;
@@ -256,10 +293,11 @@ namespace verona::cpp
       }
       else
       {
-        auto p = std::get<index>(cown_tuple);
-        if constexpr (is_batch<decltype(p)>())
+        auto& p = std::get<index>(cown_tuple);
+        if constexpr (is_batch<
+                        typename std::remove_reference<decltype(p)>::type>())
         {
-          for (size_t i=0;i<p.span.length;i++)
+          for (size_t i = 0; i < p.span.length; i++)
           {
             if constexpr (is_read_only<decltype(p)>())
               *requests = Request::read(p.span.array[i]);
@@ -295,7 +333,7 @@ namespace verona::cpp
       }
       else
       {
-        auto p = std::get<index>(cown_tuple);
+        auto& p = std::get<index>(cown_tuple);
         size_t to_add;
         if constexpr (is_batch<decltype(p)>())
           to_add = p.span.length;
@@ -312,13 +350,13 @@ namespace verona::cpp
      * Needs to be a separate function for the template parameter to work.
      */
     template<typename C>
-    static auto access_to_acquired(AccessBatch<C> c)
+    static auto access_to_acquired(AccessBatch<C>& c)
     {
       return acquired_cown_span<C>{c.acq_array, c.span.length};
     }
 
     template<typename C>
-    static auto access_to_acquired(Access<C> c)
+    static auto access_to_acquired(Access<C>& c)
     {
       assert(c.t != nullptr);
       return acquired_cown<C>(*c.t);
@@ -343,14 +381,14 @@ namespace verona::cpp
         return std::make_tuple(
           sizeof...(Args),
           r,
-          [f = std::move(f), cown_tuple = cown_tuple]() mutable {
+          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
             auto lift_f = [f = std::move(f)](Args... args) mutable {
               std::move(f)(access_to_acquired<typename Args::Type>(args)...);
             };
 
-            std::apply(std::move(lift_f), cown_tuple);
+            std::apply(std::move(lift_f), std::move(cown_tuple));
           });
       }
     }
@@ -359,7 +397,9 @@ namespace verona::cpp
     When(F&& f_) : f(std::forward<F>(f_)) {}
 
     When(F&& f_, std::tuple<Args...> cown_tuple_)
-    : f(std::forward<F>(f_)), cown_tuple(cown_tuple_), is_req_extended(false)
+    : f(std::forward<F>(f_)),
+      cown_tuple(std::move(cown_tuple_)),
+      is_req_extended(false)
     {
       const size_t req_count = get_cown_count();
       if (req_count > sizeof...(Args))
@@ -409,7 +449,7 @@ namespace verona::cpp
      */
     std::tuple<Args...> cown_tuple;
 
-    PreWhen(Args... args) : cown_tuple(args...) {}
+    PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
   public:
     template<typename F>

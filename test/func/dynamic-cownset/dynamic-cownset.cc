@@ -48,7 +48,10 @@ void test_body()
 
   cown_ptr_span<Body2> t2{&log3, 1};
 
-#if 0
+  when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+
+  when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+
   when(t1, t2) <<
     [=](acquired_cown_span<Body1> tp1, acquired_cown_span<Body2> tp2) {
       Logging::cout() << "two runtime cowns" << Logging::endl;
@@ -58,12 +61,11 @@ void test_body()
       auto* cowns2 = tp2.array;
       Logging::cout() << "third: " << cowns2[0]->val << Logging::endl;
     };
-#endif
 
-  // when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  // when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  when(t1, log1) <<
-    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
+  when(t1, log1) << [=](auto, auto) {
+    // Logging::cout() << "log" << Logging::endl;
+    std::cout << "log" << std::endl;
+  };
 }
 
 int main(int argc, char** argv)
