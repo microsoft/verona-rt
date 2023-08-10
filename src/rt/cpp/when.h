@@ -126,7 +126,6 @@ namespace verona::cpp
 
     AccessBatch(AccessBatch&& old)
     {
-      std::cout << "Calling AccessBatch move constructor\n";
       span = std::move(old.span);
       acq_array = old.acq_array;
       old.acq_array = nullptr;
@@ -135,10 +134,8 @@ namespace verona::cpp
 
     ~AccessBatch()
     {
-      std::cout << "Deleting access batch\n";
       if (span.array)
       {
-        std::cout << "and the array\n";
         snmalloc::ThreadAlloc::get().dealloc(span.array);
       }
     }
@@ -335,7 +332,8 @@ namespace verona::cpp
       {
         auto& p = std::get<index>(cown_tuple);
         size_t to_add;
-        if constexpr (is_batch<decltype(p)>())
+        if constexpr (is_batch<
+                        typename std::remove_reference<decltype(p)>::type>())
           to_add = p.span.length;
         else
           to_add = 1;
@@ -419,7 +417,9 @@ namespace verona::cpp
     ~When()
     {
       if (is_req_extended)
+      {
         snmalloc::ThreadAlloc::get().dealloc(req_extended);
+      }
     }
   };
 
