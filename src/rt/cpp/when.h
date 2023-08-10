@@ -74,6 +74,7 @@ namespace verona::cpp
   {
     using Type = T;
     actual_cown_ptr_span<T> span;
+    acquired_cown<T>* acq_array;
     bool is_move;
 
   public:
@@ -81,16 +82,21 @@ namespace verona::cpp
     {
       // Allocate the actual_cown and the acquired_cown array
       // The acquired_cown array is after the actual_cown one
+      size_t actual_size =
+        ptr_span.length * sizeof(ActualCown<std::remove_const_t<T>>*);
+      size_t acq_size =
+        ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
       span.array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
-        snmalloc::ThreadAlloc::get().alloc(
-          ptr_span.length * (sizeof(ActualCown<std::remove_const_t<T>>*))));
+        snmalloc::ThreadAlloc::get().alloc(actual_size + acq_size));
 
       for (size_t i = 0; i < ptr_span.length; i++)
       {
         span.array[i] = ptr_span.array[i].allocated_cown;
       }
-
       span.length = ptr_span.length;
+
+      acq_array =
+        reinterpret_cast<acquired_cown<T>*>((char*)(span.array) + actual_size);
     }
 
     ~AccessBatch()
@@ -315,11 +321,11 @@ namespace verona::cpp
       }
       else
       {
-        Request *r;
+        Request* r;
         if (is_req_extended)
           r = req_extended;
         else
-          r = reinterpret_cast<Request *>(&requests);
+          r = reinterpret_cast<Request*>(&requests);
 
         array_assign(r);
 
