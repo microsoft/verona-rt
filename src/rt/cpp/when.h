@@ -315,8 +315,8 @@ namespace verona::cpp
             requests->mark_move();
 
           assert(requests->cown() != nullptr);
+          requests++;
         }
-        requests++;
         array_assign<index + 1>(requests);
       }
     }
@@ -409,8 +409,14 @@ namespace verona::cpp
     }
 
     When(When&& o)
-    : cown_tuple(std::move(o.cown_tuple)), f(std::forward<F>(o.f))
-    {}
+    : cown_tuple(std::move(o.cown_tuple)),
+      f(std::forward<F>(o.f)),
+      is_req_extended(o.is_req_extended),
+      req_extended(o.req_extended)
+    {
+      o.req_extended = nullptr;
+      o.is_req_extended = false;
+    }
 
     When(const When&) = delete;
 
