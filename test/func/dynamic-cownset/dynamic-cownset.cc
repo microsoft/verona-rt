@@ -47,9 +47,55 @@ void test_span()
   when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
-void test_mixed()
+void test_span_empty()
 {
-  Logging::cout() << "test_mixed()" << Logging::endl;
+  Logging::cout() << "test_span_empty()" << Logging::endl;
+
+  cown_ptr_span<Body1> t1{nullptr, 0};
+
+  when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+}
+
+void test_span_single()
+{
+  Logging::cout() << "test_span_single()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+
+  cown_ptr_span<Body1> t1{&log1, 1};
+
+  when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+}
+
+void test_multi_span()
+{
+  Logging::cout() << "test_multi_span()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array1[2];
+  cown_array1[0] = log1;
+  cown_array1[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array1, 2};
+
+  auto log3 = make_cown<Body1>(3);
+  auto log4 = make_cown<Body1>(4);
+
+  cown_ptr<Body1> cown_array2[2];
+  cown_array2[0] = log3;
+  cown_array2[1] = log4;
+
+  cown_ptr_span<Body1> t2{cown_array2, 2};
+
+  when(t1, t2) <<
+    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
+}
+
+void test_mixed1()
+{
+  Logging::cout() << "test_mixed1()" << Logging::endl;
 
   auto log1 = make_cown<Body1>(1);
   auto log2 = make_cown<Body1>(2);
@@ -60,13 +106,79 @@ void test_mixed()
 
   cown_ptr_span<Body1> t1{cown_array, 2};
 
-  auto log3 = make_cown<Body2>(1);
+  auto log3 = make_cown<Body1>(1);
 
-  cown_ptr_span<Body2> t2{&log3, 1};
-
-  when(t1, log1) << [=](acquired_cown_span<Body1> ca, acquired_cown<Body1> a) {
+  when(t1, log3) << [=](acquired_cown_span<Body1> ca, acquired_cown<Body1> a) {
     Logging::cout() << "log" << Logging::endl;
   };
+}
+
+void test_mixed2()
+{
+  Logging::cout() << "test_mixed2()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array[2];
+  cown_array[0] = log1;
+  cown_array[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array, 2};
+
+  auto log3 = make_cown<Body1>(1);
+
+  when(log3, t1) << [=](acquired_cown<Body1>, acquired_cown_span<Body1> ca) {
+    Logging::cout() << "log" << Logging::endl;
+  };
+}
+
+void test_mixed3()
+{
+  Logging::cout() << "test_mixed3()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array1[2];
+  cown_array1[0] = log1;
+  cown_array1[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array1, 2};
+
+  auto log3 = make_cown<Body1>(3);
+  auto log4 = make_cown<Body1>(4);
+
+  cown_ptr<Body1> cown_array2[2];
+  cown_array2[0] = log3;
+  cown_array2[1] = log4;
+
+  cown_ptr_span<Body1> t2{cown_array2, 2};
+
+  auto log5 = make_cown<Body1>(4);
+
+  when(t1, log5, t2) <<
+    [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
+}
+
+void test_mixed4()
+{
+  Logging::cout() << "test_mixed4()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array1[2];
+  cown_array1[0] = log1;
+  cown_array1[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array1, 2};
+
+  auto log3 = make_cown<Body1>(3);
+  auto log4 = make_cown<Body1>(4);
+
+  when(log3, t1, log4) <<
+    [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_multi()
@@ -82,12 +194,61 @@ void test_multi()
 
   cown_ptr_span<Body1> t1{cown_array, 2};
 
-  auto log3 = make_cown<Body2>(1);
-
-  cown_ptr_span<Body2> t2{&log3, 1};
-
   (when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
     (when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; });
+}
+
+void test_nest1()
+{
+  Logging::cout() << "test_nest1()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array[2];
+  cown_array[0] = log1;
+  cown_array[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array, 2};
+
+  when(t1) << [=](auto) {
+    when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  };
+}
+
+void test_nest2()
+{
+  Logging::cout() << "test_nest2()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array[2];
+  cown_array[0] = log1;
+  cown_array[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array, 2};
+
+  when(log1) << [=](auto) {
+    when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  };
+}
+
+void test_move()
+{
+  Logging::cout() << "test_span()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+  auto log2 = make_cown<Body1>(2);
+
+  cown_ptr<Body1> cown_array[2];
+  cown_array[0] = log1;
+  cown_array[1] = log2;
+
+  cown_ptr_span<Body1> t1{cown_array, 2};
+
+  when(std::move(t1)) <<
+    [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)
@@ -95,8 +256,21 @@ int main(int argc, char** argv)
   SystematicTestHarness harness(argc, argv);
 
   harness.run(test_span);
-  harness.run(test_mixed);
+  harness.run(test_span_empty);
+  harness.run(test_span_single);
+  harness.run(test_multi_span);
+
+  harness.run(test_mixed1);
+  harness.run(test_mixed2);
+  harness.run(test_mixed3);
+  harness.run(test_mixed4);
+
   harness.run(test_multi);
+
+  harness.run(test_nest1);
+  harness.run(test_nest2);
+
+  harness.run(test_move);
 
   return 0;
 }

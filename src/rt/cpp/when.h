@@ -98,7 +98,7 @@ namespace verona::cpp
     bool is_move;
 
   public:
-    AccessBatch(cown_ptr_span<T> ptr_span) : is_move(false)
+    AccessBatch(cown_ptr_span<T>& ptr_span) : is_move(false)
     {
       // Allocate the actual_cown and the acquired_cown array
       // The acquired_cown array is after the actual_cown one
@@ -122,6 +122,35 @@ namespace verona::cpp
       {
         new (&acq_array[i]) acquired_cown<T>(*ptr_span.array[i].allocated_cown);
       }
+    }
+
+    AccessBatch(cown_ptr_span<T>&& ptr_span) : is_move(true)
+    {
+      // Allocate the actual_cown and the acquired_cown array
+      // The acquired_cown array is after the actual_cown one
+      size_t actual_size =
+        ptr_span.length * sizeof(ActualCown<std::remove_const_t<T>>*);
+      size_t acq_size =
+        ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
+      span.array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
+        snmalloc::ThreadAlloc::get().alloc(actual_size + acq_size));
+
+      for (size_t i = 0; i < ptr_span.length; i++)
+      {
+        span.array[i] = ptr_span.array[i].allocated_cown;
+      }
+      span.length = ptr_span.length;
+
+      acq_array =
+        reinterpret_cast<acquired_cown<T>*>((char*)(span.array) + actual_size);
+
+      for (size_t i = 0; i < ptr_span.length; i++)
+      {
+        new (&acq_array[i]) acquired_cown<T>(*ptr_span.array[i].allocated_cown);
+      }
+
+      ptr_span.length = 0;
+      ptr_span.arary = nullptr;
     }
 
     AccessBatch(AccessBatch&& old)
@@ -282,7 +311,7 @@ namespace verona::cpp
      * each index.
      */
     template<typename C>
-    static void array_assing_helper_access(Request* req, Access<C>& p)
+    static void array_assign_helper_access(Request* req, Access<C>& p)
     {
       if constexpr (is_read_only<decltype(p)>())
         *req = Request::read(p.t);
@@ -297,7 +326,7 @@ namespace verona::cpp
 
     template<typename C>
     static size_t
-    array_assing_helper_access_batch(Request* req, AccessBatch<C>& p)
+    array_assign_helper_access_batch(Request* req, AccessBatch<C>& p)
     {
       size_t it_cnt = 0;
       for (size_t i = 0; i < p.span.length; i++)
@@ -306,6 +335,9 @@ namespace verona::cpp
           *req = Request::read(p.span.array[i]);
         else
           *req = Request::write(p.span.array[i]);
+
+        if (p.is_move)
+          req->mark_move();
 
         req++;
         it_cnt++;
@@ -327,12 +359,12 @@ namespace verona::cpp
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
         {
-          size_t it_cnt = array_assing_helper_access_batch(requests, p);
+          size_t it_cnt = array_assign_helper_access_batch(requests, p);
           requests += it_cnt;
         }
         else
         {
-          array_assing_helper_access(requests, p);
+          array_assign_helper_access(requests, p);
           requests++;
         }
         array_assign<index + 1>(requests);
