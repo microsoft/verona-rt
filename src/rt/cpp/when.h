@@ -19,6 +19,46 @@ namespace verona::cpp
   {
     cown_ptr<T>* array;
     size_t length;
+
+    void constr_helper(cown_ptr<T>* arr)
+    {
+      array = reinterpret_cast<cown_ptr<T>*>(
+        snmalloc::ThreadAlloc::get().alloc(length * sizeof(cown_ptr<T>*)));
+      bzero(array, length * sizeof(cown_ptr<T>*));
+
+      for (size_t i = 0; i < length; i++)
+        array[i] = arr[i];
+    }
+
+    template<bool should_move = false>
+    cown_ptr_span(cown_ptr<T>* array_, size_t length_) : length(length_)
+    {
+      if constexpr (should_move == false)
+      {
+        constr_helper(array_);
+      }
+    }
+
+    cown_ptr_span(const cown_ptr_span& o)
+    {
+      length = o.length;
+      constr_helper(o.array);
+    }
+
+    ~cown_ptr_span()
+    {
+      if (array)
+      {
+        for (size_t i = 0; i < length; i++)
+          array[i].~cown_ptr<T>();
+
+        snmalloc::ThreadAlloc::get().dealloc(array);
+      }
+    }
+
+    cown_ptr_span(cown_ptr_span&& old) = delete;
+    cown_ptr_span& operator=(cown_ptr_span&&) = delete;
+    cown_ptr_span& operator=(const cown_ptr_span&) = delete;
   };
 
   template<typename T>
@@ -97,8 +137,7 @@ namespace verona::cpp
     acquired_cown<T>* acq_array;
     bool is_move;
 
-  public:
-    AccessBatch(cown_ptr_span<T>& ptr_span) : is_move(false)
+    void constr_helper(const cown_ptr_span<T>& ptr_span)
     {
       // Allocate the actual_cown and the acquired_cown array
       // The acquired_cown array is after the actual_cown one
@@ -124,30 +163,15 @@ namespace verona::cpp
       }
     }
 
+  public:
+    AccessBatch(const cown_ptr_span<T>& ptr_span) : is_move(false)
+    {
+      constr_helper(ptr_span);
+    }
+
     AccessBatch(cown_ptr_span<T>&& ptr_span) : is_move(true)
     {
-      // Allocate the actual_cown and the acquired_cown array
-      // The acquired_cown array is after the actual_cown one
-      size_t actual_size =
-        ptr_span.length * sizeof(ActualCown<std::remove_const_t<T>>*);
-      size_t acq_size =
-        ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
-      span.array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
-        snmalloc::ThreadAlloc::get().alloc(actual_size + acq_size));
-
-      for (size_t i = 0; i < ptr_span.length; i++)
-      {
-        span.array[i] = ptr_span.array[i].allocated_cown;
-      }
-      span.length = ptr_span.length;
-
-      acq_array =
-        reinterpret_cast<acquired_cown<T>*>((char*)(span.array) + actual_size);
-
-      for (size_t i = 0; i < ptr_span.length; i++)
-      {
-        new (&acq_array[i]) acquired_cown<T>(*ptr_span.array[i].allocated_cown);
-      }
+      constr_helper(ptr_span);
 
       ptr_span.length = 0;
       ptr_span.arary = nullptr;
@@ -190,7 +214,7 @@ namespace verona::cpp
   }
 
   template<typename T>
-  auto convert_access(cown_ptr_span<T> c)
+  auto convert_access(const cown_ptr_span<T>& c)
   {
     return AccessBatch<T>(c);
   }
@@ -347,11 +371,13 @@ namespace verona::cpp
     }
 
     template<size_t index = 0>
-    void array_assign(Request* requests)
+    size_t array_assign(Request* requests)
     {
+      size_t it_cnt;
+
       if constexpr (index >= sizeof...(Args))
       {
-        return;
+        return 0;
       }
       else
       {
@@ -359,15 +385,16 @@ namespace verona::cpp
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
         {
-          size_t it_cnt = array_assign_helper_access_batch(requests, p);
+          it_cnt = array_assign_helper_access_batch(requests, p);
           requests += it_cnt;
         }
         else
         {
           array_assign_helper_access(requests, p);
           requests++;
+          it_cnt = 1;
         }
-        array_assign<index + 1>(requests);
+        return it_cnt + array_assign<index + 1>(requests);
       }
     }
 
@@ -424,10 +451,10 @@ namespace verona::cpp
         else
           r = reinterpret_cast<Request*>(&requests);
 
-        array_assign(r);
+        size_t count = array_assign(r);
 
         return std::make_tuple(
-          sizeof...(Args),
+          count,
           r,
           [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
             /// Effectively converts ActualCown<T>... to

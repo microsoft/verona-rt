@@ -227,7 +227,7 @@ void test_nest2()
   cown_array[0] = log1;
   cown_array[1] = log2;
 
-  cown_ptr_span<Body1> t1{cown_array, 2};
+  cown_ptr_span<Body1> t1(cown_array, 2);
 
   when(log1) << [=](auto) {
     when(t1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
