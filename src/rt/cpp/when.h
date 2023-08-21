@@ -24,7 +24,7 @@ namespace verona::cpp
     {
       array = reinterpret_cast<cown_ptr<T>*>(
         snmalloc::ThreadAlloc::get().alloc(length * sizeof(cown_ptr<T>*)));
-      bzero(array, length * sizeof(cown_ptr<T>*));
+      memset(array, 0, length * sizeof(cown_ptr<T>*));
 
       for (size_t i = 0; i < length; i++)
         array[i] = arr[i];
@@ -373,14 +373,14 @@ namespace verona::cpp
     template<size_t index = 0>
     size_t array_assign(Request* requests)
     {
-      size_t it_cnt;
-
       if constexpr (index >= sizeof...(Args))
       {
         return 0;
       }
       else
       {
+        size_t it_cnt;
+
         auto& p = std::get<index>(cown_tuple);
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
