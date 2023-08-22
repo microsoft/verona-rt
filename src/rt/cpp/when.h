@@ -4,6 +4,7 @@
 
 #include "../sched/behaviour.h"
 #include "cown.h"
+#include "cown_span.h"
 
 #include <functional>
 #include <tuple>
@@ -15,81 +16,37 @@ namespace verona::cpp
   using namespace verona::rt;
 
   template<typename T>
-  struct cown_ptr_span
-  {
-    cown_ptr<T>* array;
-    size_t length;
-
-    void constr_helper(cown_ptr<T>* arr)
-    {
-      array = reinterpret_cast<cown_ptr<T>*>(
-        snmalloc::ThreadAlloc::get().alloc(length * sizeof(cown_ptr<T>*)));
-      memset(array, 0, length * sizeof(cown_ptr<T>*));
-
-      for (size_t i = 0; i < length; i++)
-        array[i] = arr[i];
-    }
-
-    template<bool should_move = false>
-    cown_ptr_span(cown_ptr<T>* array_, size_t length_) : length(length_)
-    {
-      if constexpr (should_move == false)
-      {
-        constr_helper(array_);
-      }
-    }
-
-    cown_ptr_span(const cown_ptr_span& o)
-    {
-      length = o.length;
-      constr_helper(o.array);
-    }
-
-    ~cown_ptr_span()
-    {
-      if (array)
-      {
-        for (size_t i = 0; i < length; i++)
-          array[i].~cown_ptr<T>();
-
-        snmalloc::ThreadAlloc::get().dealloc(array);
-      }
-    }
-
-    cown_ptr_span(cown_ptr_span&& old) = delete;
-    cown_ptr_span& operator=(cown_ptr_span&&) = delete;
-    cown_ptr_span& operator=(const cown_ptr_span&) = delete;
-  };
-
-  template<typename T>
-  struct actual_cown_ptr_span
+  struct ActualCownSpan
   {
     ActualCown<std::remove_const_t<T>>** array;
     size_t length;
 
-    actual_cown_ptr_span()
+    void clear()
     {
       length = 0;
       array = nullptr;
     }
 
-    actual_cown_ptr_span(actual_cown_ptr_span&& old)
+    ActualCownSpan()
     {
-      length = old.length;
-      old.length = 0;
-      array = old.array;
-      old.array = nullptr;
+      clear();
     }
 
-    actual_cown_ptr_span& operator=(actual_cown_ptr_span&& old)
+    ActualCownSpan(ActualCownSpan&& old)
+    {
+      length = old.length;
+      array = old.array;
+      old.clear();
+    }
+
+    ActualCownSpan& operator=(ActualCownSpan&& old)
     {
       if (array)
         snmalloc::ThreadAlloc::get().dealloc(array);
 
       length = old.length;
-      old.length = 0;
       array = old.array;
-      old.array = nullptr;
+      old.clear();
 
       return *this;
     }
@@ -119,7 +76,7 @@ namespace verona::cpp
       assert(c.allocated_cown != nullptr);
     }
 
-    Access(cown_ptr<T>&& c) : t(c.allocated_cown)
+    Access(cown_ptr<T>&& c) : t(c.allocated_cown), is_move(true)
     {
       assert(c.allocated_cown != nullptr);
       c.allocated_cown = nullptr;
@@ -129,11 +86,16 @@ namespace verona::cpp
     friend class When;
   };
 
+  /**
+   * Used to track the type of access request in the case of cown_ptr_span
+   * Ownership is handled the same for all cown_ptr in the span.
+   * If is_move is true, all cown_ptrs will be moved.
+   */
   template<typename T>
   class AccessBatch
   {
     using Type = T;
-    actual_cown_ptr_span<T> span;
+    ActualCownSpan<T> span;
     acquired_cown<T>* acq_array;
     bool is_move;
 
@@ -324,7 +286,9 @@ namespace verona::cpp
     Request requests[sizeof...(Args)];
 
     // If cown_ptr spans provided more requests are required
-    // and dynamically allocated
+    // and thus are dynamically allocated.
+    // If is_req_extended is true, then req_extended holds an array of Request
+    // and the above requests[] array is not used.
     Request* req_extended;
     bool is_req_extended;
 
@@ -572,10 +536,10 @@ namespace verona::cpp
    * Uses `<<` to apply the closure.
    *
    * This should really take a type of
-   *   ((cown_ptr<A1>& | cown_ptr<A1>&&)...
-   * To get the universal reference type to work, we can't
-   * place this constraint on it directly, as it needs to be
-   * on a type argument.
+   *   ((cown_ptr<A1>& | cown_ptr<A1>&& | cown_ptr_span<A1>& ||
+   * cown_ptr_span<A1>&& )... To get the universal reference type to work, we
+   * can't place this constraint on it directly, as it needs to be on a type
+   * argument.
    */
   template<typename... Args>
   auto when(Args&&... args)
