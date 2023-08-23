@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../sched/behaviour.h"
+#include "coro.h"
 #include "cown.h"
 
 #include <functional>
@@ -261,6 +262,32 @@ namespace verona::cpp
       {
         return Batch(
           std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+      }
+    }
+
+    /**
+     * This operator is used to schedule coroutines instead of lambdas that
+     * run to completion. Unlike other lambdas, these coroutines should return
+     * a coroutine and their arguments should be references to acquired_cown
+     * instead of acquired_cown objects.
+     */
+    template<typename F>
+    auto operator<<=(F&& f)
+    {
+      Scheduler::stats().behaviour(sizeof...(Args));
+
+      auto coro_f = prepare_coro_lambda(f);
+
+      if constexpr (sizeof...(Args) == 0)
+      {
+        // Execute now atomic batch makes no sense.
+        verona::rt::schedule_lambda(std::forward<decltype(coro_f)>(coro_f));
+        return Batch(std::make_tuple());
+      }
+      else
+      {
+        return Batch(std::make_tuple(
+          When(std::forward<decltype(coro_f)>(coro_f), std::move(cown_tuple))));
       }
     }
   };
