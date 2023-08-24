@@ -15,6 +15,10 @@ namespace verona::cpp
 {
   using namespace verona::rt;
 
+  /**
+   * This is a non-owning span of ActualCown pointers
+   * Its lifetime is always the same as the AccessBatch.
+   */
   template<typename T>
   struct ActualCownSpan
   {
@@ -37,18 +41,6 @@ namespace verona::cpp
       length = old.length;
       array = old.array;
       old.clear();
-    }
-
-    ActualCownSpan& operator=(ActualCownSpan&& old)
-    {
-      if (array)
-        snmalloc::ThreadAlloc::get().dealloc(array);
-
-      length = old.length;
-      array = old.array;
-      old.clear();
-
-      return *this;
     }
   };
 
@@ -139,9 +131,8 @@ namespace verona::cpp
       ptr_span.arary = nullptr;
     }
 
-    AccessBatch(AccessBatch&& old)
+    AccessBatch(AccessBatch&& old) : span(std::move(old.span))
     {
-      span = std::move(old.span);
       acq_array = old.acq_array;
       old.acq_array = nullptr;
       is_move = old.is_move;
