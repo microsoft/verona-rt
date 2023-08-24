@@ -4,7 +4,7 @@
 
 #include "../sched/behaviour.h"
 #include "cown.h"
-#include "cown_span.h"
+#include "cown_array.h"
 
 #include <functional>
 #include <tuple>
@@ -87,7 +87,7 @@ namespace verona::cpp
   };
 
   /**
-   * Used to track the type of access request in the case of cown_ptr_span
+   * Used to track the type of access request in the case of cown_array
    * Ownership is handled the same for all cown_ptr in the span.
    * If is_move is true, all cown_ptrs will be moved.
    */
@@ -99,7 +99,7 @@ namespace verona::cpp
     acquired_cown<T>* acq_array;
     bool is_move;
 
-    void constr_helper(const cown_ptr_span<T>& ptr_span)
+    void constr_helper(const cown_array<T>& ptr_span)
     {
       // Allocate the actual_cown and the acquired_cown array
       // The acquired_cown array is after the actual_cown one
@@ -126,12 +126,12 @@ namespace verona::cpp
     }
 
   public:
-    AccessBatch(const cown_ptr_span<T>& ptr_span) : is_move(false)
+    AccessBatch(const cown_array<T>& ptr_span) : is_move(false)
     {
       constr_helper(ptr_span);
     }
 
-    AccessBatch(cown_ptr_span<T>&& ptr_span) : is_move(true)
+    AccessBatch(cown_array<T>&& ptr_span) : is_move(true)
     {
       constr_helper(ptr_span);
 
@@ -176,7 +176,7 @@ namespace verona::cpp
   }
 
   template<typename T>
-  auto convert_access(const cown_ptr_span<T>& c)
+  auto convert_access(const cown_array<T>& c)
   {
     return AccessBatch<T>(c);
   }
@@ -536,8 +536,8 @@ namespace verona::cpp
    * Uses `<<` to apply the closure.
    *
    * This should really take a type of
-   *   ((cown_ptr<A1>& | cown_ptr<A1>&& | cown_ptr_span<A1>& ||
-   * cown_ptr_span<A1>&& )... To get the universal reference type to work, we
+   *   ((cown_ptr<A1>& | cown_ptr<A1>&& | cown_array<A1>& ||
+   * cown_array<A1>&& )... To get the universal reference type to work, we
    * can't place this constraint on it directly, as it needs to be on a type
    * argument.
    */

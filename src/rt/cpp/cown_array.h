@@ -12,13 +12,13 @@ namespace verona::cpp
    * another array to hold those pointers after incrementing the reference
    * count. Alternatively, the constructor takes a template argument to move
    * the cown_ptr array and avoid the allocation.
-   * In both cases cown_ptr_span has ownership over the cown_ptr
+   * In both cases cown_array has ownership over the cown_ptr
    *
    * The destructor calls the destructor of each cown_ptr and frees the
    * allocated array.
    */
   template<typename T>
-  struct cown_ptr_span
+  struct cown_array
   {
     cown_ptr<T>* array;
     size_t length;
@@ -33,7 +33,7 @@ namespace verona::cpp
     }
 
     template<bool should_move = false>
-    cown_ptr_span(cown_ptr<T>* array_, size_t length_) : length(length_)
+    cown_array(cown_ptr<T>* array_, size_t length_) : length(length_)
     {
       if constexpr (should_move == false)
       {
@@ -41,13 +41,13 @@ namespace verona::cpp
       }
     }
 
-    cown_ptr_span(const cown_ptr_span& o)
+    cown_array(const cown_array& o)
     {
       length = o.length;
       constr_helper(o.array);
     }
 
-    ~cown_ptr_span()
+    ~cown_array()
     {
       if (array)
       {
@@ -60,8 +60,8 @@ namespace verona::cpp
 
     // Not needed at the moment. Marked as delete to avoid bugs
     // Could be implemented if necessary
-    cown_ptr_span(cown_ptr_span&& old) = delete;
-    cown_ptr_span& operator=(cown_ptr_span&&) = delete;
-    cown_ptr_span& operator=(const cown_ptr_span&) = delete;
+    cown_array(cown_array&& old) = delete;
+    cown_array& operator=(cown_array&&) = delete;
+    cown_array& operator=(const cown_array&) = delete;
   };
 }
