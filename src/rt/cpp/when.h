@@ -15,35 +15,6 @@ namespace verona::cpp
 {
   using namespace verona::rt;
 
-  /**
-   * This is a non-owning span of ActualCown pointers
-   * Its lifetime is always the same as the AccessBatch.
-   */
-  template<typename T>
-  struct ActualCownSpan
-  {
-    ActualCown<std::remove_const_t<T>>** array;
-    size_t length;
-
-    void clear()
-    {
-      length = 0;
-      array = nullptr;
-    }
-
-    ActualCownSpan()
-    {
-      clear();
-    }
-
-    ActualCownSpan(ActualCownSpan&& old)
-    {
-      length = old.length;
-      array = old.array;
-      old.clear();
-    }
-  };
-
   template<typename T>
   struct acquired_cown_span
   {
@@ -87,29 +58,30 @@ namespace verona::cpp
   class AccessBatch
   {
     using Type = T;
-    ActualCownSpan<T> span;
+    ActualCown<std::remove_const_t<T>>** act_array;
     acquired_cown<T>* acq_array;
+    size_t arr_len;
     bool is_move;
 
     void constr_helper(const cown_array<T>& ptr_span)
     {
       // Allocate the actual_cown and the acquired_cown array
       // The acquired_cown array is after the actual_cown one
-      size_t actual_size =
+      size_t act_size =
         ptr_span.length * sizeof(ActualCown<std::remove_const_t<T>>*);
       size_t acq_size =
         ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
-      span.array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
-        snmalloc::ThreadAlloc::get().alloc(actual_size + acq_size));
+      act_array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
+        snmalloc::ThreadAlloc::get().alloc(act_size + acq_size));
 
       for (size_t i = 0; i < ptr_span.length; i++)
       {
-        span.array[i] = ptr_span.array[i].allocated_cown;
+        act_array[i] = ptr_span.array[i].allocated_cown;
       }
-      span.length = ptr_span.length;
+      arr_len = ptr_span.length;
 
       acq_array =
-        reinterpret_cast<acquired_cown<T>*>((char*)(span.array) + actual_size);
+        reinterpret_cast<acquired_cown<T>*>((char*)(act_array) + act_size);
 
       for (size_t i = 0; i < ptr_span.length; i++)
       {
@@ -131,18 +103,23 @@ namespace verona::cpp
       ptr_span.arary = nullptr;
     }
 
-    AccessBatch(AccessBatch&& old) : span(std::move(old.span))
+    AccessBatch(AccessBatch&& old)
     {
+      act_array = old.act_array;
       acq_array = old.acq_array;
-      old.acq_array = nullptr;
+      arr_len = old.arr_len;
       is_move = old.is_move;
+
+      old.acq_array = nullptr;
+      old.act_array = nullptr;
+      old.arr_len = 0;
     }
 
     ~AccessBatch()
     {
-      if (span.array)
+      if (act_array)
       {
-        snmalloc::ThreadAlloc::get().dealloc(span.array);
+        snmalloc::ThreadAlloc::get().dealloc(act_array);
       }
     }
 
@@ -308,12 +285,12 @@ namespace verona::cpp
     array_assign_helper_access_batch(Request* req, AccessBatch<C>& p)
     {
       size_t it_cnt = 0;
-      for (size_t i = 0; i < p.span.length; i++)
+      for (size_t i = 0; i < p.arr_len; i++)
       {
         if constexpr (is_read_only<decltype(p)>())
-          *req = Request::read(p.span.array[i]);
+          *req = Request::read(p.act_array[i]);
         else
-          *req = Request::write(p.span.array[i]);
+          *req = Request::write(p.act_array[i]);
 
         if (p.is_move)
           req->mark_move();
@@ -366,7 +343,7 @@ namespace verona::cpp
         size_t to_add;
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
-          to_add = p.span.length;
+          to_add = p.arr_len;
         else
           to_add = 1;
 
@@ -382,7 +359,7 @@ namespace verona::cpp
     template<typename C>
     static auto access_to_acquired(AccessBatch<C>& c)
     {
-      return acquired_cown_span<C>{c.acq_array, c.span.length};
+      return acquired_cown_span<C>{c.acq_array, c.arr_len};
     }
 
     template<typename C>
