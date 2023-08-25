@@ -205,8 +205,14 @@ namespace verona::rt
       while ((work = get_work(batch)))
       {
         Logging::cout() << "Schedule work " << work << Logging::endl;
-
+        
         work->run();
+
+        if (work->yielded)
+        {
+          work->yielded = false;
+          core->q.enqueue(work);
+        } 
 
         yield();
       }
