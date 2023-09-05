@@ -123,4 +123,5 @@ namespace verona::rt
       return new (base) Work(&invoke<T>);
     }
   };
+
 }

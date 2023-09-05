@@ -78,3 +78,4 @@ target_compile_definitions(verona_rt INTERFACE -DSNMALLOC_CHEAP_CHECKS)
 set(CMAKE_CXX_STANDARD 17)
 
 warnings_high()
+

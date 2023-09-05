@@ -20,10 +20,9 @@ namespace verona::rt
       Be* body = behaviour->get_body<Be>();
       (*body)();
 
-      if (behaviour_yielded())
+      if (behaviour_rerun())
       {
-        behaviour_yielded() = false;
-        // work->yielded = true;
+        behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
@@ -36,10 +35,10 @@ namespace verona::rt
     }
 
   public:
-    static bool& behaviour_yielded()
+    static bool& behaviour_rerun()
     {
-      static thread_local bool yielded = false;
-      return yielded;
+      static thread_local bool rerun = false;
+      return rerun;
     }
 
     template<typename Be, typename... Args>

@@ -4,6 +4,12 @@
 #include <cpp/when.h>
 #include <debug/harness.h>
 
+#define BEHAVIOUR_YIELD(X) \
+  { \
+    verona::rt::Behaviour::behaviour_rerun() = true; \
+    return X; \
+  }
+
 class Counter
 {
 public:
@@ -72,7 +78,8 @@ void test_counter()
   };
 
   when(counter_cown) << [](auto counter) {
-    std::cout << "Incrementing counter by 1" << std::endl;
+    assert(counter->c == 10);
+    Logging::cout() << "Incrementing counter by 1" << Logging::endl;
     counter->c++;
   };
 }

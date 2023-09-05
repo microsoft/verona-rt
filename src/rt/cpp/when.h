@@ -15,12 +15,6 @@ namespace verona::cpp
 {
   using namespace verona::rt;
 
-#define BEHAVIOUR_YIELD(X) \
-  { \
-    verona::rt::Behaviour::behaviour_yielded() = true; \
-    return X; \
-  }
-
   template<typename T>
   struct acquired_cown_span
   {
