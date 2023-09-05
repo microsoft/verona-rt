@@ -6,8 +6,6 @@
 
 namespace verona::rt
 {
-  static thread_local bool behaviour_yielded;
-
   /**
    * This class provides the full `when` functionality.  It
    * provides the closure and lifetime management for the class.
@@ -22,10 +20,11 @@ namespace verona::rt
       Be* body = behaviour->get_body<Be>();
       (*body)();
 
-      if (behaviour_yielded)
+      if (behaviour_yielded())
       {
-        behaviour_yielded = false;
-        work->yielded = true;
+        behaviour_yielded() = false;
+        // work->yielded = true;
+        Scheduler::schedule(work);
         return;
       }
 
@@ -37,6 +36,12 @@ namespace verona::rt
     }
 
   public:
+    static bool& behaviour_yielded()
+    {
+      static thread_local bool yielded = false;
+      return yielded;
+    }
+
     template<typename Be, typename... Args>
     static Behaviour* make(size_t count, Args&&... args)
     {

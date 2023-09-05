@@ -208,12 +208,6 @@ namespace verona::rt
 
         work->run();
 
-        if (work->yielded)
-        {
-          work->yielded = false;
-          core->q.enqueue(work);
-        }
-
         yield();
       }
 

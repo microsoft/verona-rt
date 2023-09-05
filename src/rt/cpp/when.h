@@ -17,7 +17,7 @@ namespace verona::cpp
 
 #define BEHAVIOUR_YIELD(X) \
   { \
-    verona::rt::behaviour_yielded = true; \
+    verona::rt::Behaviour::behaviour_yielded() = true; \
     return X; \
   }
 

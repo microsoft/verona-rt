@@ -21,8 +21,6 @@ namespace verona::rt
   {
     static constexpr auto NO_EPOCH_SET = (std::numeric_limits<uint64_t>::max)();
 
-    bool yielded = false;
-
     // Entry in the MPMC Queue of work items per scheduler.
     union
     {

@@ -65,7 +65,8 @@ void test_counter()
     while (counter->c < 10)
     {
       counter->c += 2;
-      std::cout << "Yielding at counter = " << counter->c << std::endl;
+      Logging::cout() << "Yielding at counter = " << counter->c
+                      << Logging::endl;
       BEHAVIOUR_YIELD();
     }
   };
