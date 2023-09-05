@@ -75,14 +75,6 @@ endif()
 
 target_compile_definitions(verona_rt INTERFACE -DSNMALLOC_CHEAP_CHECKS)
 
-set(CMAKE_CXX_STANDARD 20)
-
-if(COROUTINES)
-  if(MSVC)
-    target_compile_options(verona_rt INTERFACE /await)
-  else()
-    target_compile_options(verona_rt INTERFACE -fcoroutines)
-  endif()
-endif()
+set(CMAKE_CXX_STANDARD 17)
 
 warnings_high()
