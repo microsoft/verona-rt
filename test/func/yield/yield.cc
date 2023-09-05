@@ -4,10 +4,6 @@
 #include <cpp/when.h>
 #include <debug/harness.h>
 
-#define yield() \
-  verona::rt::behaviour_yielded = true; \
-  return
-
 class Body
 {
 public:
@@ -38,7 +34,7 @@ void test_body()
       {
         Logging::cout() << "Yielding at counter = " << l->counter
                         << Logging::endl;
-        yield();
+        BEHAVIOUR_YIELD();
       }
     }
   };
