@@ -20,6 +20,13 @@ namespace verona::rt
       Be* body = behaviour->get_body<Be>();
       (*body)();
 
+      if (behaviour_rerun())
+      {
+        behaviour_rerun() = false;
+        Scheduler::schedule(work);
+        return;
+      }
+
       behaviour->release_all();
 
       // Dealloc behaviour
@@ -28,6 +35,12 @@ namespace verona::rt
     }
 
   public:
+    static bool& behaviour_rerun()
+    {
+      static thread_local bool rerun = false;
+      return rerun;
+    }
+
     template<typename Be, typename... Args>
     static Behaviour* make(size_t count, Args&&... args)
     {
