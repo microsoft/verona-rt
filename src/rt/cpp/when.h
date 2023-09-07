@@ -388,16 +388,16 @@ namespace verona::cpp
 
         size_t count = array_assign(r);
 
+        /// Effectively converts ActualCown<T>... to
+        /// acquired_cown... .
+        auto lift_f = [f = std::move(f)](Args... args) mutable {
+          std::move(f)(access_to_acquired(args)...);
+        };
+
         return std::make_tuple(
           count,
           r,
-          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f = std::move(f)](Args... args) mutable {
-              std::move(f)(access_to_acquired(args)...);
-            };
-
+          [lift_f = std::move(lift_f), cown_tuple = std::move(cown_tuple)]() mutable {
             std::apply(std::move(lift_f), std::move(cown_tuple));
           });
       }

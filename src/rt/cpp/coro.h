@@ -7,6 +7,8 @@
 #include <iostream>
 #endif
 
+#include "../sched/behaviour.h"
+
 namespace verona::cpp
 {
 #ifndef COROUTINES
@@ -62,14 +64,13 @@ namespace verona::cpp
       if (coro_state.initialized == false)
       {
         coro_state = std::move(f(args...));
-        coro_state.resume();
       }
-      else
+
+      coro_state.resume();
+
+      if (!(coro_state.done()))
       {
-        if (!(coro_state.done()))
-        {
-          coro_state.resume();
-        }
+        verona::rt::Behaviour::behaviour_rerun() = true;
       }
     };
 

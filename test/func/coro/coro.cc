@@ -26,14 +26,18 @@ void test_body()
 
   auto log1 = make_cown<Body>();
 
-  when(log1) << [=](acquired_cown<Body>& acq) -> coroutine {
+  when() << []() { std::cout << "in between\n"; };
+
+  when(log1) << [=](acquired_cown<Body>& acq) mutable -> coroutine {
     std::cout << "counter = " << acq->counter << std::endl;
+    int local_counter = 0;
 
     acq->counter++;
-    //verona::rt::behaviour_yielded = true;
+    local_counter++;
     co_await std::suspend_always{};
 
     std::cout << "counter = " << acq->counter << std::endl;
+    std::cout << "local counter = " << local_counter << std::endl;
     std::cout << "end" << std::endl;
   };
 }
