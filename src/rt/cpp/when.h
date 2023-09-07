@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../sched/behaviour.h"
+#include "coro.h"
 #include "cown.h"
 #include "cown_array.h"
 
@@ -30,6 +31,8 @@ namespace verona::cpp
   class Access
   {
     using Type = T;
+    using Type2 = acquired_cown<T>;
+
     ActualCown<std::remove_const_t<T>>* t;
     bool is_move;
 
@@ -47,6 +50,9 @@ namespace verona::cpp
 
     template<typename F, typename... Args>
     friend class When;
+
+    template<typename... Args>
+    friend class PreWhen;
   };
 
   /**
@@ -58,6 +64,8 @@ namespace verona::cpp
   class AccessBatch
   {
     using Type = T;
+    using Type2 = acquired_cown_span<T>;
+
     ActualCown<std::remove_const_t<T>>** act_array;
     acquired_cown<T>* acq_array;
     size_t arr_len;
@@ -129,6 +137,9 @@ namespace verona::cpp
 
     template<typename F, typename... Args>
     friend class When;
+
+    template<typename... Args>
+    friend class PreWhen;
   };
 
   template<typename T>
@@ -392,7 +403,7 @@ namespace verona::cpp
             /// Effectively converts ActualCown<T>... to
             /// acquired_cown... .
             auto lift_f = [f = std::move(f)](Args... args) mutable {
-              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
+              std::move(f)(access_to_acquired(args)...);
             };
 
             std::apply(std::move(lift_f), std::move(cown_tuple));
@@ -466,22 +477,53 @@ namespace verona::cpp
 
     PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
+    template<typename F, typename... Ts>
+    struct get_lambda_type
+    {
+      F f;
+      using LambdaType = decltype(f(typename Ts::Type2()...));
+    };
+
   public:
     template<typename F>
     auto operator<<(F&& f)
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
-      if constexpr (sizeof...(Args) == 0)
+      if constexpr (std::is_same<
+                      typename get_lambda_type<decltype(f), Args...>::
+                        LambdaType,
+                      coroutine>::value)
       {
-        // Execute now atomic batch makes no sense.
-        verona::rt::schedule_lambda(std::forward<F>(f));
-        return Batch(std::make_tuple());
+        auto coro_f = prepare_coro_lambda(f);
+
+        if constexpr (sizeof...(Args) == 0)
+        {
+          // Execute now atomic batch makes no sense.
+          verona::rt::schedule_lambda(std::forward<decltype(coro_f)>(coro_f));
+          return Batch(std::make_tuple());
+        }
+        else
+        {
+          return Batch(std::make_tuple(When(
+            std::forward<decltype(coro_f)>(coro_f), std::move(cown_tuple))));
+        }
       }
       else
       {
-        return Batch(
-          std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        if constexpr (sizeof...(Args) == 0)
+        {
+          // Execute now atomic batch makes no sense.
+          verona::rt::schedule_lambda(
+            std::forward<F>(f));
+          return Batch(std::make_tuple());
+        }
+        else
+        {
+          return Batch(std::make_tuple(When(
+            std::forward<F>(f),
+            std::move(cown_tuple))));
+        }
       }
     }
   };

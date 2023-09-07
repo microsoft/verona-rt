@@ -75,6 +75,6 @@ endif()
 
 target_compile_definitions(verona_rt INTERFACE -DSNMALLOC_CHEAP_CHECKS)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 warnings_high()

@@ -409,9 +409,11 @@ namespace verona::cpp
     template<typename F, typename... Args2>
     friend class When;
 
+    template<typename... Args2>
+    friend class PreWhen;
+
     template<typename T2>
     friend class AccessBatch;
-
   private:
     /// Underlying cown that has been acquired.
     /// Runtime is actually holding this reference count.
@@ -420,6 +422,11 @@ namespace verona::cpp
     /// Constructor is private, as only `When` can construct one.
     acquired_cown(ActualCown<std::remove_const_t<T>>& origin)
     : origin_cown(origin)
+    {}
+
+    // Only used to get the type of the lambda to determine if it's a coroutine
+    // It shouldn't be used elsewhere
+    acquired_cown() : origin_cown(nullptr)
     {}
 
   public:
@@ -459,10 +466,10 @@ namespace verona::cpp
      * so the cown should not be put somewhere else.
      * @{
      */
-    acquired_cown(acquired_cown&&) = delete;
-    acquired_cown& operator=(acquired_cown&&) = delete;
-    acquired_cown(const acquired_cown&) = delete;
-    acquired_cown& operator=(const acquired_cown&) = delete;
+     acquired_cown(acquired_cown&&) = delete;
+     acquired_cown& operator=(acquired_cown&&) = delete;
+     acquired_cown(const acquired_cown&) = delete;
+     acquired_cown& operator=(const acquired_cown&) = delete;
     /// @}
   };
 } // namespace verona::rt
