@@ -31,7 +31,6 @@ namespace verona::cpp
   class Access
   {
     using Type = T;
-    using Type2 = acquired_cown<T>;
 
     ActualCown<std::remove_const_t<T>>* t;
     bool is_move;
@@ -50,9 +49,6 @@ namespace verona::cpp
 
     template<typename F, typename... Args>
     friend class When;
-
-    template<typename... Args>
-    friend class PreWhen;
   };
 
   /**
@@ -64,7 +60,6 @@ namespace verona::cpp
   class AccessBatch
   {
     using Type = T;
-    using Type2 = acquired_cown_span<T>;
 
     ActualCown<std::remove_const_t<T>>** act_array;
     acquired_cown<T>* acq_array;
@@ -137,9 +132,6 @@ namespace verona::cpp
 
     template<typename F, typename... Args>
     friend class When;
-
-    template<typename... Args>
-    friend class PreWhen;
   };
 
   template<typename T>
@@ -477,22 +469,6 @@ namespace verona::cpp
 
     PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
-#if 0
-    template<typename F, typename... Ts>
-    struct get_lambda_type
-    {
-      F f;
-      using LambdaType = decltype(f(typename Ts::Type2()...));
-    };
-
-    template<typename F, typename... Ts>
-    struct get_lambda_type
-    {
-      F f;
-      using LambdaType = decltype(f(typename &Ts::Type2()...));
-    };
-#endif
-
     template <typename T>
     struct return_coroutine_t
     : public return_coroutine_t<decltype(&T::operator())>
@@ -529,10 +505,6 @@ namespace verona::cpp
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
-      //if constexpr (std::is_same<
-      //                typename get_lambda_type<decltype(f), Args...>::
-      //                  LambdaType,
-      //                coroutine>::value)
       if constexpr (return_coroutine_t<F>::value)
       {
         auto coro_f = prepare_coro_lambda(f);

@@ -69,7 +69,7 @@ endforeach()
 endforeach()
 
 # Try to avoid testing fairness of OS.
-#set_tests_properties(runtime/func-con-fair_variance PROPERTIES PROCESSORS 7)
+set_tests_properties(runtime/func-con-fair_variance PROPERTIES PROCESSORS 7)
 
 if (VERONA_EXPENSIVE_SYSTEMATIC_TESTING)
 MATH(EXPR CHUNK "500")
