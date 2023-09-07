@@ -53,7 +53,7 @@ namespace backpressure_unblock
       while (i > 0)
       {
         i--;
-        when(sender) << [receiver](auto) { when(receiver) << [](auto) {}; };
+        when(sender) << [receiver](acquired_cown<Body>) { when(receiver) << [](acquired_cown<Body>) {}; };
       }
     };
   }
@@ -67,6 +67,6 @@ namespace backpressure_unblock
 
     overload(sender1, receiver1);
     overload(sender2, receiver2);
-    when(sender1, receiver2) << [](auto, auto) {};
+    when(sender1, receiver2) << [](acquired_cown<Body>, acquired_cown<Body>) {};
   }
 }

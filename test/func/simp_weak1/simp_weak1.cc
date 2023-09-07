@@ -27,7 +27,7 @@ void test_body()
 
   auto log = make_cown<Body>();
 
-  when(log) << [=](auto log) {
+  when(log) << [=](acquired_cown<Body> log) {
     // Create a self reference, this should not prevent the body from
     // being destroyed.
     log->self = log.cown();

@@ -57,7 +57,7 @@ struct Log
 
 void log(cown_ptr<std::unique_ptr<Log>> log, std::string)
 {
-  when(log) << [=](auto) { /*std::cout << msg << std::endl;*/ };
+  when(log) << [=](acquired_cown<std::unique_ptr<Log>>) { /*std::cout << msg << std::endl;*/ };
 }
 
 void bank_job(

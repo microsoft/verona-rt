@@ -21,8 +21,8 @@ void test_body()
 
   auto log1 = make_cown<Body>();
 
-  when(log1) << [](auto) { Logging::cout() << "log" << Logging::endl; };
-  when(log1) << [](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(log1) << [](acquired_cown<Body> b) { Logging::cout() << "log" << Logging::endl; };
+  when(log1) << [](acquired_cown<Body> b) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)

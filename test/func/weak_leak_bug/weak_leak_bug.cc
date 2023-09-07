@@ -32,7 +32,7 @@ void run_test()
   weak_leak = t.get_weak();
 
   when(t) <<
-    [](auto t) { Logging::cout() << "Msg on " << t.cown() << std::endl; };
+    [](acquired_cown<MyCown> t) { Logging::cout() << "Msg on " << t.cown() << std::endl; };
 }
 
 int main(int argc, char** argv)

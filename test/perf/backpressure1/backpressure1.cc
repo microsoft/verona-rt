@@ -167,7 +167,7 @@ int main(int argc, char** argv)
     proxy_chain.push_back(new (alloc) Proxy(p));
 
   auto e = make_cown<int>();
-  when(e) << [](auto) {
+  when(e) << [](acquired_cown<int>) {
     Logging::cout() << "Add external event source" << std::endl;
     Scheduler::add_external_event_source();
   };
@@ -199,7 +199,7 @@ int main(int argc, char** argv)
         Cown::release(alloc, r);
     }
 
-    when(e) << [](auto) {
+    when(e) << [](acquired_cown<int>) {
       Logging::cout() << "Remove external event source" << std::endl;
       Scheduler::remove_external_event_source();
     };

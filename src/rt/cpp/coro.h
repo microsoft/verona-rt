@@ -12,8 +12,6 @@ namespace verona::cpp
 #ifndef COROUTINES
     struct coroutine{};
 #else
-  struct promise;
-
   struct coroutine
   {
     struct promise_type;

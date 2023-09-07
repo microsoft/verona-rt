@@ -23,7 +23,7 @@ void test_body()
   auto log2 = make_cown<Body>();
 
   when(log1, log2) <<
-    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
+    [=](acquired_cown<Body> b1, acquired_cown<Body> b2) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)

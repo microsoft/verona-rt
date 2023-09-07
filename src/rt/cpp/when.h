@@ -477,11 +477,50 @@ namespace verona::cpp
 
     PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
+#if 0
     template<typename F, typename... Ts>
     struct get_lambda_type
     {
       F f;
       using LambdaType = decltype(f(typename Ts::Type2()...));
+    };
+
+    template<typename F, typename... Ts>
+    struct get_lambda_type
+    {
+      F f;
+      using LambdaType = decltype(f(typename &Ts::Type2()...));
+    };
+#endif
+
+    template <typename T>
+    struct return_coroutine_t
+    : public return_coroutine_t<decltype(&T::operator())>
+    {
+    };
+
+    template <typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine(ClassType::*)(Args2...) const>
+    {
+      static constexpr bool value = true;
+    };
+
+    template <typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType(ClassType::*)(Args2...) const>
+    {
+      static constexpr bool value = false;
+    };
+
+    template <typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine(ClassType::*)(Args2...)>
+    {
+      static constexpr bool value = true;
+    };
+
+    template <typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType(ClassType::*)(Args2...)>
+    {
+      static constexpr bool value = false;
     };
 
   public:
@@ -490,10 +529,11 @@ namespace verona::cpp
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
-      if constexpr (std::is_same<
-                      typename get_lambda_type<decltype(f), Args...>::
-                        LambdaType,
-                      coroutine>::value)
+      //if constexpr (std::is_same<
+      //                typename get_lambda_type<decltype(f), Args...>::
+      //                  LambdaType,
+      //                coroutine>::value)
+      if constexpr (return_coroutine_t<F>::value)
       {
         auto coro_f = prepare_coro_lambda(f);
 
