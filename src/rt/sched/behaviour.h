@@ -24,6 +24,7 @@ namespace verona::rt
       {
         behaviour_rerun() = false;
         Scheduler::schedule(work);
+        Scheduler::local()->return_next_work();
         return;
       }
 
