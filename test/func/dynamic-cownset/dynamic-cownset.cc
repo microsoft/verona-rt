@@ -32,7 +32,9 @@ void test_span()
 
   cown_array<Body> t1{carray, 2};
 
-  when(t1) << [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+  when(t1) << [=](acquired_cown_span<Body>) {
+    Logging::cout() << "log" << Logging::endl;
+  };
 }
 
 void test_span_empty()
@@ -41,7 +43,9 @@ void test_span_empty()
 
   cown_array<Body> t1{nullptr, 0};
 
-  when(t1) << [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+  when(t1) << [=](acquired_cown_span<Body>) {
+    Logging::cout() << "log" << Logging::endl;
+  };
 }
 
 void test_span_single()
@@ -52,7 +56,9 @@ void test_span_single()
 
   cown_array<Body> t1{&log1, 1};
 
-  when(t1) << [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+  when(t1) << [=](acquired_cown_span<Body>) {
+    Logging::cout() << "log" << Logging::endl;
+  };
 }
 
 void test_multi_span()
@@ -77,8 +83,9 @@ void test_multi_span()
 
   cown_array<Body> t2{carray2, 2};
 
-  when(t1, t2) <<
-    [=](acquired_cown_span<Body>, acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+  when(t1, t2) << [=](acquired_cown_span<Body>, acquired_cown_span<Body>) {
+    Logging::cout() << "log" << Logging::endl;
+  };
 }
 
 void test_mixed1()
@@ -146,7 +153,10 @@ void test_mixed3()
   auto log5 = make_cown<Body>(4);
 
   when(t1, log5, t2) <<
-    [=](acquired_cown_span<Body>, acquired_cown<Body>, acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+    [=](
+      acquired_cown_span<Body>, acquired_cown<Body>, acquired_cown_span<Body>) {
+      Logging::cout() << "log" << Logging::endl;
+    };
 }
 
 void test_mixed4()
@@ -166,7 +176,9 @@ void test_mixed4()
   auto log4 = make_cown<Body>(4);
 
   when(log3, t1, log4) <<
-    [=](acquired_cown<Body>, acquired_cown_span<Body>, acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; };
+    [=](acquired_cown<Body>, acquired_cown_span<Body>, acquired_cown<Body>) {
+      Logging::cout() << "log" << Logging::endl;
+    };
 }
 
 void test_multi()
@@ -182,8 +194,12 @@ void test_multi()
 
   cown_array<Body> t1{carray, 2};
 
-  (when(t1) << [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(log1) << [=](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; });
+  (when(t1) <<
+   [=](acquired_cown_span<Body>) {
+     Logging::cout() << "log" << Logging::endl;
+   }) +
+    (when(log1) <<
+     [=](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; });
 }
 
 void test_nest1()
@@ -200,7 +216,8 @@ void test_nest1()
   cown_array<Body> t1{carray, 2};
 
   when(t1) << [=](acquired_cown_span<Body>) {
-    when(log1) << [=](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; };
+    when(log1) <<
+      [=](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; };
   };
 }
 
@@ -218,7 +235,9 @@ void test_nest2()
   cown_array<Body> t1(carray, 2);
 
   when(log1) << [=](acquired_cown<Body>) {
-    when(t1) << [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+    when(t1) << [=](acquired_cown_span<Body>) {
+      Logging::cout() << "log" << Logging::endl;
+    };
   };
 }
 
@@ -235,8 +254,9 @@ void test_move()
 
   cown_array<Body> t1{carray, 2};
 
-  when(std::move(t1)) <<
-    [=](acquired_cown_span<Body>) { Logging::cout() << "log" << Logging::endl; };
+  when(std::move(t1)) << [=](acquired_cown_span<Body>) {
+    Logging::cout() << "log" << Logging::endl;
+  };
 }
 
 int main(int argc, char** argv)

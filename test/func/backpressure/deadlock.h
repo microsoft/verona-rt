@@ -62,7 +62,11 @@ namespace backpressure_deadlock
       when(c1) << [](acquired_cown<C>) {};
 
     when(c3) << [c1](acquired_cown<C>) { when(c1) << [](acquired_cown<C>) {}; };
-    when(c2) << [c2, c3](acquired_cown<C>) { when(c2, c3) << [](acquired_cown<C>, acquired_cown<C>) {}; };
-    when(c1) << [c1, c2](acquired_cown<C>) { when(c1, c2) << [](acquired_cown<C>, acquired_cown<C>) {}; };
+    when(c2) << [c2, c3](acquired_cown<C>) {
+      when(c2, c3) << [](acquired_cown<C>, acquired_cown<C>) {};
+    };
+    when(c1) << [c1, c2](acquired_cown<C>) {
+      when(c1, c2) << [](acquired_cown<C>, acquired_cown<C>) {};
+    };
   }
 }

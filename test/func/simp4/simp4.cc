@@ -23,7 +23,8 @@ void test_body()
 
   when(log1) << [](acquired_cown<Body> l) {
     Logging::cout() << "log" << Logging::endl;
-    when(l.cown()) << [](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; };
+    when(l.cown()) <<
+      [](acquired_cown<Body>) { Logging::cout() << "log" << Logging::endl; };
   };
 }
 

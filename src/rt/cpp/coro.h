@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#ifdef COROUTINES
-#include <experimental/coroutine>
 #include <iostream>
+
+#ifdef COROUTINES
+#  include <experimental/coroutine>
 #endif
 
 #include "../sched/behaviour.h"
@@ -12,7 +13,8 @@
 namespace verona::cpp
 {
 #ifndef COROUTINES
-    struct coroutine{};
+  struct coroutine
+  {};
 #else
   struct coroutine
   {

@@ -397,7 +397,8 @@ namespace verona::cpp
         return std::make_tuple(
           count,
           r,
-          [lift_f = std::move(lift_f), cown_tuple = std::move(cown_tuple)]() mutable {
+          [lift_f = std::move(lift_f),
+           cown_tuple = std::move(cown_tuple)]() mutable {
             std::apply(std::move(lift_f), std::move(cown_tuple));
           });
       }
@@ -469,32 +470,31 @@ namespace verona::cpp
 
     PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
-    template <typename T>
+    template<typename T>
     struct return_coroutine_t
     : public return_coroutine_t<decltype(&T::operator())>
-    {
-    };
+    {};
 
-    template <typename ClassType, typename... Args2>
-    struct return_coroutine_t<coroutine(ClassType::*)(Args2...) const>
+    template<typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine (ClassType::*)(Args2...) const>
     {
       static constexpr bool value = true;
     };
 
-    template <typename ClassType, typename ReturnType, typename... Args2>
-    struct return_coroutine_t<ReturnType(ClassType::*)(Args2...) const>
+    template<typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType (ClassType::*)(Args2...) const>
     {
       static constexpr bool value = false;
     };
 
-    template <typename ClassType, typename... Args2>
-    struct return_coroutine_t<coroutine(ClassType::*)(Args2...)>
+    template<typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine (ClassType::*)(Args2...)>
     {
       static constexpr bool value = true;
     };
 
-    template <typename ClassType, typename ReturnType, typename... Args2>
-    struct return_coroutine_t<ReturnType(ClassType::*)(Args2...)>
+    template<typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType (ClassType::*)(Args2...)>
     {
       static constexpr bool value = false;
     };
@@ -526,15 +526,13 @@ namespace verona::cpp
         if constexpr (sizeof...(Args) == 0)
         {
           // Execute now atomic batch makes no sense.
-          verona::rt::schedule_lambda(
-            std::forward<F>(f));
+          verona::rt::schedule_lambda(std::forward<F>(f));
           return Batch(std::make_tuple());
         }
         else
         {
-          return Batch(std::make_tuple(When(
-            std::forward<F>(f),
-            std::move(cown_tuple))));
+          return Batch(
+            std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
         }
       }
     }
