@@ -34,7 +34,8 @@ void test_body()
 
     acq->counter++;
     local_counter++;
-    co_await std::suspend_always{};
+    // Yield the execution
+    co_await std::experimental::suspend_always{};
 
     std::cout << "counter = " << acq->counter << std::endl;
     std::cout << "local counter = " << local_counter << std::endl;

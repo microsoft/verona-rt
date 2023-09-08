@@ -56,7 +56,7 @@ foreach(TEST_MODE "sys" "con")
     endif ()
     if (${TEST} STREQUAL "coro")
       target_compile_definitions(${TESTNAME} PRIVATE COROUTINES)
-      target_compile_options(${TESTNAME} PRIVATE -fcoroutines)
+      target_compile_options(${TESTNAME} PRIVATE -fcoroutines-ts)
     endif ()
     if (${TEST} STREQUAL "runtimepause")
       # This example uses external non-determinism. So add FLIGHT_RECORDER for CI crashes

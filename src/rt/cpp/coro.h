@@ -3,7 +3,7 @@
 #pragma once
 
 #ifdef COROUTINES
-#include <coroutine>
+#include <experimental/coroutine>
 #include <iostream>
 #endif
 
@@ -17,7 +17,7 @@ namespace verona::cpp
   struct coroutine
   {
     struct promise_type;
-    using handle_type = std::coroutine_handle<promise_type>;
+    using handle_type = std::experimental::coroutine_handle<promise_type>;
 
     struct promise_type
     {
@@ -25,11 +25,11 @@ namespace verona::cpp
       {
         return {handle_type::from_promise(*this)};
       }
-      std::suspend_always initial_suspend() noexcept
+      std::experimental::suspend_always initial_suspend() noexcept
       {
         return {};
       }
-      std::suspend_always final_suspend() noexcept
+      std::experimental::suspend_always final_suspend() noexcept
       {
         return {};
       }
@@ -43,7 +43,7 @@ namespace verona::cpp
     coroutine(handle_type h) : h_(h), initialized(true) {}
     coroutine() : h_(nullptr), initialized(false) {}
 
-    void resume() const
+    void resume()
     {
       h_.resume();
     }
