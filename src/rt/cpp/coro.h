@@ -54,6 +54,11 @@ namespace verona::cpp
     {
       return h_.done();
     }
+
+    void destroy()
+    {
+      h_.destroy();
+    }
   };
 
   template<typename F>
@@ -73,6 +78,10 @@ namespace verona::cpp
       if (!(coro_state.done()))
       {
         verona::rt::Behaviour::behaviour_rerun() = true;
+      }
+      else
+      {
+        coro_state.destroy();
       }
     };
 
