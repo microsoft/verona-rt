@@ -5,7 +5,11 @@
 #include <iostream>
 
 #ifdef COROUTINES
-#  include <experimental/coroutine>
+#  ifdef CLANG
+#    include <experimental/coroutine>
+#  else
+#    include <coroutine>
+#  endif
 #endif
 
 #include "../sched/behaviour.h"
@@ -16,10 +20,17 @@ namespace verona::cpp
   struct coroutine
   {};
 #else
+
+#  ifdef CLANG
+  using namespace std::experimental;
+#  else
+  using namespace std;
+#  endif
+
   struct coroutine
   {
     struct promise_type;
-    using handle_type = std::experimental::coroutine_handle<promise_type>;
+    using handle_type = coroutine_handle<promise_type>;
 
     struct promise_type
     {
@@ -27,11 +38,11 @@ namespace verona::cpp
       {
         return {handle_type::from_promise(*this)};
       }
-      std::experimental::suspend_always initial_suspend() noexcept
+      suspend_always initial_suspend() noexcept
       {
         return {};
       }
-      std::experimental::suspend_always final_suspend() noexcept
+      suspend_always final_suspend() noexcept
       {
         return {};
       }
