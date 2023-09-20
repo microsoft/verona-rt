@@ -5,7 +5,7 @@
 #include <iostream>
 
 #ifdef COROUTINES
-#  ifdef CLANG
+#  ifdef EXPERIMENTAL_CORO
 #    include <experimental/coroutine>
 #  else
 #    include <coroutine>
@@ -21,7 +21,7 @@ namespace verona::cpp
   {};
 #else
 
-#  ifdef CLANG
+#  ifdef EXPERIMENTAL_CORO
   using namespace std::experimental;
 #  else
   using namespace std;
