@@ -201,6 +201,7 @@ namespace verona::cpp
           return;
 
         BehaviourCore* barray[sizeof...(Args)];
+
         create_behaviour(barray);
 
         BehaviourCore::schedule_many(barray, sizeof...(Args));
@@ -265,10 +266,35 @@ namespace verona::cpp
      * stack allocated array.
      * The index template parameter is used to perform each the assignment for
      * each index.
+     * The array is sorted by the cown address and only contains unique addresses.
      */
     template<typename C>
-    static void array_assign_helper_access(Request* req, Access<C>& p)
+    static Request* sorted_array_find_position(Request* requests, size_t count, ActualCown<C>* c)
     {
+      size_t low = 0;
+      size_t high = count;
+      while (low < high) {
+        size_t mid = (low + high) / 2;
+        if (requests[mid].cown() < c)
+          low = mid + 1;
+        else
+          high = mid;
+      }
+
+      if (requests[low].cown() == c)
+        return nullptr;
+
+      std::memmove(requests + low + 1, requests + low, (count - low) * sizeof(Request));
+      return requests + low;
+    }
+
+    template<typename C>
+    static bool sorted_array_assign_helper_access(Request* requests, size_t count, Access<C>& p)
+    {
+      Request* req = sorted_array_find_position(requests, count, p.t);
+      if (req == nullptr)
+        return false;
+
       if constexpr (is_read_only<decltype(p)>())
         *req = Request::read(p.t);
       else
@@ -278,32 +304,37 @@ namespace verona::cpp
         req->mark_move();
 
       assert(req->cown() != nullptr);
+      return true;
     }
 
     template<typename C>
     static size_t
-    array_assign_helper_access_batch(Request* req, AccessBatch<C>& p)
+    sorted_array_assign_helper_access_batch(Request* requests, size_t count, AccessBatch<C>& p)
     {
       size_t it_cnt = 0;
       for (size_t i = 0; i < p.arr_len; i++)
       {
-        if constexpr (is_read_only<decltype(p)>())
-          *req = Request::read(p.act_array[i]);
-        else
-          *req = Request::write(p.act_array[i]);
+        Request* req = sorted_array_find_position(requests, count, p.act_array[i]);
+        if (req != nullptr)
+        {
+          if constexpr (is_read_only<decltype(p)>())
+            *req = Request::read(p.act_array[i]);
+          else
+            *req = Request::write(p.act_array[i]);
 
-        if (p.is_move)
-          req->mark_move();
+          if (p.is_move)
+            req->mark_move();
 
-        req++;
-        it_cnt++;
+          count++;
+          it_cnt++;
+        }
       }
 
       return it_cnt;
     }
 
     template<size_t index = 0>
-    size_t array_assign(Request* requests)
+    size_t sorted_array_assign_helper(Request* requests, size_t count)
     {
       if constexpr (index >= sizeof...(Args))
       {
@@ -311,23 +342,26 @@ namespace verona::cpp
       }
       else
       {
-        size_t it_cnt;
+        size_t it_cnt = 0;
 
         auto& p = std::get<index>(cown_tuple);
         if constexpr (is_batch<
                         typename std::remove_reference<decltype(p)>::type>())
         {
-          it_cnt = array_assign_helper_access_batch(requests, p);
-          requests += it_cnt;
+          it_cnt = sorted_array_assign_helper_access_batch(requests, count, p);
         }
         else
         {
-          array_assign_helper_access(requests, p);
-          requests++;
-          it_cnt = 1;
+          if(sorted_array_assign_helper_access(requests, count, p))
+            it_cnt = 1;
         }
-        return it_cnt + array_assign<index + 1>(requests);
+        return it_cnt + sorted_array_assign_helper<index + 1>(requests, count + it_cnt);
       }
+    }
+
+    size_t sorted_array_assign(Request* requests)
+    {
+      return sorted_array_assign_helper(requests, 0);
     }
 
     template<size_t index = 0>
@@ -383,7 +417,8 @@ namespace verona::cpp
         else
           r = reinterpret_cast<Request*>(&requests);
 
-        size_t count = array_assign(r);
+        // sort and unique the requests
+        size_t count = sorted_array_assign(r);
 
         return std::make_tuple(
           count,
