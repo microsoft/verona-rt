@@ -201,7 +201,6 @@ namespace verona::cpp
           return;
 
         BehaviourCore* barray[sizeof...(Args)];
-
         create_behaviour(barray);
 
         BehaviourCore::schedule_many(barray, sizeof...(Args));

@@ -101,13 +101,6 @@ namespace verona::rt
     static Behaviour*
     prepare_to_schedule(size_t count, Request* requests, Args&&... args)
     {
-      // auto compare = [](Request r1, Request r2) {
-      //     return r1.cown() < r2.cown();
-      //   };
-      // std::sort(requests, requests + count, compare);
-      // auto end = std::unique(requests, requests + count, compare);
-      // count = end - requests - 1;
-
       auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
 
       auto* slots = body->get_slots();
