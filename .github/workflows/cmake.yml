@@ -49,7 +49,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: mjp41/workaround8649@027dbedef21ad1c2fa7aa7fecbf4b87c7f7db45d
+    - uses: mjp41/workaround8649@7929373c0fe5caf844d8115adccef39e3b5362e7
+      with:
+        os: ${{ matrix.platform }}
 
     - name: Install build dependencies
       run: ${{ matrix.dependencies }}
