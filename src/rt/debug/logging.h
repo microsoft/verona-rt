@@ -30,6 +30,7 @@
 #include <iostream>
 #include <snmalloc/snmalloc.h>
 #include <sstream>
+#include <string_view>
 #include <thread>
 
 namespace Logging
@@ -292,8 +293,6 @@ namespace Logging
     template<typename T>
     inline SysLog& inner_cons(const T& value)
     {
-      static_assert(sizeof(T) <= sizeof(size_t));
-
       if constexpr (systematic)
       {
         if (get_logging())
@@ -354,6 +353,11 @@ namespace Logging
     }
 
     inline SysLog& operator<<(const void* value)
+    {
+      return inner_cons(value);
+    }
+
+    inline SysLog& operator<<(std::string_view value)
     {
       return inner_cons(value);
     }
