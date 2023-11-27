@@ -313,7 +313,10 @@ namespace verona::rt
       for (size_t i = 0; i < body_count; i++)
         ec[i] = 1;
 
-      // Really want a dynamically sized stack allocation here.
+      // Need to sort the cown requests across the co-scheduled collection of cowns
+      // We first construct an array that represents pairs of behaviour number and slot
+      // pointer.
+      // Note: Really want a dynamically sized stack allocation here.
       StackArray<std::tuple<size_t, Slot*>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
@@ -326,6 +329,13 @@ namespace verona::rt
           idx++;
         }
       }
+
+      // Sort the indexing array so we make the requests in the correct order
+      // across the whole set of behaviours.  A consistent order is required to
+      // avoid deadlock.
+      // We sort first by cown, and then by behaviour number.
+      // These means overlaps will be in a sequence in the array in the correct order
+      // with respect to the order of the group of behaviours.
       auto compare = [](
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
@@ -339,7 +349,6 @@ namespace verona::rt
           std::get<1>(i)->cown < std::get<1>(j)->cown;
 #endif
       };
-
       if (count > 1)
         std::sort(indexes.get(), indexes.get() + count, compare);
 
@@ -353,23 +362,43 @@ namespace verona::rt
         auto first_body = body;
         size_t first_chain_index = i;
 
+        // The number of RCs provided for the current cown by the when.
+        // I.e. how many moves of cown_refs there were.
         size_t yes_count = 0;
-        size_t cown_count = 1;
 
+        // Detect duplicates for this cown.
+        // This is required in two cases:
+        //  * overlaps with multiple behaviours; and
+        //  * overlaps within a single behaviour.
         while (i < count - 1)
         {
           auto cown_next = std::get<1>(indexes[i + 1])->cown;
           if (cown_next != cown)
             break;
 
-          body = bodies[std::get<0>(indexes[i + 1])];
+          // If the body is the same, then we have an overlap within a single
+          // behaviour.
+          auto body_next = bodies[std::get<0>(indexes[i + 1])];
+          if (body_next == body)
+          {
+            Logging::cout() << "Duplicate cown: " << cown << " for behaviour "
+                            << body << Logging::endl;
+            // We need to reduce the execution count by one, as we can't wait for ourselves.
+            ec[std::get<0>(indexes[i + 1])]++;
+
+            // We need to mark the slot as not having a cown associated to it.
+            std::get<1>(indexes[i + 1])->cown = nullptr;
+            yes_count += std::get<1>(indexes[i + 1])->status;
+            i++;
+            continue;
+          }
+          body = body_next;
 
           // Use the status field to carry the YesTransfer information
           yes_count += last_slot->status;
           last_slot->set_behaviour(body);
 
           last_slot = std::get<1>(indexes[i + 1]);
-          cown_count++;
           i++;
         }
         i++;
@@ -395,11 +424,17 @@ namespace verona::rt
 
           if (yes_count)
           {
+            Logging::cout() << "Releasing transferred count " << yes_count
+                            << Logging::endl;
+            // Release yes_count - 1 times, we needed one as we woke up the
+            // cown, but the rest were not required.
             for (int j = 0; j < yes_count - 1; j++)
               Cown::release(ThreadAlloc::get(), cown);
           }
           else
           {
+            Logging::cout() << "Acquiring reference count on cown: " << cown << Logging::endl;
+            // We didn't have any RCs passed in, so we need to acquire one.
             Cown::acquire(cown);
           }
           continue;
@@ -416,6 +451,8 @@ namespace verona::rt
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
 
+        Logging::cout() << "Releasing transferred count " << yes_count
+                        << Logging::endl;
         // Release as many times as indicated
         for (int j = 0; j < yes_count; j++)
           Cown::release(ThreadAlloc::get(), cown);
@@ -481,6 +518,10 @@ namespace verona::rt
   inline void Slot::release()
   {
     assert(!is_wait());
+
+    // This slot represents a duplicate cown, so we can ignore releasing it.
+    if (cown == nullptr)
+      return;
 
     if (is_ready())
     {
