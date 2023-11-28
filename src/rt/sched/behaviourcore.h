@@ -313,10 +313,10 @@ namespace verona::rt
       for (size_t i = 0; i < body_count; i++)
         ec[i] = 1;
 
-      // Need to sort the cown requests across the co-scheduled collection of cowns
-      // We first construct an array that represents pairs of behaviour number and slot
-      // pointer.
-      // Note: Really want a dynamically sized stack allocation here.
+      // Need to sort the cown requests across the co-scheduled collection of
+      // cowns We first construct an array that represents pairs of behaviour
+      // number and slot pointer. Note: Really want a dynamically sized stack
+      // allocation here.
       StackArray<std::tuple<size_t, Slot*>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
@@ -334,8 +334,8 @@ namespace verona::rt
       // across the whole set of behaviours.  A consistent order is required to
       // avoid deadlock.
       // We sort first by cown, and then by behaviour number.
-      // These means overlaps will be in a sequence in the array in the correct order
-      // with respect to the order of the group of behaviours.
+      // These means overlaps will be in a sequence in the array in the correct
+      // order with respect to the order of the group of behaviours.
       auto compare = [](
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
@@ -382,7 +382,8 @@ namespace verona::rt
           {
             Logging::cout() << "Duplicate cown: " << cown << " for behaviour "
                             << body << Logging::endl;
-            // We need to reduce the execution count by one, as we can't wait for ourselves.
+            // We need to reduce the execution count by one, as we can't wait
+            // for ourselves.
             ec[std::get<0>(indexes[i])]++;
 
             // We need to mark the slot as not having a cown associated to it.
@@ -424,7 +425,8 @@ namespace verona::rt
           }
           else
           {
-            Logging::cout() << "Acquiring reference count on cown: " << cown << Logging::endl;
+            Logging::cout()
+              << "Acquiring reference count on cown: " << cown << Logging::endl;
             // We didn't have any RCs passed in, so we need to acquire one.
             Cown::acquire(cown);
           }
