@@ -256,14 +256,13 @@ namespace verona::rt
     /**
      * @brief Schedule a behaviour for execution.
      *
-     * @tparam transfer - NoTransfer or YesTransfer - NoTransfer means
-     * any cowns that are scheduled will need a reference count added to them.
-     * YesTransfer means that the caller is transfering a reference count to
-     * each of the cowns, so the schedule should remove a count if it is not
-     * required.
-     * @param body  The behaviour to schedule.
+     * @param bodies  The behaviours to schedule.
+     *
+     * @param body_count The number of behaviours to schedule.
      *
      * @note
+     *
+     * *** Single behaviour scheduling ***
      *
      * To correctly implement the happens before order, we need to ensure that
      * one when cannot overtake another:
@@ -295,6 +294,66 @@ namespace verona::rt
      * on the cown. This means the first behaviour to access a cown will need to
      * perform an acquire. When the execution of a chain completes, then the
      * scheduler will release the RC.
+     *
+     * *** Extension to Many ***
+     *
+     * This code additional can schedule a group of behaviours atomically.
+     *
+     *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
+     *
+     * This will cause the three behaviours to be scheduled in a single atomic
+     * step using the two phase commit.  This means that no other behaviours can
+     * access a between B1 and B3, and no other behaviours can access b between
+     * B2 and B3.
+     *
+     * This extension is implemented by building a mapping from each request
+     * to the sorted order of.  In this case that produces
+     *
+     *  0 -> 0, a
+     *  1 -> 1, b
+     *  2 -> 2, a
+     *  3 -> 2, b
+     *
+     * which gets sorted to
+     *
+     *  0 -> 0, a
+     *  1 -> 2, a
+     *  2 -> 1, b
+     *  3 -> 2, b
+     *
+     * We then link the (0,a) |-> (2,a), and enqueue the segment atomically onto
+     * cown a, and then link (1,b) |-> (2,b) and enqueue the segment atomically
+     * onto cown b.
+     *
+     * By enqueuing segments we ensure nothing can get in between the
+     * behaviours.
+     *
+     * *** Duplicate Cowns ***
+     *
+     * The final complication the code must deal with is duplicate cowns.
+     *
+     * when (a, a) { B1 }
+     *
+     * To handle this we need to detect the duplicate cowns, and mark the slot
+     * as not needing a successor.  This is done by setting the cown pointer to
+     * nullptr.
+     *
+     * Consider the following complex example
+     *
+     * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
+     *
+     * This will produce the following mapping
+     *
+     * 0 -> 0, a
+     * 1 -> 1, a (0)
+     * 2 -> 1, a (1)
+     * 3 -> 2, a
+     *
+     * This is sorted already, so we can just link the segments
+     *
+     * (0,a) |-> (1, a (0)) |-> (2, a)
+     *
+     * and mark (a (1)) as not having a successor.
      */
     static void schedule_many(BehaviourCore** bodies, size_t body_count)
     {
