@@ -364,47 +364,38 @@ namespace verona::rt
 
         // The number of RCs provided for the current cown by the when.
         // I.e. how many moves of cown_refs there were.
-        size_t transfer_count = 0;
+        size_t transfer_count = last_slot->status;
 
         // Detect duplicates for this cown.
         // This is required in two cases:
         //  * overlaps with multiple behaviours; and
         //  * overlaps within a single behaviour.
-        while (i < count - 1)
+        while (((++i) < count) && (cown == std::get<1>(indexes[i])->cown))
         {
-          auto cown_next = std::get<1>(indexes[i + 1])->cown;
-          if (cown_next != cown)
-            break;
+          // Check if the caller passed an RC and add to the total.
+          transfer_count += std::get<1>(indexes[i])->status;
 
           // If the body is the same, then we have an overlap within a single
           // behaviour.
-          auto body_next = bodies[std::get<0>(indexes[i + 1])];
+          auto body_next = bodies[std::get<0>(indexes[i])];
           if (body_next == body)
           {
             Logging::cout() << "Duplicate cown: " << cown << " for behaviour "
                             << body << Logging::endl;
             // We need to reduce the execution count by one, as we can't wait for ourselves.
-            ec[std::get<0>(indexes[i + 1])]++;
+            ec[std::get<0>(indexes[i])]++;
 
             // We need to mark the slot as not having a cown associated to it.
-            std::get<1>(indexes[i + 1])->cown = nullptr;
-            transfer_count += std::get<1>(indexes[i + 1])->status;
-            i++;
+            std::get<1>(indexes[i])->cown = nullptr;
             continue;
           }
           body = body_next;
 
-          // Use the status field to carry the YesTransfer information
-          transfer_count += last_slot->status;
+          // Extend the chain of behaviours linking on this behaviour
           last_slot->set_behaviour(body);
-
-          last_slot = std::get<1>(indexes[i + 1]);
-          i++;
+          last_slot = std::get<1>(indexes[i]);
         }
-        i++;
 
-        // Use the status field to carry the YesTransfer information
-        transfer_count += last_slot->status;
         last_slot->reset_status();
 
         auto prev =
