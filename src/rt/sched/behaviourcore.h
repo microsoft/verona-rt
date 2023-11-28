@@ -364,7 +364,7 @@ namespace verona::rt
 
         // The number of RCs provided for the current cown by the when.
         // I.e. how many moves of cown_refs there were.
-        size_t yes_count = 0;
+        size_t transfer_count = 0;
 
         // Detect duplicates for this cown.
         // This is required in two cases:
@@ -388,14 +388,14 @@ namespace verona::rt
 
             // We need to mark the slot as not having a cown associated to it.
             std::get<1>(indexes[i + 1])->cown = nullptr;
-            yes_count += std::get<1>(indexes[i + 1])->status;
+            transfer_count += std::get<1>(indexes[i + 1])->status;
             i++;
             continue;
           }
           body = body_next;
 
           // Use the status field to carry the YesTransfer information
-          yes_count += last_slot->status;
+          transfer_count += last_slot->status;
           last_slot->set_behaviour(body);
 
           last_slot = std::get<1>(indexes[i + 1]);
@@ -404,7 +404,7 @@ namespace verona::rt
         i++;
 
         // Use the status field to carry the YesTransfer information
-        yes_count += last_slot->status;
+        transfer_count += last_slot->status;
         last_slot->reset_status();
 
         auto prev =
@@ -422,13 +422,13 @@ namespace verona::rt
 
           yield();
 
-          if (yes_count)
+          if (transfer_count)
           {
-            Logging::cout() << "Releasing transferred count " << yes_count
+            Logging::cout() << "Releasing transferred count " << transfer_count
                             << Logging::endl;
-            // Release yes_count - 1 times, we needed one as we woke up the
+            // Release transfer_count - 1 times, we needed one as we woke up the
             // cown, but the rest were not required.
-            for (int j = 0; j < yes_count - 1; j++)
+            for (int j = 0; j < transfer_count - 1; j++)
               Cown::release(ThreadAlloc::get(), cown);
           }
           else
@@ -451,10 +451,10 @@ namespace verona::rt
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
 
-        Logging::cout() << "Releasing transferred count " << yes_count
+        Logging::cout() << "Releasing transferred count " << transfer_count
                         << Logging::endl;
         // Release as many times as indicated
-        for (int j = 0; j < yes_count; j++)
+        for (int j = 0; j < transfer_count; j++)
           Cown::release(ThreadAlloc::get(), cown);
 
         yield();
