@@ -251,6 +251,22 @@ void test_move()
     [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
+void test_repeated_cown()
+{
+  Logging::cout() << "test_repeated_cown()" << Logging::endl;
+
+  auto log1 = make_cown<Body1>(1);
+
+  cown_ptr<Body1> carray[2];
+  carray[0] = log1;
+  carray[1] = log1;
+
+  cown_array<Body1> t1{carray, 2};
+
+  when(std::move(t1)) <<
+    [=](auto) { Logging::cout() << "log" << Logging::endl; };
+}
+
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
@@ -271,6 +287,8 @@ int main(int argc, char** argv)
   harness.run(test_nest2);
 
   harness.run(test_move);
+
+  harness.run(test_repeated_cown);
 
   return 0;
 }

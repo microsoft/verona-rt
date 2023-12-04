@@ -256,14 +256,13 @@ namespace verona::rt
     /**
      * @brief Schedule a behaviour for execution.
      *
-     * @tparam transfer - NoTransfer or YesTransfer - NoTransfer means
-     * any cowns that are scheduled will need a reference count added to them.
-     * YesTransfer means that the caller is transfering a reference count to
-     * each of the cowns, so the schedule should remove a count if it is not
-     * required.
-     * @param body  The behaviour to schedule.
+     * @param bodies  The behaviours to schedule.
+     *
+     * @param body_count The number of behaviours to schedule.
      *
      * @note
+     *
+     * *** Single behaviour scheduling ***
      *
      * To correctly implement the happens before order, we need to ensure that
      * one when cannot overtake another:
@@ -295,6 +294,66 @@ namespace verona::rt
      * on the cown. This means the first behaviour to access a cown will need to
      * perform an acquire. When the execution of a chain completes, then the
      * scheduler will release the RC.
+     *
+     * *** Extension to Many ***
+     *
+     * This code additional can schedule a group of behaviours atomically.
+     *
+     *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
+     *
+     * This will cause the three behaviours to be scheduled in a single atomic
+     * step using the two phase commit.  This means that no other behaviours can
+     * access a between B1 and B3, and no other behaviours can access b between
+     * B2 and B3.
+     *
+     * This extension is implemented by building a mapping from each request
+     * to the sorted order of.  In this case that produces
+     *
+     *  0 -> 0, a
+     *  1 -> 1, b
+     *  2 -> 2, a
+     *  3 -> 2, b
+     *
+     * which gets sorted to
+     *
+     *  0 -> 0, a
+     *  1 -> 2, a
+     *  2 -> 1, b
+     *  3 -> 2, b
+     *
+     * We then link the (0,a) |-> (2,a), and enqueue the segment atomically onto
+     * cown a, and then link (1,b) |-> (2,b) and enqueue the segment atomically
+     * onto cown b.
+     *
+     * By enqueuing segments we ensure nothing can get in between the
+     * behaviours.
+     *
+     * *** Duplicate Cowns ***
+     *
+     * The final complication the code must deal with is duplicate cowns.
+     *
+     * when (a, a) { B1 }
+     *
+     * To handle this we need to detect the duplicate cowns, and mark the slot
+     * as not needing a successor.  This is done by setting the cown pointer to
+     * nullptr.
+     *
+     * Consider the following complex example
+     *
+     * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
+     *
+     * This will produce the following mapping
+     *
+     * 0 -> 0, a
+     * 1 -> 1, a (0)
+     * 2 -> 1, a (1)
+     * 3 -> 2, a
+     *
+     * This is sorted already, so we can just link the segments
+     *
+     * (0,a) |-> (1, a (0)) |-> (2, a)
+     *
+     * and mark (a (1)) as not having a successor.
      */
     static void schedule_many(BehaviourCore** bodies, size_t body_count)
     {
@@ -313,7 +372,10 @@ namespace verona::rt
       for (size_t i = 0; i < body_count; i++)
         ec[i] = 1;
 
-      // Really want a dynamically sized stack allocation here.
+      // Need to sort the cown requests across the co-scheduled collection of
+      // cowns We first construct an array that represents pairs of behaviour
+      // number and slot pointer. Note: Really want a dynamically sized stack
+      // allocation here.
       StackArray<std::tuple<size_t, Slot*>> indexes(count);
       size_t idx = 0;
       for (size_t i = 0; i < body_count; i++)
@@ -326,6 +388,13 @@ namespace verona::rt
           idx++;
         }
       }
+
+      // Sort the indexing array so we make the requests in the correct order
+      // across the whole set of behaviours.  A consistent order is required to
+      // avoid deadlock.
+      // We sort first by cown, and then by behaviour number.
+      // These means overlaps will be in a sequence in the array in the correct
+      // order with respect to the order of the group of behaviours.
       auto compare = [](
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
@@ -339,7 +408,6 @@ namespace verona::rt
           std::get<1>(i)->cown < std::get<1>(j)->cown;
 #endif
       };
-
       if (count > 1)
         std::sort(indexes.get(), indexes.get() + count, compare);
 
@@ -353,29 +421,41 @@ namespace verona::rt
         auto first_body = body;
         size_t first_chain_index = i;
 
-        size_t yes_count = 0;
-        size_t cown_count = 1;
+        // The number of RCs provided for the current cown by the when.
+        // I.e. how many moves of cown_refs there were.
+        size_t transfer_count = last_slot->status;
 
-        while (i < count - 1)
+        // Detect duplicates for this cown.
+        // This is required in two cases:
+        //  * overlaps with multiple behaviours; and
+        //  * overlaps within a single behaviour.
+        while (((++i) < count) && (cown == std::get<1>(indexes[i])->cown))
         {
-          auto cown_next = std::get<1>(indexes[i + 1])->cown;
-          if (cown_next != cown)
-            break;
+          // Check if the caller passed an RC and add to the total.
+          transfer_count += std::get<1>(indexes[i])->status;
 
-          body = bodies[std::get<0>(indexes[i + 1])];
+          // If the body is the same, then we have an overlap within a single
+          // behaviour.
+          auto body_next = bodies[std::get<0>(indexes[i])];
+          if (body_next == body)
+          {
+            Logging::cout() << "Duplicate cown: " << cown << " for behaviour "
+                            << body << Logging::endl;
+            // We need to reduce the execution count by one, as we can't wait
+            // for ourselves.
+            ec[std::get<0>(indexes[i])]++;
 
-          // Use the status field to carry the YesTransfer information
-          yes_count += last_slot->status;
+            // We need to mark the slot as not having a cown associated to it.
+            std::get<1>(indexes[i])->cown = nullptr;
+            continue;
+          }
+          body = body_next;
+
+          // Extend the chain of behaviours linking on this behaviour
           last_slot->set_behaviour(body);
-
-          last_slot = std::get<1>(indexes[i + 1]);
-          cown_count++;
-          i++;
+          last_slot = std::get<1>(indexes[i]);
         }
-        i++;
 
-        // Use the status field to carry the YesTransfer information
-        yes_count += last_slot->status;
         last_slot->reset_status();
 
         auto prev =
@@ -393,13 +473,20 @@ namespace verona::rt
 
           yield();
 
-          if (yes_count)
+          if (transfer_count)
           {
-            for (int j = 0; j < yes_count - 1; j++)
+            Logging::cout() << "Releasing transferred count " << transfer_count
+                            << Logging::endl;
+            // Release transfer_count - 1 times, we needed one as we woke up the
+            // cown, but the rest were not required.
+            for (int j = 0; j < transfer_count - 1; j++)
               Cown::release(ThreadAlloc::get(), cown);
           }
           else
           {
+            Logging::cout()
+              << "Acquiring reference count on cown: " << cown << Logging::endl;
+            // We didn't have any RCs passed in, so we need to acquire one.
             Cown::acquire(cown);
           }
           continue;
@@ -416,8 +503,10 @@ namespace verona::rt
           Systematic::yield_until([prev]() { return !prev->is_wait(); });
         }
 
+        Logging::cout() << "Releasing transferred count " << transfer_count
+                        << Logging::endl;
         // Release as many times as indicated
-        for (int j = 0; j < yes_count; j++)
+        for (int j = 0; j < transfer_count; j++)
           Cown::release(ThreadAlloc::get(), cown);
 
         yield();
@@ -481,6 +570,10 @@ namespace verona::rt
   inline void Slot::release()
   {
     assert(!is_wait());
+
+    // This slot represents a duplicate cown, so we can ignore releasing it.
+    if (cown == nullptr)
+      return;
 
     if (is_ready())
     {
