@@ -20,7 +20,7 @@ struct A
 
 void loop(cown_ptr<A> c)
 {
-  when(c) << [c = std::move(c)](auto a) {
+  when(c) << [c = std::move(c)](acquired_cown<A> a) {
     auto& count = a->count;
 
     if (count == 0)

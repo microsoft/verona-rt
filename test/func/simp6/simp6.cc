@@ -24,14 +24,18 @@ void test_body()
   auto log3 = make_cown<Body>();
   auto log4 = make_cown<Body>();
 
-  when(log1, log2) <<
-    [=](auto, auto) { Logging::cout() << "log1" << Logging::endl; };
-  when(log3, log4) <<
-    [=](auto, auto) { Logging::cout() << "log2" << Logging::endl; };
-  when(log2, log3) <<
-    [=](auto, auto) { Logging::cout() << "log3" << Logging::endl; };
-  when(log4, log1) <<
-    [=](auto, auto) { Logging::cout() << "log4" << Logging::endl; };
+  when(log1, log2) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log1" << Logging::endl;
+  };
+  when(log3, log4) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log2" << Logging::endl;
+  };
+  when(log2, log3) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log3" << Logging::endl;
+  };
+  when(log4, log1) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log4" << Logging::endl;
+  };
 }
 
 int main(int argc, char** argv)

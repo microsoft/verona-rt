@@ -23,12 +23,15 @@ void test_body()
   auto log2 = make_cown<Body>();
   auto log3 = make_cown<Body>();
 
-  when(log1, log2) <<
-    [=](auto, auto) { Logging::cout() << "log1" << Logging::endl; };
-  when(log2, log3) <<
-    [=](auto, auto) { Logging::cout() << "log2" << Logging::endl; };
-  when(log1, log3) <<
-    [=](auto, auto) { Logging::cout() << "log3" << Logging::endl; };
+  when(log1, log2) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log1" << Logging::endl;
+  };
+  when(log2, log3) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log2" << Logging::endl;
+  };
+  when(log1, log3) << [=](acquired_cown<Body>, acquired_cown<Body>) {
+    Logging::cout() << "log3" << Logging::endl;
+  };
 }
 
 int main(int argc, char** argv)

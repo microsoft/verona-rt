@@ -31,8 +31,9 @@ void run_test()
   // HERE: the weak RC is never released.
   weak_leak = t.get_weak();
 
-  when(t) <<
-    [](auto t) { Logging::cout() << "Msg on " << t.cown() << std::endl; };
+  when(t) << [](acquired_cown<MyCown> t) {
+    Logging::cout() << "Msg on " << t.cown() << std::endl;
+  };
 }
 
 int main(int argc, char** argv)

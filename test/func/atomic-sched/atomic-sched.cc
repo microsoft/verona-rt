@@ -23,14 +23,14 @@ void test_body()
   auto log2 = make_cown<Body>();
 
   (when(log) <<
-   [=](auto b) {
+   [=](acquired_cown<Body>) {
      for (int i = 0; i < 10; i++)
      {
        Logging::cout() << "Behaviour 1\n";
        // sleep(1);
      }
    }) +
-    (when(log2) << [=](auto) {
+    (when(log2) << [=](acquired_cown<Body>) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
@@ -46,13 +46,13 @@ void test_body_same()
   auto log = make_cown<Body>();
 
   (when(log) <<
-   [=](auto b) {
+   [=](acquired_cown<Body> b) {
      for (int i = 0; i < 10; i++)
      {
        Logging::cout() << "Behaviour 1" << Logging::endl;
      }
    }) +
-    (when(log) << [=](auto) {
+    (when(log) << [=](acquired_cown<Body>) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2" << Logging::endl;
@@ -69,7 +69,7 @@ void test_body_smart()
   auto ptr = std::make_unique<int>(42);
 
   (when(log) <<
-   [=, ptr = std::move(ptr)](auto b) {
+   [=, ptr = std::move(ptr)](acquired_cown<Body> b) {
      std::cout << "ptr = " << *ptr << std::endl;
      for (int i = 0; i < 10; i++)
      {
@@ -77,7 +77,7 @@ void test_body_smart()
        // sleep(1);
      }
    }) +
-    (when(log2) << [=](auto) {
+    (when(log2) << [=](acquired_cown<Body>) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";

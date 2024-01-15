@@ -54,6 +54,7 @@ namespace verona::rt
     friend class ThreadSync<SchedulerThread>;
     LocalSync local_sync{};
 #endif
+    friend class Behaviour;
 
     Alloc* alloc = nullptr;
     Core* victim = nullptr;

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../sched/behaviour.h"
+#include "coro.h"
 #include "cown.h"
 #include "cown_array.h"
 
@@ -30,6 +31,7 @@ namespace verona::cpp
   class Access
   {
     using Type = T;
+
     ActualCown<std::remove_const_t<T>>* t;
     bool is_move;
 
@@ -58,6 +60,7 @@ namespace verona::cpp
   class AccessBatch
   {
     using Type = T;
+
     ActualCown<std::remove_const_t<T>>** act_array;
     acquired_cown<T>* acq_array;
     size_t arr_len;
@@ -385,16 +388,17 @@ namespace verona::cpp
 
         size_t count = array_assign(r);
 
+        /// Effectively converts ActualCown<T>... to
+        /// acquired_cown... .
+        auto lift_f = [f = std::move(f)](Args... args) mutable {
+          std::move(f)(access_to_acquired(args)...);
+        };
+
         return std::make_tuple(
           count,
           r,
-          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f = std::move(f)](Args... args) mutable {
-              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
-            };
-
+          [lift_f = std::move(lift_f),
+           cown_tuple = std::move(cown_tuple)]() mutable {
             std::apply(std::move(lift_f), std::move(cown_tuple));
           });
       }
@@ -466,22 +470,70 @@ namespace verona::cpp
 
     PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
 
+    template<typename T>
+    struct return_coroutine_t
+    : public return_coroutine_t<decltype(&T::operator())>
+    {};
+
+    template<typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine (ClassType::*)(Args2...) const>
+    {
+      static constexpr bool value = true;
+    };
+
+    template<typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType (ClassType::*)(Args2...) const>
+    {
+      static constexpr bool value = false;
+    };
+
+    template<typename ClassType, typename... Args2>
+    struct return_coroutine_t<coroutine (ClassType::*)(Args2...)>
+    {
+      static constexpr bool value = true;
+    };
+
+    template<typename ClassType, typename ReturnType, typename... Args2>
+    struct return_coroutine_t<ReturnType (ClassType::*)(Args2...)>
+    {
+      static constexpr bool value = false;
+    };
+
   public:
     template<typename F>
     auto operator<<(F&& f)
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
-      if constexpr (sizeof...(Args) == 0)
+      if constexpr (return_coroutine_t<F>::value)
       {
-        // Execute now atomic batch makes no sense.
-        verona::rt::schedule_lambda(std::forward<F>(f));
-        return Batch(std::make_tuple());
+        auto coro_f = prepare_coro_lambda(f);
+
+        if constexpr (sizeof...(Args) == 0)
+        {
+          // Execute now atomic batch makes no sense.
+          verona::rt::schedule_lambda(std::forward<decltype(coro_f)>(coro_f));
+          return Batch(std::make_tuple());
+        }
+        else
+        {
+          return Batch(std::make_tuple(When(
+            std::forward<decltype(coro_f)>(coro_f), std::move(cown_tuple))));
+        }
       }
       else
       {
-        return Batch(
-          std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        if constexpr (sizeof...(Args) == 0)
+        {
+          // Execute now atomic batch makes no sense.
+          verona::rt::schedule_lambda(std::forward<F>(f));
+          return Batch(std::make_tuple());
+        }
+        else
+        {
+          return Batch(
+            std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        }
       }
     }
   };

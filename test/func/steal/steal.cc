@@ -18,7 +18,7 @@ void schedule_run(size_t decay)
 
   auto& alloc = ThreadAlloc::get();
   auto runner = make_cown<Runner>();
-  when(runner) << [decay](auto) { schedule_run(decay - 1); };
+  when(runner) << [decay](acquired_cown<Runner>) { schedule_run(decay - 1); };
 }
 
 void basic_test(size_t cores)
