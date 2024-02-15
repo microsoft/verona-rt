@@ -582,7 +582,7 @@ namespace verona::rt
     {
       return find_count;
     }
-    
+
     static inline void reset_find_count()
     {
       find_count = 0;

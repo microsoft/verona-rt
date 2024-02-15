@@ -86,7 +86,7 @@ Object* make_sub_tree(size_t tree_size, Object* leaf)
 
 /**
  * Creates a balanced binary tree.
- * 
+ *
  * It has an additional root node that is used to create cycles from
  * each leaf to the root.  This cycle is only created if the Cyclic
  * parameter is true.
@@ -104,9 +104,9 @@ Object* make_tree(size_t tree_size)
  * Creates a tree with a fixed width.  Each not is represented with
  * TreeWidth nodes forming a linked list. If the Cyclic parameter is true,
  * then the last node in the list is connected to the first.
- * 
+ *
  * Each child is then given a balanced number of children.
- * 
+ *
  * The empty node is represented by a nullptr.
  */
 template<bool Cyclic, bool Order, size_t TreeWidth>
