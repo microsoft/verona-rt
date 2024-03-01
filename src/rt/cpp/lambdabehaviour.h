@@ -11,19 +11,19 @@ namespace verona::rt
   template<TransferOwnership transfer = NoTransfer, typename T>
   static void schedule_lambda(Cown* c, T&& f)
   {
-    Behaviour::schedule<T, transfer>(c, std::forward<T>(f));
+    Behaviour::schedule<transfer>(c, std::forward<T>(f));
   }
 
   template<TransferOwnership transfer = NoTransfer, typename T>
   static void schedule_lambda(size_t count, Cown** cowns, T&& f)
   {
-    Behaviour::schedule<T, transfer>(count, cowns, std::forward<T>(f));
+    Behaviour::schedule<transfer>(count, cowns, std::forward<T>(f));
   }
 
   template<TransferOwnership transfer = NoTransfer, typename T>
   static void schedule_lambda(size_t count, Request* requests, T&& f)
   {
-    Behaviour::schedule<T, transfer>(count, requests, std::forward<T>(f));
+    Behaviour::schedule<transfer>(count, requests, std::forward<T>(f));
   }
 
   template<typename T>

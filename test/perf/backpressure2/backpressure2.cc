@@ -111,11 +111,11 @@ struct Send
         i++;
     }
 
-    Behaviour::schedule<Receive>(
-      receiver_count, (Cown**)receivers, receivers, receiver_count);
+    schedule_lambda(
+      receiver_count, (Cown**)receivers, Receive(receivers, receiver_count));
 
     if ((timer::now() - s->start) < s->duration)
-      Behaviour::schedule<Send>(s, s);
+      schedule_lambda(s, Send(s));
   }
 };
 
@@ -154,7 +154,7 @@ int main(int argc, char** argv)
 
     auto* s = new (alloc) Sender(
       std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
-    Behaviour::schedule<Send, YesTransfer>(s, s);
+    schedule_lambda<YesTransfer>(s, Send(s));
   }
 
   for (auto* r : receiver_set)

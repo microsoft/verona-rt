@@ -86,14 +86,14 @@ struct Loop
         }
         freeze(a->r);
         state = REUSE;
-        Behaviour::schedule<Loop>(a, a);
+        schedule_lambda(a, Loop(a));
         return;
       }
       case REUSE:
       {
         state = EXIT;
-        Behaviour::schedule<Ping>(a->r->f1->b);
-        Behaviour::schedule<Loop>(a, a);
+        schedule_lambda(a->r->f1->b, Ping());
+        schedule_lambda(a, Loop(a));
         return;
       }
       case EXIT:
@@ -124,7 +124,7 @@ void run_test()
 {
   auto& alloc = ThreadAlloc::get();
   auto a = new A;
-  Behaviour::schedule<Loop>(a, a);
+  schedule_lambda(a, Loop(a));
   Cown::release(alloc, a);
 }
 

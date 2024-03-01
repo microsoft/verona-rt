@@ -279,7 +279,7 @@ struct Pong
     if (ccown->child != nullptr)
     {
       for (int n = 0; n < 20; n++)
-        Behaviour::schedule<Pong>(ccown->child, ccown->child);
+        schedule_lambda(ccown->child, Pong(ccown->child));
     }
   }
 };
@@ -298,7 +298,7 @@ struct Ping
     if (rcown->forward > 0)
     {
       // Forward Ping to next RCown.
-      Behaviour::schedule<Ping<region_type>>(rcown->next, rcown->next, rand);
+      schedule_lambda(rcown->next, Ping<region_type>(rcown->next, rand));
 
       // Send Pongs to child CCowns.
       if (
@@ -306,25 +306,25 @@ struct Ping
         rcown->reg_with_graph->f->f->cown != nullptr)
       {
         auto c = rcown->reg_with_graph->f->f->cown;
-        Behaviour::schedule<Pong>(c, c);
+        schedule_lambda(c, Pong(c));
       }
       if (
         rcown->reg_with_sub != nullptr &&
         rcown->reg_with_sub->f1->f2->f2->cown != nullptr)
       {
         auto c = rcown->reg_with_sub->f1->f2->f2->cown;
-        Behaviour::schedule<Pong>(c, c);
+        schedule_lambda(c, Pong(c));
       }
       if (rcown->reg_with_imm != nullptr)
       {
         auto c1 = rcown->reg_with_imm->imm1->cown;
         auto c2 = rcown->reg_with_imm->imm1->f1->cown;
-        Behaviour::schedule<Pong>(c1, c1);
-        Behaviour::schedule<Pong>(c2, c2);
+        schedule_lambda(c1, Pong(c1));
+        schedule_lambda(c2, Pong(c2));
         c1 = rcown->reg_with_imm->imm2->cown;
         c2 = rcown->reg_with_imm->imm2->f1->cown;
-        Behaviour::schedule<Pong>(c1, c1);
-        Behaviour::schedule<Pong>(c2, c2);
+        schedule_lambda(c1, Pong(c1));
+        schedule_lambda(c2, Pong(c2));
       }
 
       // Randomly introduce a few leaks. We don't want to do this for every
@@ -396,7 +396,7 @@ void test_cown_gc(
   rcown_first = nullptr;
   auto a = new RCown<region_type>(ring_size, forward_count);
   rand->seed(h->current_seed());
-  Behaviour::schedule<Ping<region_type>>(a, a, rand);
+  schedule_lambda(a, Ping<region_type>(a, rand));
 }
 
 int main(int argc, char** argv)

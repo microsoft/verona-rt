@@ -84,12 +84,12 @@ struct Forward
     if (proxy != proxy_chain.back())
     {
       auto* next = proxy_chain[proxy->index + 1];
-      Behaviour::schedule<Forward>(next, next);
+      schedule_lambda(next, Forward(next));
       return;
     }
 
-    Behaviour::schedule<Receive>(
-      receiver_set.size(), (Cown**)receiver_set.data());
+    schedule_lambda(
+      receiver_set.size(), (Cown**)receiver_set.data(), Receive());
   }
 };
 
@@ -124,13 +124,13 @@ struct Send
   void operator()()
   {
     if (proxy_chain.size() > 0)
-      Behaviour::schedule<Forward>(proxy_chain[0], proxy_chain[0]);
+      schedule_lambda(proxy_chain[0], Forward(proxy_chain[0]));
     else
-      Behaviour::schedule<Receive>(
-        receiver_set.size(), (Cown**)receiver_set.data());
+      schedule_lambda(
+        receiver_set.size(), (Cown**)receiver_set.data(), Receive());
 
     if ((Sender::clk::now() - s->start) < s->duration)
-      Behaviour::schedule<Send>(s, s);
+      schedule_lambda(s, Send(s));
   }
 };
 
@@ -186,7 +186,7 @@ int main(int argc, char** argv)
       }
 
       auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
-      Behaviour::schedule<Send, YesTransfer>(s, s);
+      schedule_lambda<YesTransfer>(s, Send(s));
     }
 
     if (proxy_chain.size() > 0)

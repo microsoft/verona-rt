@@ -57,7 +57,7 @@ struct Receive
       auto** cowns = (Cown**)alloc.alloc<2 * sizeof(Cown*)>();
       cowns[0] = (Cown*)r;
       cowns[1] = (Cown*)s;
-      Behaviour::schedule<Receive>(2, cowns, r, s);
+      schedule_lambda(2, cowns, Receive(r, s));
       alloc.dealloc<2 * sizeof(Cown*)>(cowns);
     }
     else
@@ -103,10 +103,10 @@ struct Send
 
   void operator()()
   {
-    Behaviour::schedule<Receive>(s->receiver, s->receiver);
+    schedule_lambda(s->receiver, Receive(s->receiver));
 
     if ((timer::now() - s->start) < s->duration)
-      Behaviour::schedule<Send>(s, s);
+      schedule_lambda(s, Send(s));
     else
     {
       // Break cycle between sender and receiver.
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
   }
 
   for (auto* s : sender_set)
-    Behaviour::schedule<Send, NoTransfer>(s, s);
+    schedule_lambda<NoTransfer>(s, Send(s));
   Cown::release(alloc, receiver);
 
   sched.run();

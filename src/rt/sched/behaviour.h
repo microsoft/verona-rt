@@ -41,12 +41,12 @@ namespace verona::rt
       return rerun;
     }
 
-    template<typename Be, typename... Args>
-    static Behaviour* make(size_t count, Args&&... args)
+    template<typename Be, typename T>
+    static Behaviour* make(size_t count, T&& f)
     {
       auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
 
-      new (behaviour_core->get_body()) Be(std::forward<Args>(args)...);
+      new (behaviour_core->get_body()) Be(std::forward<T>(f));
 
       // These assertions are basically checking that we won't break any
       // alignment assumptions on Be.  If we add some actual alignment, then
@@ -57,21 +57,14 @@ namespace verona::rt
       return (Behaviour*)behaviour_core;
     }
 
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(Cown* cown, Args&&... args)
+    template<TransferOwnership transfer = NoTransfer, class T>
+    static void schedule(Cown* cown, T&& f)
     {
-      schedule<Behaviour, transfer, Args...>(
-        1, &cown, std::forward<Args>(args)...);
+      schedule<transfer, T>(1, &cown, std::forward<T>(f));
     }
 
-    template<
-      class Behaviour,
-      TransferOwnership transfer = NoTransfer,
-      typename... Args>
-    static void schedule(size_t count, Cown** cowns, Args&&... args)
+    template<TransferOwnership transfer = NoTransfer, class T>
+    static void schedule(size_t count, Cown** cowns, T&& f)
     {
       // TODO Remove vector allocation here.  This is a temporary fix to
       // as we transition to using Request through the code base.
@@ -87,8 +80,7 @@ namespace verona::rt
         }
       }
 
-      schedule<Behaviour, Args...>(
-        count, requests, std::forward<Args>(args)...);
+      schedule<T>(count, requests, std::forward<T>(f));
 
       alloc.dealloc(requests);
     }
@@ -97,11 +89,11 @@ namespace verona::rt
      * Prepare a multimessage
      **/
 
-    template<class Be, typename... Args>
+    template<typename T>
     static Behaviour*
-    prepare_to_schedule(size_t count, Request* requests, Args&&... args)
+    prepare_to_schedule(size_t count, Request* requests, T&& f)
     {
-      auto body = Behaviour::make<Be>(count, std::forward<Args>(args)...);
+      auto body = Behaviour::make<T>(count, std::forward<T>(f));
 
       auto* slots = body->get_slots();
       for (size_t i = 0; i < count; i++)
@@ -114,14 +106,13 @@ namespace verona::rt
       return body;
     }
 
-    template<class Be, typename... Args>
-    static void schedule(size_t count, Request* requests, Args&&... args)
+    template<class T>
+    static void schedule(size_t count, Request* requests, T&& f)
     {
-      Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
+      Logging::cout() << "Schedule behaviour of type: " << typeid(T).name()
                       << Logging::endl;
 
-      auto* body = prepare_to_schedule<Be, Args...>(
-        count, requests, std::forward<Args>(args)...);
+      auto* body = prepare_to_schedule<T>(count, requests, std::forward<T>(f));
 
       BehaviourCore* arr[] = {body};
 

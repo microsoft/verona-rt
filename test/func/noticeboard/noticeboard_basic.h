@@ -174,9 +174,9 @@ namespace noticeboard_basic
 
     Logging::cout() << "Peeker " << peeker << std::endl;
 
-    Behaviour::schedule<ToPeek>(peeker, peeker);
-    Behaviour::schedule<UpdateDB>(peeker->db, peeker->db);
-    Behaviour::schedule<Ping>(alive, alive);
+    schedule_lambda(peeker, ToPeek(peeker));
+    schedule_lambda(peeker->db, UpdateDB(peeker->db));
+    schedule_lambda(alive, Ping(alive));
 
     Cown::release(alloc, alive);
     Cown::release(alloc, peeker);

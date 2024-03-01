@@ -257,7 +257,7 @@ struct Pong
     if (ccown->child != nullptr)
     {
       for (int n = 0; n < 20; n++)
-        Behaviour::schedule<Pong>(ccown->child, ccown->child);
+        schedule_lambda(ccown->child, Pong(ccown->child));
     }
   }
 };
@@ -273,31 +273,31 @@ struct Ping
     if (rcown->forward > 0)
     {
       // Forward Ping to next RCown.
-      Behaviour::schedule<Ping>(rcown->next, rcown->next, rand);
+      schedule_lambda(rcown->next, Ping(rcown->next, rand));
 
       // Send Pongs to child CCowns.
       for (uint64_t i = 0; i < others_count; i++)
       {
         if (rcown->array[i] != nullptr)
-          Behaviour::schedule<Pong>(rcown->array[i], rcown->array[i]);
+          schedule_lambda(rcown->array[i], Pong(rcown->array[i]));
       }
       if (rcown->otrace != nullptr && rcown->otrace->cown != nullptr)
-        Behaviour::schedule<Pong>(rcown->otrace->cown, rcown->otrace->cown);
+        schedule_lambda(rcown->otrace->cown, Pong(rcown->otrace->cown));
       if (rcown->oarena != nullptr && rcown->oarena->cown != nullptr)
-        Behaviour::schedule<Pong>(rcown->oarena->cown, rcown->oarena->cown);
+        schedule_lambda(rcown->oarena->cown, Pong(rcown->oarena->cown));
       if (rcown->imm1 != nullptr)
       {
         auto c1 = rcown->imm1->cown;
         auto c2 = rcown->imm1->f1->cown;
-        Behaviour::schedule<Pong>(c1, c1);
-        Behaviour::schedule<Pong>(c2, c2);
+        schedule_lambda(c1, Pong(c1));
+        schedule_lambda(c2, Pong(c2));
       }
       if (rcown->imm2 != nullptr)
       {
         auto c1 = rcown->imm2->cown;
         auto c2 = rcown->imm2->f1->cown;
-        Behaviour::schedule<Pong>(c1, c1);
-        Behaviour::schedule<Pong>(c2, c2);
+        schedule_lambda(c1, Pong(c1));
+        schedule_lambda(c2, Pong(c2));
       }
 
       // Randomly introduce a pointer nulling operations. We don't want to do
@@ -381,7 +381,7 @@ void test_cown_gc(
   rcown_first = nullptr;
   auto a = new RCown(ring_size, forward_count);
   rand->seed(h->current_seed());
-  Behaviour::schedule<Ping>(a, a, rand);
+  schedule_lambda(a, Ping(a, rand));
 }
 
 void test_cown_gc_before_sched()
