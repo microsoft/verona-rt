@@ -37,9 +37,18 @@ struct Receive
   : receivers(receivers_), receiver_count(receiver_count_)
   {}
 
+  Receive(Receive&& o) noexcept
+  {
+    receiver_count = o.receiver_count;
+    receivers = o.receivers;
+
+    o.receivers = nullptr;
+  }
+
   ~Receive()
   {
-    ThreadAlloc::get().dealloc(receivers, receiver_count * sizeof(Receiver*));
+    if (receivers)
+      ThreadAlloc::get().dealloc(receivers, receiver_count * sizeof(Receiver*));
   }
 
   void trace(ObjectStack& st) const
