@@ -100,7 +100,7 @@ namespace noticeboard_weak
     g_writer = new Writer(c_0, c_1);
     g_reader = new Reader(&g_writer->box_0, &g_writer->box_1);
 
-    Behaviour::schedule<ReaderLoop>(g_reader, g_reader);
-    Behaviour::schedule<WriterLoop>(g_writer, g_writer);
+    schedule_lambda(g_reader, ReaderLoop(g_reader));
+    schedule_lambda(g_writer, WriterLoop(g_writer));
   }
 }

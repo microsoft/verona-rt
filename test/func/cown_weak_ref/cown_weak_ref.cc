@@ -93,7 +93,7 @@ struct Up
     {
       if (m->parent->acquire_strong_from_weak())
       {
-        Behaviour::schedule<Up, YesTransfer>(m->parent, m->parent);
+        schedule_lambda<YesTransfer>(m->parent, Up(m->parent));
       }
     }
   }
@@ -121,12 +121,12 @@ struct Down
 
     if (m->left != nullptr)
     {
-      Behaviour::schedule<Down>(m->left, m->left);
+      schedule_lambda(m->left, Down(m->left));
     }
 
     if (m->right != nullptr)
     {
-      Behaviour::schedule<Down>(m->right, m->right);
+      schedule_lambda(m->right, Down(m->right));
     }
   }
 };
@@ -135,8 +135,8 @@ void run_test()
 {
   auto t = make_tree(9, nullptr);
 
-  Behaviour::schedule<Down>(t, t);
-  Behaviour::schedule<Down, YesTransfer>(t, t);
+  schedule_lambda(t, Down(t));
+  schedule_lambda<YesTransfer>(t, Down(t));
 }
 
 int main(int argc, char** argv)
