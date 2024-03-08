@@ -134,8 +134,8 @@ public:
 #endif
   }
 
-  template<typename... Args>
-  void run(void f(Args...), Args... args)
+  template<typename F, typename... Args>
+  void run(F&& f, Args... args)
   {
     for (seed = seed_lower; seed < seed_upper; seed++)
     {

@@ -14,6 +14,7 @@
  */
 
 #include "cpp/when.h"
+#include "debug/harness.h"
 #include "debug/log.h"
 #include "test/opt.h"
 #include "verona.h"
@@ -136,75 +137,60 @@ struct Send
 
 int main(int argc, char** argv)
 {
-  opt::Opt opt(argc, argv);
-  auto seed = opt.is<size_t>("--seed", 5489);
-  auto cores = opt.is<size_t>("--cores", 4);
-  auto senders = opt.is<size_t>("--senders", 100);
-  auto receivers = opt.is<size_t>("--receivers", 1);
-  auto proxies = opt.is<size_t>("--proxies", 0);
-  auto duration = opt.is<size_t>("--duration", 10'000);
-  logger::cout() << "cores: " << cores << ", senders: " << senders
-                 << ", receivers: " << receivers << ", duration: " << duration
-                 << "ms" << std::endl;
+  SystematicTestHarness harness(argc, argv);
 
-#ifdef USE_SYSTEMATIC_TESTING
-  Logging::enable_logging();
-  Systematic::set_seed(seed);
-#else
-  UNUSED(seed);
-#endif
-  Scheduler::set_detect_leaks(true);
-  auto& sched = Scheduler::get();
-  sched.set_fair(true);
-  sched.init(cores);
+  auto senders = harness.opt.is<size_t>("--senders", 100);
+  auto receivers = harness.opt.is<size_t>("--receivers", 1);
+  auto proxies = harness.opt.is<size_t>("--proxies", 0);
+  auto duration = harness.opt.is<size_t>("--duration", 10'000);
 
-  Alloc& alloc = ThreadAlloc::get();
+  harness.run([senders, receivers, proxies, duration, &harness]() {
+    Alloc& alloc = ThreadAlloc::get();
 
-  for (size_t r = 0; r < receivers; r++)
-    receiver_set.push_back(new (alloc) Receiver);
+    for (size_t r = 0; r < receivers; r++)
+      receiver_set.push_back(new (alloc) Receiver);
 
-  for (size_t p = 0; p < proxies; p++)
-    proxy_chain.push_back(new (alloc) Proxy(p));
+    for (size_t p = 0; p < proxies; p++)
+      proxy_chain.push_back(new (alloc) Proxy(p));
 
-  auto e = make_cown<int>();
-  when(e) << [](auto) {
-    Logging::cout() << "Add external event source" << std::endl;
-    Scheduler::add_external_event_source();
-  };
+    auto e = make_cown<int>();
+    when(e) << [](auto) {
+      Logging::cout() << "Add external event source" << std::endl;
+      Scheduler::add_external_event_source();
+    };
 
-  auto thr = std::thread([=, &alloc] {
-    for (size_t i = 0; i < senders; i++)
-    {
+    harness.external_thread([=]() {
+      Alloc& alloc = ThreadAlloc::get();
+      for (size_t i = 0; i < senders; i++)
+      {
+        if (proxy_chain.size() > 0)
+        {
+          Cown::acquire(proxy_chain[0]);
+        }
+        else
+        {
+          for (auto* r : receiver_set)
+            Cown::acquire(r);
+        }
+
+        auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
+        schedule_lambda<YesTransfer>(s, Send(s));
+      }
+
       if (proxy_chain.size() > 0)
       {
-        Cown::acquire(proxy_chain[0]);
+        Cown::release(alloc, proxy_chain[0]);
       }
       else
       {
         for (auto* r : receiver_set)
-          Cown::acquire(r);
+          Cown::release(alloc, r);
       }
 
-      auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
-      schedule_lambda<YesTransfer>(s, Send(s));
-    }
-
-    if (proxy_chain.size() > 0)
-    {
-      Cown::release(alloc, proxy_chain[0]);
-    }
-    else
-    {
-      for (auto* r : receiver_set)
-        Cown::release(alloc, r);
-    }
-
-    when(e) << [](auto) {
-      Logging::cout() << "Remove external event source" << std::endl;
-      Scheduler::remove_external_event_source();
-    };
+      when(e) << [](auto) {
+        Logging::cout() << "Remove external event source" << std::endl;
+        Scheduler::remove_external_event_source();
+      };
+    });
   });
-
-  sched.run();
-  thr.join();
 }
