@@ -147,6 +147,10 @@ int main(int argc, char** argv)
                  << ", receivers: " << receivers << ", duration: " << duration
                  << "ms" << std::endl;
 
+#if defined(USE_FLIGHT_RECORDER) || defined(CI_BUILD)
+  Logging::enable_crash_logging();
+#endif
+
 #ifdef USE_SYSTEMATIC_TESTING
   Logging::enable_logging();
   Systematic::set_seed(seed);
