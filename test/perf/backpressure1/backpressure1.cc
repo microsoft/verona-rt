@@ -14,10 +14,10 @@
  */
 
 #include "cpp/when.h"
+#include "debug/harness.h"
 #include "debug/log.h"
 #include "test/opt.h"
 #include "verona.h"
-#include "debug/harness.h"
 
 #include <chrono>
 
@@ -144,7 +144,7 @@ int main(int argc, char** argv)
   auto proxies = harness.opt.is<size_t>("--proxies", 0);
   auto duration = harness.opt.is<size_t>("--duration", 10'000);
 
-  harness.run([senders, receivers, proxies, duration, &harness] () {
+  harness.run([senders, receivers, proxies, duration, &harness]() {
     Alloc& alloc = ThreadAlloc::get();
 
     for (size_t r = 0; r < receivers; r++)
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
       Scheduler::add_external_event_source();
     };
 
-    harness.external_thread([=](){
+    harness.external_thread([=]() {
       Alloc& alloc = ThreadAlloc::get();
       for (size_t i = 0; i < senders; i++)
       {
