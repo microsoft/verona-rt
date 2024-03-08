@@ -243,60 +243,73 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
 {
   auto& alloc = ThreadAlloc::get();
 
+#ifdef CI_BUILD
+  size_t max_index = 10;
+#else
+  size_t max_index = 22;
+#endif
+
   for (size_t m = 4; m < 8; m++)
-    for (size_t index = 1; index < 20; index++)
+    for (size_t index = 1; index < max_index; index++)
     {
       size_t list_size = m << index;
-
-      std::vector<Object*> roots;
-      size_t list_count = std::max<size_t>(10000 / list_size, 4);
-      size_t work = list_count * list_size;
-      // Add one for leftover list.
-      roots.reserve(list_count);
+      for (size_t repeats = 0;
+           repeats < std::max<size_t>(100000 / list_size, 50);
+           repeats++)
       {
-        MeasureTime m(true);
-        for (size_t i = 0; i < list_count; i++)
+        std::vector<Object*> roots;
+        size_t work = list_size;
+        // Add one for leftover list.
+        roots.reserve(1);
         {
-          auto* root = new (RegionType::Trace) C1;
-          UsingRegion rr(root);
-          root->f2 = nullptr;
-          root->f1 = make(list_size);
-          roots.push_back(root);
+          MeasureTime m(true);
+          for (size_t i = 0; i < 1; i++)
+          {
+            auto* root = new (RegionType::Trace) C1;
+            UsingRegion rr(root);
+            root->f2 = nullptr;
+            root->f1 = make(list_size);
+            roots.push_back(root);
+          }
+          if (print)
+            std::cout << ds << ",Alloc," << list_size << ","
+                      << (double)m.get_time().count() / work << std::endl;
         }
-        if (print)
-          std::cout << ds << ",Alloc," << list_size << ","
-                    << (double)m.get_time().count() / work << std::endl;
-      }
 
-      verona::rt::Object::reset_find_count();
-      {
-        MeasureTime m(true);
-        for (auto root : roots)
-          freeze(root);
-        if (print)
+        verona::rt::Object::reset_find_count();
         {
-          std::cout << ds << ",Freeze," << list_size << ","
-                    << (double)m.get_time().count() / work << std::endl;
-          std::cout << ds << ",FreezeFind," << list_size << ","
-                    << (double)verona::rt::Object::get_find_count() / work
-                    << std::endl;
+          MeasureTime m(true);
+          for (auto root : roots)
+            freeze(root);
+          if (print)
+          {
+            std::cout << ds << ",Freeze," << list_size << ","
+                      << (double)m.get_time().count() / work << std::endl;
+            std::cout << ds << ",FreezeFind," << list_size << ","
+                      << (double)verona::rt::Object::get_find_count() / work
+                      << std::endl;
+          }
         }
-      }
 
-      verona::rt::Object::reset_find_count();
-      // Free immutable graph.
-      {
-        MeasureTime m(true);
-        for (auto root : roots)
-          Immutable::release(alloc, root);
-        if (print)
+        verona::rt::Object::reset_find_count();
+        // Free immutable graph.
         {
-          std::cout << ds << ",Release," << list_size << ","
-                    << (double)m.get_time().count() / work << std::endl;
-          std::cout << ds << ",ReleaseFind," << list_size << ","
-                    << (double)verona::rt::Object::get_find_count() / work
-                    << std::endl;
+          MeasureTime m(true);
+          for (auto root : roots)
+            Immutable::release(alloc, root);
+          if (print)
+          {
+            std::cout << ds << ",Dispose," << list_size << ","
+                      << (double)m.get_time().count() / work << std::endl;
+            std::cout << ds << ",DisposeFind," << list_size << ","
+                      << (double)verona::rt::Object::get_find_count() / work
+                      << std::endl;
+          }
         }
+
+        // Don't run multiple if not logging results.
+        if (!print)
+          break;
       }
     }
 
@@ -307,9 +320,9 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
 int main(int, char**)
 {
 #ifdef CI_BUILD
-  int repeats = 2;
+  int repeats = 1;
 #else
-  int repeats = 51;
+  int repeats = 2;
 #endif
   for (int i = 0; i < repeats; i++)
   {
