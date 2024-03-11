@@ -54,14 +54,7 @@ namespace verona::rt
         assert(fl.empty());
         assert(scc.empty());
 
-        Object* v = dfs.pop();
-        v->trace(f);
-
-        while (!f.empty())
-        {
-          Object* w = f.pop();
-          scc_classify(alloc, w, dfs, scc);
-        }
+        scc.push(dfs.pop());
 
         while (!scc.empty())
         {
@@ -79,10 +72,6 @@ namespace verona::rt
         // Run all finalisers for this SCC before deallocating.
         fl.forall<run_finaliser>();
 
-        // We don't need the actual subregions here, as they have been frozen.
-        ObjectStack dummy(alloc);
-        v->finalise(nullptr, dummy);
-
         while (!fl.empty())
         {
           Object* w = fl.pop();
@@ -90,10 +79,6 @@ namespace verona::rt
           w->destructor();
           w->dealloc(alloc);
         }
-
-        total += v->size();
-        v->destructor();
-        v->dealloc(alloc);
       }
 
       assert(f.empty());

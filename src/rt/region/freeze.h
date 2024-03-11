@@ -59,16 +59,17 @@ namespace verona::rt
    *     let rec freeze_inner(x) =
    *       match rep(x).status with
    *       | UNMARKED =>
-   *         x.set_pending();
+   *         x.status = PENDING(0);
    *         pending.push(x);
    *         for each f in x
    *           freeze_inner(x.f)
    *         if (pending.peek() == x)         // (A) Post-order check
-   *           x."makescc with ref count 1"()
+   *           pending.pop()
+   *           rep(x).status = RC(1);
    *
    *       | PENDING(N) =>
-   *         while (rep(x) != rep(pending.peek()))
-   *           union(x, pending.pop())
+   *         while (union(x, pending.peek()))
+   *           pending.pop()
    *
    *       | RC(N) =>
    *           x.status = RC(N+1)
@@ -341,6 +342,8 @@ namespace verona::rt
       assert(objects.empty());
       assert(dfs.empty());
       assert(iso.empty());
+      assert(pending.empty());
+      assert(dealloc_regions.empty());
     }
   };
 } // namespace verona::rt

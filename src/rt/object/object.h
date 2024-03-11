@@ -567,9 +567,34 @@ namespace verona::rt
       return get_header().bits >> SHIFT;
     }
 
+#ifdef VERONA_BENCHMARK_SCC_FIND_STATS
+  private:
+    // Tracks the sum of the length of all find operations.
+    static inline size_t find_count{0};
+
+    static inline void inc_find_count()
+    {
+      find_count++;
+    }
+
+  public:
+    static inline size_t get_find_count()
+    {
+      return find_count;
+    }
+
+    static inline void reset_find_count()
+    {
+      find_count = 0;
+    }
+#else
+    static inline void inc_find_count() {}
+#endif
+
     inline Object* root_and_class(RegionMD& c)
     {
       c = get_class();
+      inc_find_count();
 
       switch (c)
       {
@@ -577,9 +602,11 @@ namespace verona::rt
         {
           auto parent = get_scc();
           auto curr = this;
+          inc_find_count();
 
           while ((c = parent->get_class()) == RegionMD::SCC_PTR)
           {
+            inc_find_count();
             auto grand_parent = parent->get_scc();
             curr->set_scc(grand_parent);
             curr = parent;
