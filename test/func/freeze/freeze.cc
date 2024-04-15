@@ -383,6 +383,27 @@ void test_two_rings_2()
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
 
+void test_contains_immutable1()
+{
+  auto& alloc = ThreadAlloc::get();
+  Symbolic* root = new (RegionType::Trace) Symbolic;
+
+  Symbolic* nested = new (RegionType::Trace) Symbolic;
+  freeze(nested);
+
+  // Add to the fields of the object
+  root->fields.push_back(nested);
+  // Update the remembered set.
+  RememberedSet* rs = root->get_region();
+  rs->insert<YesTransfer>(alloc, nested);
+
+  // Freeze the root
+  freeze(root);
+
+  Immutable::release(alloc, root);
+  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+}
+
 void test_random(size_t seed = 1, size_t max_edges = 128)
 {
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
@@ -537,6 +558,7 @@ int main(int, char**)
   test_two_rings_1();
   test_two_rings_2();
   freeze_weird_ring();
+  test_contains_immutable1();
 
   for (size_t i = 1; i < 10000; i++)
   {
