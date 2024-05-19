@@ -41,12 +41,12 @@ namespace verona::rt
       return rerun;
     }
 
-    template<typename Be, typename T>
-    static Behaviour* make(size_t count, T&& f)
+    template<typename Be>
+    static Behaviour* make(size_t count, Be&& f)
     {
       auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
 
-      new (behaviour_core->get_body()) Be(std::forward<T>(f));
+      new (behaviour_core->get_body()) Be(std::forward<Be>(f));
 
       // These assertions are basically checking that we won't break any
       // alignment assumptions on Be.  If we add some actual alignment, then
