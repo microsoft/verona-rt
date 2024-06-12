@@ -41,12 +41,12 @@ namespace verona::rt
       return rerun;
     }
 
-    template<typename Be, typename T>
-    static Behaviour* make(size_t count, T&& f)
+    template<typename Be>
+    static Behaviour* make(size_t count, Be&& f)
     {
       auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
 
-      new (behaviour_core->get_body()) Be(std::forward<T>(f));
+      new (behaviour_core->get_body()) Be(std::forward<Be>(f));
 
       // These assertions are basically checking that we won't break any
       // alignment assumptions on Be.  If we add some actual alignment, then
@@ -63,8 +63,8 @@ namespace verona::rt
       schedule<transfer, T>(1, &cown, std::forward<T>(f));
     }
 
-    template<TransferOwnership transfer = NoTransfer, class T>
-    static void schedule(size_t count, Cown** cowns, T&& f)
+    template<TransferOwnership transfer = NoTransfer, class Be>
+    static void schedule(size_t count, Cown** cowns, Be&& f)
     {
       // TODO Remove vector allocation here.  This is a temporary fix to
       // as we transition to using Request through the code base.
@@ -80,7 +80,7 @@ namespace verona::rt
         }
       }
 
-      schedule<T>(count, requests, std::forward<T>(f));
+      schedule<Be>(count, requests, std::forward<Be>(f));
 
       alloc.dealloc(requests);
     }
@@ -89,11 +89,11 @@ namespace verona::rt
      * Prepare a multimessage
      **/
 
-    template<typename T>
+    template<typename Be>
     static Behaviour*
-    prepare_to_schedule(size_t count, Request* requests, T&& f)
+    prepare_to_schedule(size_t count, Request* requests, Be&& f)
     {
-      auto body = Behaviour::make<T>(count, std::forward<T>(f));
+      auto body = Behaviour::make<Be>(count, std::forward<Be>(f));
 
       auto* slots = body->get_slots();
       for (size_t i = 0; i < count; i++)
@@ -106,13 +106,14 @@ namespace verona::rt
       return body;
     }
 
-    template<class T>
-    static void schedule(size_t count, Request* requests, T&& f)
+    template<class Be>
+    static void schedule(size_t count, Request* requests, Be&& f)
     {
-      Logging::cout() << "Schedule behaviour of type: " << typeid(T).name()
+      Logging::cout() << "Schedule behaviour of type: " << typeid(Be).name()
                       << Logging::endl;
 
-      auto* body = prepare_to_schedule<T>(count, requests, std::forward<T>(f));
+      auto* body =
+        prepare_to_schedule<Be>(count, requests, std::forward<Be>(f));
 
       BehaviourCore* arr[] = {body};
 
