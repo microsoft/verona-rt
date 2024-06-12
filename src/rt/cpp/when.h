@@ -229,7 +229,10 @@ namespace verona::cpp
     struct is_read_only : std::false_type
     {};
     template<class T>
-    struct is_read_only<Access<const T>> : std::true_type
+    struct is_read_only<Access<const T>&> : std::true_type
+    {};
+    template<class T>
+    struct is_read_only<AccessBatch<const T>&> : std::true_type
     {};
 
     template<class T>
