@@ -83,6 +83,7 @@ public:
   size_t seed_lower;
   size_t seed_upper;
   high_resolution_clock::time_point start;
+  void (*run_at_thread_termination)(void) = nullptr;
 
   SystematicTestHarness(int argc, const char* const* argv) : opt(argc, argv)
   {
@@ -155,7 +156,7 @@ public:
 #else
       UNUSED(seed);
 #endif
-      sched.init(cores);
+      sched.init(cores, run_at_thread_termination);
 
       f(std::forward<Args>(args)...);
 

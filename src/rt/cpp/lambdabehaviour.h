@@ -8,28 +8,28 @@
 
 namespace verona::rt
 {
-  template<TransferOwnership transfer = NoTransfer, typename T>
-  static void schedule_lambda(Cown* c, T&& f)
+  template<TransferOwnership transfer = NoTransfer, typename Be>
+  static void schedule_lambda(Cown* c, Be&& f)
   {
-    Behaviour::schedule<transfer>(c, std::forward<T>(f));
+    Behaviour::schedule<transfer>(c, std::forward<Be>(f));
   }
 
-  template<TransferOwnership transfer = NoTransfer, typename T>
-  static void schedule_lambda(size_t count, Cown** cowns, T&& f)
+  template<TransferOwnership transfer = NoTransfer, typename Be>
+  static void schedule_lambda(size_t count, Cown** cowns, Be&& f)
   {
-    Behaviour::schedule<transfer>(count, cowns, std::forward<T>(f));
+    Behaviour::schedule<transfer>(count, cowns, std::forward<Be>(f));
   }
 
-  template<typename T>
-  static void schedule_lambda(size_t count, Request* requests, T&& f)
+  template<typename Be>
+  static void schedule_lambda(size_t count, Request* requests, Be&& f)
   {
-    Behaviour::schedule(count, requests, std::forward<T>(f));
+    Behaviour::schedule(count, requests, std::forward<Be>(f));
   }
 
-  template<typename T>
-  static void schedule_lambda(T&& f)
+  template<typename Be>
+  static void schedule_lambda(Be&& f)
   {
-    auto w = Closure::make([f = std::forward<T>(f)](Work* w) mutable {
+    auto w = Closure::make([f = std::forward<Be>(f)](Work* w) mutable {
       f();
       return true;
     });
@@ -38,11 +38,11 @@ namespace verona::rt
 
   // TODO super minimal version initially, just to get the tests working.
   // Should be expanded to cover multiple cowns.
-  template<typename T>
-  inline Notification* make_notification(Cown* cown, T&& f)
+  template<typename Be>
+  inline Notification* make_notification(Cown* cown, Be&& f)
   {
     Request requests[] = {Request::write(cown)};
-    return Notification::make<T>(1, requests, std::forward<T>(f));
+    return Notification::make<Be>(1, requests, std::forward<Be>(f));
   }
 
 } // namespace verona::rt
