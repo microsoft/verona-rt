@@ -64,4 +64,25 @@ namespace verona::cpp
     cown_array& operator=(cown_array&&) = delete;
     cown_array& operator=(const cown_array&) = delete;
   };
+
+  /* A cown_array<const T> is used to mark that the cown is being accessed as
+   * read-only. (This combines the type as the capability. We do not have deep
+   * immutability in C++, so acquired_cown<const T> is an approximation.)
+   *
+   * We use inheritance to allow us to construct a cown_array<const T> from a
+   * cown_array<T>.
+   */
+  template<typename T>
+  class cown_array<const T> : public cown_array<T>
+  {
+  public:
+    cown_array(const cown_array<T>& other) : cown_array<T>(other){};
+  };
+
+  template<typename T>
+  cown_array<const T> read(cown_array<T> cown)
+  {
+    Logging::cout() << "Read returning const array ptr" << Logging::endl;
+    return cown;
+  }
 }
