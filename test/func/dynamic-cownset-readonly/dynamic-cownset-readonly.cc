@@ -108,9 +108,8 @@ void test_mixed1()
 
   auto log3 = make_cown<Body1>(1);
 
-  when(read(t1), log3) << [=](auto, auto) {
-    Logging::cout() << "log" << Logging::endl;
-  };
+  when(read(t1), log3) <<
+    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_mixed2()
@@ -128,9 +127,8 @@ void test_mixed2()
 
   auto log3 = make_cown<Body1>(1);
 
-  when(read(log3), t1) << [=](auto, auto) {
-    Logging::cout() << "log" << Logging::endl;
-  };
+  when(read(log3), t1) <<
+    [=](auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_mixed3()
@@ -157,8 +155,8 @@ void test_mixed3()
 
   auto log5 = make_cown<Body1>(4);
 
-  when(read(t1), log5, read(t2)) <<
-    [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
+  when(read(t1), log5, read(t2))
+    << [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_mixed4()
@@ -177,8 +175,8 @@ void test_mixed4()
   auto log3 = make_cown<Body1>(3);
   auto log4 = make_cown<Body1>(4);
 
-  when(read(log3), t1, read(log4)) <<
-    [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
+  when(read(log3), t1, read(log4))
+    << [=](auto, auto, auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_multi()
@@ -195,7 +193,8 @@ void test_multi()
   cown_array<Body1> t1{carray, 2};
 
   (when(read(t1)) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(read(log1)) << [=](auto) { Logging::cout() << "log" << Logging::endl; });
+    (when(read(log1)) <<
+     [=](auto) { Logging::cout() << "log" << Logging::endl; });
 }
 
 void test_nest1()
@@ -247,8 +246,8 @@ void test_move()
 
   cown_array<Body1> t1{carray, 2};
 
-  when(std::move(read(t1))) <<
-    [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(std::move(read(t1)))
+    << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 void test_repeated_cown()
@@ -263,8 +262,8 @@ void test_repeated_cown()
 
   cown_array<Body1> t1{carray, 2};
 
-  when(std::move(read(t1))) <<
-    [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(std::move(read(t1)))
+    << [=](auto) { Logging::cout() << "log" << Logging::endl; };
 }
 
 int main(int argc, char** argv)
