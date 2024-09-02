@@ -185,11 +185,11 @@ namespace verona::rt
       return nonlocal;
     }
 
-    static void schedule(Work* w)
+    static void schedule(Work* w, bool fifo = true)
     {
       auto* t = local();
 
-      if (t != nullptr)
+      if (t != nullptr && fifo)
       {
         t->schedule_fifo(w);
         return;
