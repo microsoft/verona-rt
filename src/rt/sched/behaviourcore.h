@@ -225,6 +225,8 @@ namespace verona::rt
     /**
      * Returns true if current slot is a writer or a blocked reader,
      * otherwise returns false
+     * 
+     * TODO: Could the following be optimized to Fetch-Add?
      */
     bool set_next_slot_reader(Slot* n)
     {
@@ -480,7 +482,7 @@ namespace verona::rt
       Logging::cout() << "Acquiring addition reference count: transfer: "
                       << transfer << " required: " << required << " on cown "
                       << cown << Logging::endl;
-      // We didn't have any RCs passed in, so we need to acquire one.
+      // We didn't have enough RCs passed in, so we need to acquire the rest.
       for (int j = 0; j < required - transfer; j++)
         Cown::acquire(cown);
     }
@@ -696,6 +698,7 @@ namespace verona::rt
         auto cown = std::get<1>(indexes[i])->cown();
         auto body = bodies[std::get<0>(indexes[i])];
         auto curr_slot = std::get<1>(indexes[i]);
+        auto first_body = body;
         size_t first_chain_index = i;
 
         // The number of RCs provided for the current cown by the when.
@@ -728,12 +731,20 @@ namespace verona::rt
             std::get<1>(indexes[i])->set_cown_null();
             continue;
           }
-          else
+
+          // For writers, create a chain of behaviours
+          if(!std::get<1>(indexes[i])->is_read_only())
           {
-            Logging::cout() << "Duplicate cown " << cown << " for " << body_next
-                            << " previous " << body << Logging::endl;
-            break;
+            body = body_next;
+
+            // Extend the chain of behaviours linking on this behaviour
+            curr_slot->set_behaviour(body);
+            curr_slot = std::get<1>(indexes[i]);
+            continue;
           }
+
+          // TODO: Chain with reads and writes is not implemented.
+          abort();
         }
 
         // Mark the slot as ready for scheduling
@@ -823,7 +834,7 @@ namespace verona::rt
 
         Logging::cout() << " Writer waiting for cown " << *curr_slot
                         << Logging::endl;
-        prev_slot->set_next_slot_writer(body);
+        prev_slot->set_next_slot_writer(first_body);
         Logging::cout() << " Writer Set next of previous slot cown "
                         << *curr_slot << " previous " << *prev_slot
                         << Logging::endl;
