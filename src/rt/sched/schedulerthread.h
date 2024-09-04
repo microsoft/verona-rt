@@ -234,16 +234,13 @@ namespace verona::rt
     {
       Work* work = nullptr;
       // Try to steal from the victim thread.
-      if (victim != core)
-      {
-        work = victim->q.dequeue();
+      work = core->q.steal(victim->q);
 
-        if (work != nullptr)
-        {
-          // stats.steal();
-          Logging::cout() << "Fast-steal work " << work << " from "
-                          << victim->affinity << Logging::endl;
-        }
+      if (work != nullptr)
+      {
+        core->stats.steal();
+        Logging::cout() << "Fast-steal work " << work << " from "
+                        << victim->affinity << Logging::endl;
       }
 
       // Move to the next victim thread.
@@ -268,17 +265,14 @@ namespace verona::rt
           return work;
 
         // Try to steal from the victim thread.
-        if (victim != core)
-        {
-          work = victim->q.dequeue();
+        work = core->q.steal(victim->q);
 
-          if (work != nullptr)
-          {
-            core->stats.steal();
-            Logging::cout() << "Stole work " << work << " from "
-                            << victim->affinity << Logging::endl;
-            return work;
-          }
+        if (work != nullptr)
+        {
+          core->stats.steal();
+          Logging::cout() << "Stole work " << work << " from "
+                          << victim->affinity << Logging::endl;
+          return work;
         }
 
         // We were unable to steal, move to the next victim thread.

@@ -5,6 +5,7 @@
 #include "mpmcq.h"
 #include "schedulerstats.h"
 #include "work.h"
+#include "workstealingqueue.h"
 
 #include <atomic>
 #include <snmalloc/snmalloc.h>
@@ -15,7 +16,7 @@ namespace verona::rt
   {
   public:
     size_t affinity = 0;
-    MPMCQ<Work> q;
+    WorkStealingQueue<4> q;
     std::atomic<Core*> next{nullptr};
     std::atomic<bool> should_steal_for_fairness{false};
 
