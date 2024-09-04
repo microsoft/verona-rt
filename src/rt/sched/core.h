@@ -44,7 +44,7 @@ namespace verona::rt
     }
 
   public:
-    Core() : q{create_token_work(this)} {}
+    Core() : q{} {}
 
     ~Core() {}
   };

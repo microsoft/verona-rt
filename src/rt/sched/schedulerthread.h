@@ -218,7 +218,6 @@ namespace verona::rt
         {
           Logging::cout() << "Destroying core " << core->affinity
                           << Logging::endl;
-          core->q.destroy();
         }
       }
 
