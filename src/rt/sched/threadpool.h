@@ -199,7 +199,7 @@ namespace verona::rt
       T::schedule_lifo(core, w);
     }
 
-    void init(size_t count)
+    void init(size_t count, void (*run_at_termination)(void) = nullptr)
     {
       Logging::cout() << "Init runtime" << Logging::endl;
 
@@ -219,6 +219,7 @@ namespace verona::rt
       {
         T* t = new T;
         t->systematic_id = count;
+        t->run_at_termination = run_at_termination;
 #ifdef USE_SYSTEMATIC_TESTING
         t->local_systematic =
           Systematic::create_systematic_thread(t->systematic_id);

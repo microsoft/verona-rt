@@ -68,6 +68,8 @@ namespace verona::rt
     SchedulerThread* prev = nullptr;
     SchedulerThread* next = nullptr;
 
+    void (*run_at_termination)(void) = nullptr;
+
     SchedulerThread()
     {
       Logging::cout() << "Scheduler Thread created" << Logging::endl;
@@ -223,6 +225,8 @@ namespace verona::rt
       }
 
       Systematic::finished_thread();
+      if (run_at_termination)
+        run_at_termination();
 
       // Reset the local thread pointer as this physical thread could be reused
       // for a different SchedulerThread later.
