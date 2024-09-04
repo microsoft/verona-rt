@@ -158,10 +158,7 @@ public:
       UNUSED(seed);
 #endif
 
-      if (run_at_termination)
-        sched.init(cores, run_at_termination);
-      else
-        sched.init(cores);
+      sched.init(cores, run_at_termination);
 
       f(std::forward<Args>(args)...);
 
