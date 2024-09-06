@@ -146,14 +146,22 @@ namespace verona::rt
 
       if (core->should_steal_for_fairness)
       {
-        // Can race with other threads on the same core.
-        // This is a heuristic, so we don't care.
-        core->should_steal_for_fairness = false;
-        auto work = try_steal();
-        if (work != nullptr)
+        // Check if we have some work. We should only reschedule the token
+        // if we do have some work.  Otherwise, the token will be rescheduled
+        // and we will fail to reach quicescence.
+        if (!core->q.is_empty())
         {
-          return_next_work();
-          return work;
+          auto work = try_steal();
+          // Set the flag before rescheduling the token so that we don't have
+          // a race.
+          core->should_steal_for_fairness = false;
+          // Reschedule the token.
+          core->q.enqueue(core->token_work);
+          if (work != nullptr)
+          {
+            return_next_work();
+            return work;
+          }
         }
       }
 
