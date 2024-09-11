@@ -20,8 +20,9 @@
  * behaviour execution. The check ensures that only readers (one or more) or a
  * single writer is running at a given point in time.
  */
-
-#define DEBUG_RW 0
+#ifndef NDEBUG
+#  define DEBUG_RW
+#endif
 
 using namespace verona::cpp;
 
@@ -74,13 +75,14 @@ std::atomic<long> total_mixed_ops = 0;
 std::atomic<long> total_read_cs_time = 0;
 std::atomic<long> total_write_cs_time = 0;
 
-#if DEBUG_RW
+#ifndef NDEBUG
 auto concurrency = std::make_shared<std::array<std::atomic<size_t>, 1024>>();
 #endif
 
 void test_hash_table()
 {
   auto t1 = high_resolution_clock::now();
+  xoroshiro::p128r32 rand{Systematic::get_prng_next()};
 
   std::shared_ptr<std::vector<cown_ptr<Bucket>>> buckets =
     std::make_shared<std::vector<cown_ptr<Bucket>>>();
@@ -95,7 +97,7 @@ void test_hash_table()
 
   for (size_t i = 0; i < num_operations; i++)
   {
-    size_t dependent_buckets = (rand() % num_dependent_buckets) + 1;
+    size_t dependent_buckets = (rand.next() % num_dependent_buckets) + 1;
     std::vector<cown_ptr<Bucket>> read_buckets;
     std::vector<cown_ptr<Bucket>> write_buckets;
     std::set<size_t> reader_idx;
@@ -103,9 +105,9 @@ void test_hash_table()
 
     for (size_t j = 0; j < dependent_buckets; j++)
     {
-      size_t key = rand() % (num_buckets * num_entries_per_bucket * 2);
+      size_t key = rand.next() % (num_buckets * num_entries_per_bucket * 2);
       size_t idx = key % num_buckets;
-      if (rand() % rw_ratio_denom < rw_ratio)
+      if (rand.next() % rw_ratio_denom < rw_ratio)
       {
         read_buckets.push_back((*buckets)[idx]);
         reader_idx.insert(idx);
@@ -132,7 +134,7 @@ void test_hash_table()
                                       acquired_cown_span<Bucket> writers) {
       Logging::cout() << "Num readers: " << readers.length
                       << " Num writers: " << writers.length << Logging::endl;
-#if DEBUG_RW
+#ifdef DEBUG_RW
       for (auto reader : reader_idx)
       {
         auto val = (*concurrency)[reader].fetch_add(2);
@@ -158,7 +160,7 @@ void test_hash_table()
       for (volatile int i = 0; i < write_loop_count * writers.length; i++)
         Aal::pause();
 
-#if DEBUG_RW
+#ifdef DEBUG_RW
       for (auto reader : reader_idx)
       {
         auto val = (*concurrency)[reader].fetch_add(-2);
@@ -232,7 +234,7 @@ int main(int argc, char** argv)
 
   check(num_dependent_buckets <= num_buckets);
 
-#if DEBUG_RW
+#ifdef DEBUG_RW
   check(num_buckets <= 1024);
 #endif
 
@@ -244,7 +246,7 @@ int main(int argc, char** argv)
   harness.run(test_hash_table);
   auto t2 = high_resolution_clock::now();
 
-#if DEBUG_RW
+#ifdef DEBUG_RW
   for (int i = 0; i < num_buckets; i++)
     check((*concurrency)[i].load() == 0);
 #endif
