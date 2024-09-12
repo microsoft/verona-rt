@@ -225,7 +225,7 @@ namespace verona::rt
     /**
      * Returns true if current slot is a writer or a blocked reader,
      * otherwise returns false
-     * 
+     *
      * TODO: Could the following be optimized to Fetch-Add?
      */
     bool set_next_slot_reader(Slot* n)
@@ -342,25 +342,24 @@ namespace verona::rt
 
     inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
     {
-      return os << " Slot: " << &s << " Cown ptr: "
-                << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
-                << " 2PL ready bit: "
-                << (s._cown.load(std::memory_order_relaxed) &
-                    COWN_2PL_READY_FLAG == COWN_2PL_READY_FLAG)
-                << " Is_reader bit: "
-                << (s._cown.load(std::memory_order_relaxed) &
-                    COWN_READER_FLAG == COWN_READER_FLAG)
-                << " Is_Active: "
-                << ((s.status.load(std::memory_order_relaxed) &
-                     STATUS_SLOT_ACTIVE_FLAG) == STATUS_SLOT_ACTIVE_FLAG)
-                << " Next pointer: "
-                << (s.status.load(std::memory_order_relaxed) &
-                    STATUS_NEXT_SLOT_MASK)
-                << " Is_next_reader: "
-                << ((s.status.load(std::memory_order_relaxed) &
-                     STATUS_NEXT_SLOT_READER_FLAG) ==
-                    STATUS_NEXT_SLOT_READER_FLAG)
-                << "\n";
+      return os
+        << " Slot: " << &s << " Cown ptr: "
+        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
+        << " 2PL ready bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) ==
+            COWN_2PL_READY_FLAG)
+        << " Is_reader bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) ==
+            COWN_READER_FLAG)
+        << " Is_Active: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_SLOT_ACTIVE_FLAG) == STATUS_SLOT_ACTIVE_FLAG)
+        << " Next pointer: "
+        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
+        << " Is_next_reader: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_NEXT_SLOT_READER_FLAG) == STATUS_NEXT_SLOT_READER_FLAG)
+        << "\n";
     }
   };
 
@@ -733,7 +732,7 @@ namespace verona::rt
           }
 
           // For writers, create a chain of behaviours
-          if(!std::get<1>(indexes[i])->is_read_only())
+          if (!std::get<1>(indexes[i])->is_read_only())
           {
             body = body_next;
 
