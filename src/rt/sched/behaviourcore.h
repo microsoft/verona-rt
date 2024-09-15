@@ -792,6 +792,9 @@ namespace verona::rt
           continue;
         }
 
+        // Release any transferred count
+        acquire_with_transfer(cown, transfer_count, 0);
+
         yield();
         Logging::cout() << " Someone in queue cown " << *curr_slot
                         << " previous " << *prev_slot << Logging::endl;
