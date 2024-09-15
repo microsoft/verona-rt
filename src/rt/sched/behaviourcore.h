@@ -737,7 +737,7 @@ namespace verona::rt
             body = body_next;
 
             // Extend the chain of behaviours linking on this behaviour
-            curr_slot->set_behaviour(body);
+            curr_slot->set_next_slot_writer(body);
             curr_slot = std::get<1>(indexes[i]);
             continue;
           }
