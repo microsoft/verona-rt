@@ -12,7 +12,7 @@
 namespace verona::rt
 {
   class Cown;
-  static void yield();
+  static bool yield();
   /**!object.md
    * Object representation
    * =====================

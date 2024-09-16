@@ -40,6 +40,16 @@ void test_body()
     when(read(c)) <<
       [=](auto) { Logging::cout() << "read 2" << Logging::endl; };
   };
+
+  when () << [c]() {
+    when(c) <<
+      [=](auto) { Logging::cout() << "write 3" << Logging::endl; };
+  };
+
+  when () << [c]() {
+    when(read(c)) <<
+      [=](auto) { Logging::cout() << "read 3" << Logging::endl; };
+  };
 }
 
 int main(int argc, char** argv)

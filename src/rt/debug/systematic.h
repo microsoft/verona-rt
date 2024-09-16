@@ -270,9 +270,10 @@ namespace verona::rt
     /**
      * Switches thread in systematic testing.
      */
-    static void yield()
+    static bool yield()
     {
       yield_until(true_thunk);
+      return true;
     }
 
     /**
@@ -355,8 +356,9 @@ namespace verona::rt
     }
   };
 
-  static void yield()
+  static bool yield()
   {
     Systematic::yield();
+    return true;
   }
 } // namespace verona::rt

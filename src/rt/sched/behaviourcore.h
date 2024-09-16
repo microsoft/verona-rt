@@ -775,12 +775,15 @@ namespace verona::rt
             continue;
           }
 
+          yield();
+
           cown->next_writer.store(body, std::memory_order_release);
+          
           yield();
           acquire_with_transfer(cown, transfer_count, 1);
 
           if (
-            !cown->read_ref_count.any_reader() &&
+            !cown->read_ref_count.any_reader() && yield() &&
             cown->next_writer.exchange(nullptr, std::memory_order_acq_rel) ==
               body)
           {
@@ -920,13 +923,21 @@ namespace verona::rt
       if (cown()->last_slot.compare_exchange_strong(
             slot_addr, nullptr, std::memory_order_acq_rel))
       {
+        yield();
+
         if (is_read_only() && cown()->read_ref_count.release_read())
         {
           Logging::cout() << *this << "Last Reader releasing the cown "
                           << Logging::endl;
+          
+          yield();
+
           // Last reader
           auto w =
             cown()->next_writer.exchange(nullptr, std::memory_order_acq_rel);
+
+          yield();
+
           if (w != nullptr)
           {
             Logging::cout()
@@ -962,8 +973,12 @@ namespace verona::rt
 
     if (is_read_only())
     {
+      yield();
+
       if (!is_next_slot_read_only())
       {
+        yield();
+
         Logging::cout() << *this << "Reader setting next writer variable "
                         << next_behaviour() << Logging::endl;
         /*
@@ -972,6 +987,8 @@ namespace verona::rt
         variable. Hence, this store is not atomic.
         */
         cown()->next_writer = next_behaviour();
+
+        yield();
       }
 
       Logging::cout() << *this << " Reader releasing the cown "
@@ -982,8 +999,11 @@ namespace verona::rt
         // Last reader
         yield();
         auto w = cown()->next_writer.load();
+        
+        yield();
+
         if (
-          w != nullptr && !cown()->read_ref_count.any_reader() &&
+          w != nullptr && !cown()->read_ref_count.any_reader() && yield() &&
           cown()->next_writer.compare_exchange_strong(
             w, nullptr, std::memory_order_acq_rel))
         {
@@ -1010,6 +1030,9 @@ namespace verona::rt
 
     std::vector<Slot*> reader_queue;
     bool first_reader = cown()->read_ref_count.add_read();
+
+    yield();
+
     Logging::cout() << *this
                     << " Writer waking up next reader and acquiring "
                        "reference count for first reader. next slot "
@@ -1030,6 +1053,8 @@ namespace verona::rt
 
     // Add read count for readers. First reader is already added in rcount
     cown()->read_ref_count.add_read(reader_queue.size() - 1);
+
+    yield();
 
     for (auto reader : reader_queue)
     {
