@@ -218,8 +218,8 @@ namespace verona::rt
      */
     Slot* next_slot()
     {
-      return (Slot*)(status.load(std::memory_order_acquire) &
-                     STATUS_NEXT_SLOT_MASK);
+      return (
+        Slot*)(status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK);
     }
 
     /**
@@ -268,8 +268,8 @@ namespace verona::rt
     BehaviourCore* next_behaviour()
     {
       assert(!is_next_slot_read_only());
-      return (BehaviourCore*)(status.load(std::memory_order_acquire) &
-                              STATUS_NEXT_SLOT_MASK);
+      return (
+        BehaviourCore*)(status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK);
     }
 
     /**
