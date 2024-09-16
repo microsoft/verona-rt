@@ -302,6 +302,8 @@ namespace verona::rt
       _cown.store(0UL, std::memory_order_release);
     }
 
+    void wakeup_next_writer();
+
     void release();
 
     /**
@@ -778,7 +780,7 @@ namespace verona::rt
           yield();
 
           cown->next_writer.store(body, std::memory_order_release);
-          
+
           yield();
           acquire_with_transfer(cown, transfer_count, 1);
 
@@ -904,6 +906,23 @@ namespace verona::rt
     }
   };
 
+  inline void Slot::wakeup_next_writer()
+  {
+    auto w = cown()->next_writer.load();
+
+    yield();
+
+    if (
+      w != nullptr && !cown()->read_ref_count.any_reader() && yield() &&
+      cown()->next_writer.compare_exchange_strong(
+        w, nullptr, std::memory_order_acq_rel))
+    {
+      Logging::cout() << *this << " Last Reader waking up next writer " << *w
+                      << Logging::endl;
+      w->resolve();
+    }
+  }
+
   inline void Slot::release()
   {
     Logging::cout() << "Release slot " << *this << Logging::endl;
@@ -929,23 +948,10 @@ namespace verona::rt
         {
           Logging::cout() << *this << "Last Reader releasing the cown "
                           << Logging::endl;
-          
-          yield();
 
           // Last reader
-          auto w =
-            cown()->next_writer.exchange(nullptr, std::memory_order_acq_rel);
-
           yield();
-
-          if (w != nullptr)
-          {
-            Logging::cout()
-              << *this << " Last Reader waking up next writer cown "
-              << " writer " << *w << Logging::endl;
-            w->resolve();
-          }
-          yield();
+          wakeup_next_writer();
 
           // Release cown as this will be set by the new thread joining the
           // queue.
@@ -998,21 +1004,11 @@ namespace verona::rt
       {
         // Last reader
         yield();
-        auto w = cown()->next_writer.load();
-        
-        yield();
+        wakeup_next_writer();
 
-        if (
-          w != nullptr && !cown()->read_ref_count.any_reader() && yield() &&
-          cown()->next_writer.compare_exchange_strong(
-            w, nullptr, std::memory_order_acq_rel))
-        {
-          Logging::cout() << *this << " Last Reader waking up next writer "
-                          << *w << Logging::endl;
-          w->resolve();
-        }
-
-        Logging::cout() << *this << " Last reader releasing cown "
+        // Release cown as this will be set by the new thread joining the
+        // queue.
+        Logging::cout() << *this << " Last reader No more work for cown "
                         << Logging::endl;
         shared::release(ThreadAlloc::get(), cown());
       }
