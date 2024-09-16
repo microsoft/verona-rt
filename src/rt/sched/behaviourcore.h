@@ -672,7 +672,8 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
         if (std::get<1>(i)->cown()->id() == std::get<1>(j)->cown()->id())
           if (std::get<0>(i) == std::get<0>(j))
-            return std::get<1>(j)->is_read_only();
+            return (!std::get<1>(i)->is_read_only()) &&
+              std::get<1>(j)->is_read_only();
           else
             return std::get<0>(i) < std::get<0>(j);
         else
@@ -680,7 +681,8 @@ namespace verona::rt
 #else
         if (std::get<1>(i)->cown() == std::get<1>(j)->cown())
           if (std::get<0>(i) == std::get<0>(j))
-            return std::get<1>(j)->is_read_only();
+            return (!std::get<1>(i)->is_read_only()) &&
+              std::get<1>(j)->is_read_only();
           else
             return std::get<0>(i) < std::get<0>(j);
         else
