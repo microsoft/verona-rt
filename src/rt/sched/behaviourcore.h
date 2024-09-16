@@ -816,7 +816,7 @@ namespace verona::rt
           {
             Logging::cout()
               << " Previous slot is a writer or blocked reader cown "
-              << *curr_slot << " previous " << *prev_slot << Logging::endl;
+              << *curr_slot << Logging::endl;
             yield();
             continue;
           }
@@ -824,7 +824,7 @@ namespace verona::rt
           yield();
           bool first_reader = cown->read_ref_count.add_read();
           Logging::cout() << " Reader got the cown " << *curr_slot
-                          << " previous " << *prev_slot << Logging::endl;
+                          << Logging::endl;
           yield();
           curr_slot->set_active();
           ec[std::get<0>(indexes[first_chain_index])]++;
