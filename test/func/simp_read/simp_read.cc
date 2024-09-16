@@ -21,32 +21,29 @@ void test_body()
 
   auto c = make_cown<Body>();
 
-  when () << [c]() {
-    when(c) <<
-      [=](auto) { Logging::cout() << "write 1" << Logging::endl; };
+  when() << [c]() {
+    when(c) << [=](auto) { Logging::cout() << "write 1" << Logging::endl; };
   };
 
-  when () << [c]() {
+  when() << [c]() {
     when(read(c)) <<
       [=](auto) { Logging::cout() << "read 1" << Logging::endl; };
   };
 
-  when () << [c]() {
-    when(c) <<
-      [=](auto) { Logging::cout() << "write 2" << Logging::endl; };
+  when() << [c]() {
+    when(c) << [=](auto) { Logging::cout() << "write 2" << Logging::endl; };
   };
 
-  when () << [c]() {
+  when() << [c]() {
     when(read(c)) <<
       [=](auto) { Logging::cout() << "read 2" << Logging::endl; };
   };
 
-  when () << [c]() {
-    when(c) <<
-      [=](auto) { Logging::cout() << "write 3" << Logging::endl; };
+  when() << [c]() {
+    when(c) << [=](auto) { Logging::cout() << "write 3" << Logging::endl; };
   };
 
-  when () << [c]() {
+  when() << [c]() {
     when(read(c)) <<
       [=](auto) { Logging::cout() << "read 3" << Logging::endl; };
   };
