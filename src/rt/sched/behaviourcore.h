@@ -180,18 +180,28 @@ namespace verona::rt
     /**
      * Mark the reader slot as active i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
+     * Returns true if the next is set before active, and contains a reader
+     */
+    bool set_active_is_next_reader()
+    {
+      assert(is_read_only());
+      yield();
+      uintptr_t next =
+        status.fetch_add(STATUS_SLOT_ACTIVE_FLAG, std::memory_order_acq_rel);
+      return (
+        (next & STATUS_NEXT_SLOT_READER_FLAG) == STATUS_NEXT_SLOT_READER_FLAG);
+    }
+
+    /**
+     * Mark the reader slot as active i.e. the behaviour is scheduled.
+     * Next reader in the queue can also be scheduled.
      */
     void set_active()
     {
       assert(is_read_only());
-      while (true)
-      {
-        uintptr_t old_status_val = status.load(std::memory_order_acquire);
-        uintptr_t new_status_val = old_status_val | STATUS_SLOT_ACTIVE_FLAG;
-        if (status.compare_exchange_strong(
-              old_status_val, new_status_val, std::memory_order_acq_rel))
-          break;
-      }
+      assert(status == 0);
+      yield();
+      status.store(STATUS_SLOT_ACTIVE_FLAG, std::memory_order_release);
     }
 
     /**
@@ -225,40 +235,31 @@ namespace verona::rt
     /**
      * Returns true if current slot is a writer or a blocked reader,
      * otherwise returns false
-     *
-     * TODO: Could the following be optimized to Fetch-Add?
      */
     bool set_next_slot_reader(Slot* n)
     {
       // Check that the last two bits are zero
       assert(((uintptr_t)n & ~STATUS_NEXT_SLOT_MASK) == 0);
-      while (true)
+      assert(next_slot() == nullptr);
+
+      uintptr_t new_status_val =
+        ((uintptr_t)n) | (STATUS_NEXT_SLOT_READER_FLAG);
+
+      if (!is_read_only())
       {
-        assert(next_slot() == nullptr);
-        uintptr_t old_status_val = status.load(std::memory_order_acquire);
-        uintptr_t new_status_val =
-          old_status_val | ((uintptr_t)n) | (STATUS_NEXT_SLOT_READER_FLAG);
-        Logging::cout() << "prev slot is_reader" << is_read_only()
-                        << " curr reader " << this
-                        << "old_status_val: " << old_status_val
-                        << " new_status_val: " << new_status_val
-                        << Logging::endl;
-        if (status.compare_exchange_strong(
-              old_status_val, new_status_val, std::memory_order_acq_rel))
-        {
-          if (is_read_only())
-          {
-            if (
-              (old_status_val & STATUS_SLOT_ACTIVE_FLAG) ==
-              STATUS_SLOT_ACTIVE_FLAG)
-              return false;
-            else
-              return true;
-          }
-          else
-            return true;
-        }
+        status.store(new_status_val, std::memory_order_seq_cst);
+        return true;
       }
+
+      uintptr_t old_status_val =
+        status.fetch_add(new_status_val, std::memory_order_seq_cst);
+      Logging::cout() << "prev slot is_reader" << is_read_only()
+                      << " curr reader " << this
+                      << "old_status_val: " << old_status_val
+                      << " new_status_val: " << new_status_val << Logging::endl;
+
+      return (
+        (old_status_val & STATUS_SLOT_ACTIVE_FLAG) != STATUS_SLOT_ACTIVE_FLAG);
     }
 
     /**
@@ -756,6 +757,7 @@ namespace verona::rt
         yield();
         auto prev_slot =
           cown->last_slot.exchange(curr_slot, std::memory_order_acq_rel);
+        yield();
 
         if (prev_slot == nullptr)
         {
@@ -964,6 +966,11 @@ namespace verona::rt
       {
         Logging::cout() << *this << "Reader setting next writer variable "
                         << next_behaviour() << Logging::endl;
+        /*
+        For a chain of readers, only the last reader in the chain
+        will find the next slot as the writer and will set the next_writer
+        variable. Hence, this store is not atomic.
+        */
         cown()->next_writer = next_behaviour();
       }
 
@@ -1010,23 +1017,15 @@ namespace verona::rt
     assert(first_reader);
     Cown::acquire(cown());
     yield();
-    next_slot()->set_active();
-    reader_queue.push_back(next_slot());
 
-    auto curr_slot = next_slot();
-    while (curr_slot->is_next_slot_read_only())
+    Slot* curr_slot = next_slot();
+    while (true)
     {
+      reader_queue.push_back(curr_slot);
+      if (!curr_slot->set_active_is_next_reader())
+        break;
       yield();
-      assert(curr_slot->next_slot() != nullptr);
-      auto reader = curr_slot->next_slot();
-      yield();
-      reader->set_active();
-      Logging::cout() << *this
-                      << " Writer loop waking up next reader cown. Next slot "
-                      << *curr_slot->next_slot() << Logging::endl;
-      reader_queue.push_back(reader);
-      yield();
-      curr_slot = reader;
+      curr_slot = curr_slot->next_slot();
     }
 
     // Add read count for readers. First reader is already added in rcount
