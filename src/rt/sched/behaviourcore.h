@@ -779,25 +779,23 @@ namespace verona::rt
 
           yield();
 
-          cown->next_writer.store(body, std::memory_order_release);
-
-          yield();
           acquire_with_transfer(cown, transfer_count, 1);
 
-          if (
-            !cown->read_ref_count.any_reader() && yield() &&
-            cown->next_writer.exchange(nullptr, std::memory_order_acq_rel) ==
-              body)
+          yield();
+
+          if (cown->read_ref_count.try_write())
           {
-            yield();
             Logging::cout() << " Writer at head of queue and got the cown "
                             << *curr_slot << Logging::endl;
             ec[std::get<0>(indexes[first_chain_index])]++;
             yield();
             continue;
           }
+
           Logging::cout() << " Writer waiting for previous readers cown "
                           << *curr_slot << Logging::endl;
+          yield();
+          cown->next_writer = body;
           continue;
         }
 
@@ -910,17 +908,24 @@ namespace verona::rt
   {
     auto w = cown()->next_writer.load();
 
-    yield();
-
-    if (
-      w != nullptr && !cown()->read_ref_count.any_reader() && yield() &&
-      cown()->next_writer.compare_exchange_strong(
-        w, nullptr, std::memory_order_acq_rel))
+    if (w == nullptr)
     {
-      Logging::cout() << *this << " Last Reader waking up next writer " << *w
-                      << Logging::endl;
-      w->resolve();
+      while (cown()->next_writer.load() == nullptr)
+      {
+        Systematic::yield_until(
+          [this]() { return cown()->next_writer.load() != nullptr; });
+        Aal::pause();
+      }
+
+      w = cown()->next_writer.load();
     }
+
+    Logging::cout() << *this << " Last Reader waking up next writer " << *w
+                    << Logging::endl;
+
+    yield();
+    cown()->next_writer = nullptr;
+    w->resolve();
   }
 
   inline void Slot::release()
@@ -944,20 +949,28 @@ namespace verona::rt
       {
         yield();
 
-        if (is_read_only() && cown()->read_ref_count.release_read())
+        if (is_read_only())
         {
-          Logging::cout() << *this << "Last Reader releasing the cown "
-                          << Logging::endl;
+          auto status = cown()->read_ref_count.release_read();
+          if (status != ReadRefCount::NOT_LAST)
+          {
+            if (status == ReadRefCount::LAST_READER_WAITING_WRITER)
+            {
+              Logging::cout()
+                << *this << "Last Reader releasing the cown with writer waiting"
+                << Logging::endl;
 
-          // Last reader
-          yield();
-          wakeup_next_writer();
+              // Last reader
+              yield();
+              wakeup_next_writer();
+            }
 
-          // Release cown as this will be set by the new thread joining the
-          // queue.
-          Logging::cout() << *this << " Last reader No more work for cown "
-                          << Logging::endl;
-          shared::release(ThreadAlloc::get(), cown());
+            // Release cown as this will be set by the new thread joining the
+            // queue.
+            Logging::cout() << *this << " Last reader No more work for cown "
+                            << Logging::endl;
+            shared::release(ThreadAlloc::get(), cown());
+          }
         }
 
         yield();
@@ -992,7 +1005,14 @@ namespace verona::rt
         will find the next slot as the writer and will set the next_writer
         variable. Hence, this store is not atomic.
         */
-        cown()->next_writer = next_behaviour();
+        if (cown()->read_ref_count.try_write())
+        {
+          next_behaviour()->resolve();
+        }
+        else
+        {
+          cown()->next_writer = next_behaviour();
+        }
 
         yield();
       }
@@ -1000,12 +1020,15 @@ namespace verona::rt
       Logging::cout() << *this << " Reader releasing the cown "
                       << Logging::endl;
 
-      if (cown()->read_ref_count.release_read())
+      auto status = cown()->read_ref_count.release_read();
+      if (status != ReadRefCount::NOT_LAST)
       {
         // Last reader
-        yield();
-        wakeup_next_writer();
-
+        if (status == ReadRefCount::LAST_READER_WAITING_WRITER)
+        {
+          yield();
+          wakeup_next_writer();
+        }
         // Release cown as this will be set by the new thread joining the
         // queue.
         Logging::cout() << *this << " Last reader No more work for cown "
