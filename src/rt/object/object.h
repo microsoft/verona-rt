@@ -70,7 +70,7 @@ namespace verona::rt
   using RefCounts = Bag<Object, uintptr_t, Alloc>;
   using RefCount = RefCounts::Elem;
 
-  using ObjectStack = Stack<Object, Alloc>;
+  using ObjectStack = Stack<Object>;
   static constexpr size_t descriptor_alignment =
     snmalloc::bits::min<size_t>(8, alignof(void*));
 

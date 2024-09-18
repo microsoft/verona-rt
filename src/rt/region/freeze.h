@@ -136,11 +136,11 @@ namespace verona::rt
     {
       assert(o->debug_is_iso());
 
-      ObjectStack objects(alloc);
-      ObjectStack dfs(alloc);
-      ObjectStack iso(alloc);
-      ObjectStack pending(alloc);
-      ObjectStack dealloc_regions(alloc);
+      ObjectStack objects;
+      ObjectStack dfs;
+      ObjectStack iso;
+      ObjectStack pending;
+      ObjectStack dealloc_regions;
 
       iso.push(o);
 

@@ -42,7 +42,7 @@ namespace verona::rt
 
       auto& alloc = ThreadAlloc::get();
       // Free immutable graph.
-      ObjectStack f(alloc);
+      ObjectStack f;
       LinkedObjectStack fl;
       LinkedObjectStack scc;
       LinkedObjectStack dfs;
@@ -93,7 +93,7 @@ namespace verona::rt
     static inline void run_finaliser(Object* o)
     {
       // We don't need the actual subregions here, as they have been frozen.
-      ObjectStack dummy(ThreadAlloc::get());
+      ObjectStack dummy;
       o->finalise(nullptr, dummy);
     }
 

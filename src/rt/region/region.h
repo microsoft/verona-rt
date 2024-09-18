@@ -123,7 +123,7 @@ namespace verona::rt
     static void release(Alloc& alloc, Object* o)
     {
       assert(o->debug_is_iso() || o->is_opened());
-      ObjectStack collect(alloc);
+      ObjectStack collect;
       Region::release_internal(alloc, o, collect);
 
       while (!collect.empty())

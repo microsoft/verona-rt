@@ -3,7 +3,7 @@
 #pragma once
 
 #include <cassert>
-#include <snmalloc/snmalloc.h>
+#include "heap.h"
 
 namespace verona::rt
 {
@@ -204,7 +204,7 @@ namespace verona::rt
    * elements and pops them on each iteration may trigger allocation the first
    * time but will then not trigger allocation on any subsequent iteration.
    */
-  template<class T, class Alloc>
+  template<class T>
   class Stack
   {
     /**
@@ -218,11 +218,8 @@ namespace verona::rt
       /// A one place pool of Block.
       Block* backup = nullptr;
 
-      /// Allocator that blocks are supplied by.
-      Alloc& underlying_alloc;
-
     public:
-      BackupAlloc(Alloc& a) : underlying_alloc(a) {}
+      BackupAlloc() {}
 
       /// Allocate a stack Block.
       template<size_t Size>
@@ -235,7 +232,7 @@ namespace verona::rt
         if (backup)
           return std::exchange(backup, nullptr);
         else
-          return underlying_alloc.template alloc<Size>();
+          return heap::template alloc<Size>();
       }
 
       /// Deallocate a stack Block.
@@ -249,13 +246,13 @@ namespace verona::rt
         if (backup == nullptr)
           backup = b;
         else
-          underlying_alloc.template dealloc<Size>(b);
+          heap::template dealloc<Size>(b);
       }
 
       ~BackupAlloc()
       {
         if (backup != nullptr)
-          underlying_alloc.template dealloc<sizeof(Block)>(backup);
+          heap::template dealloc<sizeof(Block)>(backup);
       }
     };
 
@@ -266,7 +263,7 @@ namespace verona::rt
     BackupAlloc backup_alloc;
 
   public:
-    Stack(Alloc& alloc) : backup_alloc(alloc) {}
+    Stack() {}
 
     /// Return top element of the stack
     ALWAYSINLINE T* peek()

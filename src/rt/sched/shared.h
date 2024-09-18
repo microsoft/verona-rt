@@ -139,7 +139,7 @@ namespace verona::rt
       }
 
       // Make queue for recursive deallocations.
-      ObjectStack current(ThreadAlloc::get());
+      ObjectStack current;
       work_list = &current;
 
       // Collect the current cown
@@ -168,13 +168,13 @@ namespace verona::rt
       Logging::cout() << "Collecting cown " << this << Logging::endl;
 
       Alloc& alloc = ThreadAlloc::get();
-      ObjectStack dummy(alloc);
+      ObjectStack dummy;
       // Run finaliser before releasing our data.
       // Sub-regions handled by code below.
       finalise(nullptr, dummy);
 
       // Release our data.
-      ObjectStack f(alloc);
+      ObjectStack f;
       trace(f);
 
       while (!f.empty())

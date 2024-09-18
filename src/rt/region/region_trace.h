@@ -243,8 +243,8 @@ namespace verona::rt
       assert(is_trace_region(o->get_region()));
 
       RegionTrace* reg = get(o);
-      ObjectStack f(alloc);
-      ObjectStack collect(alloc);
+      ObjectStack f;
+      ObjectStack collect;
 
       // Copy additional roots into f.
       reg->additional_entry_points.forall([&f](Object* o) {

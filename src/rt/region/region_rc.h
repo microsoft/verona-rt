@@ -225,7 +225,7 @@ namespace verona::rt
     {
       assert(o->get_class() == RegionMD::OPEN_ISO);
       UNUSED(o);
-      ObjectStack jump_stack(alloc);
+      ObjectStack jump_stack;
       while (!reg->lins_stack.empty())
       {
         auto p = reg->lins_stack.pop(alloc);
@@ -253,7 +253,7 @@ namespace verona::rt
         abort();
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
       LinkedObjectStack gc;
 
@@ -321,7 +321,7 @@ namespace verona::rt
     void release_cycles(
       Alloc& alloc, Object* o, LinkedObjectStack& gc, ObjectStack& collect)
     {
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       while (!lins_stack.empty())
       {
         dfs.push(lins_stack.pop(alloc));
@@ -390,7 +390,7 @@ namespace verona::rt
         o->set_rc_colour(RcColour::RED);
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
 
       while (!dfs.empty())
@@ -477,7 +477,7 @@ namespace verona::rt
     static void restore_green(Alloc& alloc, Object* o, Object* in)
     {
       o->set_rc_colour(RcColour::GREEN);
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
 
       while (!dfs.empty())
@@ -515,9 +515,9 @@ namespace verona::rt
         return;
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       LinkedObjectStack gc;
-      ObjectStack sub_regions(alloc);
+      ObjectStack sub_regions;
       o->trace(dfs);
       while (!dfs.empty())
       {
@@ -583,8 +583,8 @@ namespace verona::rt
     {
       // We first need to decref -- and potentially deallocate -- any object
       // pointed to through `o`'s fields.
-      ObjectStack dfs(alloc);
-      ObjectStack sub_regions(alloc);
+      ObjectStack dfs;
+      ObjectStack sub_regions;
       o->trace(dfs);
       LinkedObjectStack gc;
 
