@@ -148,7 +148,7 @@ void disable_notifications(ExternalSource& es)
 void test(SystematicTestHarness* harness)
 {
   auto& alloc = ThreadAlloc::get();
-  auto* p = new (alloc) Poller();
+  auto* p = new Poller();
   auto es = std::make_shared<ExternalSource>(p);
 
   Notification* n = make_notification(p, [p]() {

@@ -42,11 +42,11 @@ namespace memory_subregion
 
     if constexpr (region_type == RegionType::Rc)
     {
-      auto* r = new (alloc) F;
-      auto* r1 = new (alloc) C;
-      auto* r2 = new (alloc) F;
-      auto* r3 = new (alloc) F;
-      auto* r4 = new (alloc) F;
+      auto* r = new F;
+      auto* r1 = new C;
+      auto* r2 = new F;
+      auto* r3 = new F;
+      auto* r4 = new F;
 
       {
         UsingRegion rc(r);
@@ -64,14 +64,14 @@ namespace memory_subregion
     }
     else
     {
-      auto* r = new (alloc) F;
+      auto* r = new F;
       r->c1 = new (alloc, r) C;
       r->c1->f2 = new (alloc, r) F;
-      r->c1->f2->c1 = new (alloc) C; // new subregion
-      r->f1 = new (alloc) F; // new subregion
+      r->c1->f2->c1 = new C; // new subregion
+      r->f1 = new F; // new subregion
       r->f2 = new (alloc, r) F;
-      r->f2->f1 = new (alloc) F; // new subregion
-      r->f2->f1->f1 = new (alloc) F; // new subregion
+      r->f2->f1 = new F; // new subregion
+      r->f2->f1->f1 = new F; // new subregion
 
       alloc_in_region<C, F>(alloc, r); // unreachable
 
@@ -95,7 +95,7 @@ namespace memory_subregion
     if constexpr (region_type == RegionType::Rc)
     {
       // Start with a single region.
-      auto* r = new (alloc) F;
+      auto* r = new F;
       {
         UsingRegion rc(r);
         r->c1 = new (alloc, r) C;
@@ -106,7 +106,7 @@ namespace memory_subregion
       }
 
       // Now create some subregions.
-      auto* r1 = new (alloc) F;
+      auto* r1 = new F;
       {
         UsingRegion rc(r1);
         r1->c1 = new (alloc, r1) C;
@@ -114,7 +114,7 @@ namespace memory_subregion
         r1->c1->c1->c1 = new (alloc, r1) C;
       }
 
-      auto* r2 = new (alloc) C;
+      auto* r2 = new C;
       {
         UsingRegion rc(r2);
         r2->c1 = new (alloc, r2) C;
@@ -123,7 +123,7 @@ namespace memory_subregion
         r2->f1->f1 = new (alloc, r2) F;
       }
 
-      auto* r3 = new (alloc) F;
+      auto* r3 = new F;
       {
         UsingRegion rc(r3);
         r3->f1 = new (alloc, r3) F;
@@ -142,7 +142,7 @@ namespace memory_subregion
     else
     {
       // Start with a single region.
-      auto* r = new (alloc) F;
+      auto* r = new F;
       r->c1 = new (alloc, r) C;
       r->f1 = new (alloc, r) F;
       r->c2 = new (alloc, r) C;
@@ -151,20 +151,20 @@ namespace memory_subregion
       alloc_in_region<C, F>(alloc, r); // unreachable
 
       // Now create some subregions.
-      auto* r1 = new (alloc) F;
+      auto* r1 = new F;
       r1->c1 = new (alloc, r1) C;
       r1->c1->c1 = new (alloc, r1) C;
       r1->c1->c1->c1 = new (alloc, r1) C;
       alloc_in_region<F, F, F>(alloc, r1); // unreachable
 
-      auto* r2 = new (alloc) C;
+      auto* r2 = new C;
       r2->c1 = new (alloc, r2) C;
       r2->f1 = new (alloc, r2) F;
       r2->f1->c1 = new (alloc, r2) C;
       r2->f1->f1 = new (alloc, r2) F;
       alloc_in_region<C, C>(alloc, r2); // unreachable
 
-      auto* r3 = new (alloc) F;
+      auto* r3 = new F;
       r3->f1 = new (alloc, r3) F;
       alloc_in_region<F, F>(alloc, r3); // unreachable
 
@@ -190,27 +190,27 @@ namespace memory_subregion
     auto& alloc = ThreadAlloc::get();
 
     // Start with a single region.
-    auto* r = new (alloc) OTrace;
+    auto* r = new OTrace;
     r->f1 = new (alloc, r) OTrace;
     r->f1->f1 = new (alloc, r) OTrace;
     alloc_in_region<OTrace, OTrace>(alloc, r); // unreachable
 
     auto* garbage = new (alloc, r) OTrace; // unreachable within r
-    garbage->f1 = new (alloc) OTrace; // new subregion
-    garbage->f2 = new (alloc) OArena; // new subregion
+    garbage->f1 = new OTrace; // new subregion
+    garbage->f2 = new OArena; // new subregion
 
     // Now create some subregions.
-    auto* r1 = new (alloc) OTrace;
+    auto* r1 = new OTrace;
     r1->f1 = new (alloc, r1) OTrace;
     alloc_in_region<OTrace, OTrace>(alloc, r1); // unreachable
 
-    auto* r2 = new (alloc) OArena;
+    auto* r2 = new OArena;
     r2->f2 = new (alloc, r2) OArena;
     r2->f2->f2 = new (alloc, r2) OArena;
     r2->f2->f2->f2 = new (alloc, r2) OArena;
     alloc_in_region<OArena, OArena>(alloc, r2); // unreachable
 
-    auto* r3 = new (alloc) OTrace;
+    auto* r3 = new OTrace;
     alloc_in_region<OTrace, OTrace>(alloc, r3); // unreachable
 
     // Connect the subregions.
@@ -252,12 +252,12 @@ namespace memory_subregion
     {
       auto& alloc = ThreadAlloc::get();
 
-      auto* oroot = new (alloc) F;
+      auto* oroot = new F;
       auto* nroot = new (alloc, oroot) C;
       oroot->c1 = nroot;
       oroot->f1 = new (alloc, oroot) F;
 
-      auto* r2 = new (alloc) F;
+      auto* r2 = new F;
       r2->c1 = new (alloc, r2) C;
       r2->c2 = new (alloc, r2) C;
 
@@ -281,12 +281,12 @@ namespace memory_subregion
     {
       auto& alloc = ThreadAlloc::get();
 
-      auto* oroot = new (alloc) F;
+      auto* oroot = new F;
       auto* nroot = new (alloc, oroot) F;
       oroot->f1 = new (alloc, oroot) F;
       oroot->f2 = nroot;
 
-      auto* r2 = new (alloc) F;
+      auto* r2 = new F;
       r2->c1 = new (alloc, r2) C;
       r2->c2 = new (alloc, r2) C;
 
@@ -310,11 +310,11 @@ namespace memory_subregion
     {
       auto& alloc = ThreadAlloc::get();
 
-      auto* r = new (alloc) F;
+      auto* r = new F;
       r->c1 = new (alloc, r) C;
       r->f1 = new (alloc, r) F;
 
-      auto* oroot = new (alloc) F;
+      auto* oroot = new F;
       auto* nroot = new (alloc, oroot) F;
       oroot->f1 = nroot;
       oroot->c2 = new (alloc, oroot) C;
@@ -349,13 +349,13 @@ namespace memory_subregion
     auto& alloc = ThreadAlloc::get();
 
     // Create the first region, with some unreachable objects.
-    auto* r1 = new (alloc) C;
+    auto* r1 = new C;
     r1->c1 = new (alloc, r1) C;
     r1->f1 = new (alloc, r1) F;
     alloc_in_region<F, F>(alloc, r1); // unreachable
 
     // Create the second region.
-    auto* r2 = new (alloc) F;
+    auto* r2 = new F;
     r2->c1 = new (alloc, r2) C;
     r2->c1->c1 = new (alloc, r2) C;
     r2->c1->c1->c1 = new (alloc, r2) C;
@@ -399,12 +399,12 @@ namespace memory_subregion
     auto& alloc = ThreadAlloc::get();
 
     // Create the first region, with some unreachable objects.
-    auto* r1 = new (alloc) F;
+    auto* r1 = new F;
     auto curr = r1;
     std::cout << "Build long region chain." << std::endl;
     for (size_t i = 0; i < 1 << 20; i++)
     {
-      auto n = new (alloc) F;
+      auto n = new F;
       curr->f1 = n;
       curr = n;
     }

@@ -181,13 +181,7 @@ namespace verona::rt
     void* operator new(size_t)
     {
       return Object::register_object(
-        ThreadAlloc::get().alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
-    }
-
-    void* operator new(size_t, Alloc& alloc)
-    {
-      return Object::register_object(
-        alloc.alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
+        heap::alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
     }
   };
 } // namespace verona::rt

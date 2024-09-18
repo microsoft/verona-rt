@@ -153,7 +153,7 @@ namespace noticeboard_basic
   {
     Alloc& alloc = ThreadAlloc::get();
 
-    Alive* alive = new (alloc) Alive;
+    Alive* alive = new Alive;
     Logging::cout() << "Alive" << alive << std::endl;
 
     C* c = new (RegionType::Trace) C(0);

@@ -73,7 +73,7 @@ bool test(size_t seed)
   static constexpr size_t entries = 100;
   for (size_t i = 0; i < entries; i++)
   {
-    auto* key = new (alloc) Key();
+    auto* key = new Key();
     auto entry = std::make_pair(key, (int32_t)i);
     err << "insert " << key
 #ifdef USE_SYSTEMATIC_TESTING

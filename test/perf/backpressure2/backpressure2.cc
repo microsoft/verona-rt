@@ -157,7 +157,7 @@ int main(int argc, char** argv)
 
   static std::vector<Receiver*> receiver_set;
   for (size_t i = 0; i < receivers; i++)
-    receiver_set.push_back(new (alloc) Receiver);
+    receiver_set.push_back(new Receiver);
 
   xoroshiro::p128r32 rng(seed);
   for (size_t i = 0; i < senders; i++)
@@ -165,7 +165,7 @@ int main(int argc, char** argv)
     for (auto* r : receiver_set)
       Cown::acquire(r);
 
-    auto* s = new (alloc) Sender(
+    auto* s = new Sender(
       std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
     schedule_lambda<YesTransfer>(s, Send(s));
   }

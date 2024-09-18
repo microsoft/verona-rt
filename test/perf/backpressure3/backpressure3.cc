@@ -144,12 +144,12 @@ int main(int argc, char** argv)
   auto& alloc = ThreadAlloc::get();
 
   static std::vector<Sender*> sender_set;
-  auto* receiver = new (alloc) Receiver(sender_set, seed);
+  auto* receiver = new Receiver(sender_set, seed);
 
   for (size_t s = 0; s < senders; s++)
   {
     Cown::acquire(receiver);
-    sender_set.push_back(new (alloc) Sender(duration, receiver));
+    sender_set.push_back(new Sender(duration, receiver));
   }
 
   for (auto* s : sender_set)

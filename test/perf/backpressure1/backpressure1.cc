@@ -148,10 +148,10 @@ int main(int argc, char** argv)
     Alloc& alloc = ThreadAlloc::get();
 
     for (size_t r = 0; r < receivers; r++)
-      receiver_set.push_back(new (alloc) Receiver);
+      receiver_set.push_back(new Receiver);
 
     for (size_t p = 0; p < proxies; p++)
-      proxy_chain.push_back(new (alloc) Proxy(p));
+      proxy_chain.push_back(new Proxy(p));
 
     auto e = make_cown<int>();
     when(e) << [](auto) {
@@ -173,7 +173,7 @@ int main(int argc, char** argv)
             Cown::acquire(r);
         }
 
-        auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
+        auto* s = new Sender(std::chrono::milliseconds(duration));
         schedule_lambda<YesTransfer>(s, Send(s));
       }
 

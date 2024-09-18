@@ -32,7 +32,7 @@ struct ChainCown : public VCown<ChainCown>
       auto next = new (RegionType::Trace) LinkObject(hd);
       if (hd != nullptr)
         RegionTrace::insert<TransferOwnership::YesTransfer>(alloc, next, hd);
-      hd = new (alloc) ChainCown(next);
+      hd = new ChainCown(next);
     }
     return hd;
   }

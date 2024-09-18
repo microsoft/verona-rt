@@ -15,8 +15,7 @@ struct A
 
   A(int v_) : v(v_)
   {
-    auto& alloc = ThreadAlloc::get();
-    t = new (alloc) TestCown;
+    t = new TestCown;
   }
 
   ~A()
