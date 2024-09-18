@@ -168,19 +168,19 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
     std::vector<BaseNoticeboard*> noticeboards;
 
-    void flush_all(Alloc& alloc)
+    void flush_all()
     {
       for (auto b : noticeboards)
       {
-        b->flush_all(alloc);
+        b->flush_all();
       }
     }
 
-    void flush_some(Alloc& alloc)
+    void flush_some()
     {
       for (auto b : noticeboards)
       {
-        b->flush_some(alloc);
+        b->flush_some();
       }
     }
 

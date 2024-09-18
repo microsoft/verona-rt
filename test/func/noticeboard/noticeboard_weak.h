@@ -38,15 +38,13 @@ namespace noticeboard_weak
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
       auto c_0 = new (RegionType::Trace) C(1);
       freeze(c_0);
       auto c_1 = new (RegionType::Trace) C(2);
       freeze(c_1);
 
-      writer->box_0.update(alloc, c_0);
-      writer->box_1.update(alloc, c_1);
+      writer->box_0.update(c_0);
+      writer->box_1.update(c_1);
     }
   };
 
@@ -71,10 +69,8 @@ namespace noticeboard_weak
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
-      auto c_1 = (C*)reader->box_1->peek(alloc);
-      auto c_0 = (C*)reader->box_0->peek(alloc);
+      auto c_1 = (C*)reader->box_1->peek();
+      auto c_0 = (C*)reader->box_0->peek();
 
       // expected assertion failure; write to c_1 was picked up before c_0
       // if (c_1->x == 2) {

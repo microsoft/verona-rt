@@ -24,13 +24,11 @@ namespace noticeboard_primitive_weak
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
       auto x_0 = 1;
       auto x_1 = 2;
 
-      writer->box_0.update(alloc, x_0);
-      writer->box_1.update(alloc, x_1);
+      writer->box_0.update(x_0);
+      writer->box_1.update(x_1);
     }
   };
 
@@ -55,10 +53,8 @@ namespace noticeboard_primitive_weak
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
-      auto x_1 = reader->box_1->peek(alloc);
-      auto x_0 = reader->box_0->peek(alloc);
+      auto x_1 = reader->box_1->peek();
+      auto x_0 = reader->box_0->peek();
 
       // expected assertion failure; write to x_1 was picked up before x_0
       // if (x_1 == 2) {

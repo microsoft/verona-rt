@@ -57,13 +57,12 @@ namespace verona::rt
      */
     void dealloc()
     {
-      auto& alloc = ThreadAlloc::get();
       auto epoch = epoch_when_popped;
       auto outdated = epoch == NO_EPOCH_SET || GlobalEpoch::is_outdated(epoch);
       if (outdated)
       {
         Logging::cout() << "Work " << this << " dealloc" << Logging::endl;
-        alloc.dealloc(this);
+        heap::dealloc(this);
       }
       else
       {
@@ -73,7 +72,7 @@ namespace verona::rt
         // has progressed enough
         // TODO: We are waiting too long as this is inserting in the current
         // epoch, and not `epoch` which is all that is required.
-        Epoch e(alloc);
+        Epoch e;
         e.delete_in_epoch(this);
       }
     }

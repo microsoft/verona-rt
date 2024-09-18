@@ -34,10 +34,9 @@ struct Poller : VCown<Poller>
   void main_poller()
   {
     int val, read_old;
-    auto& alloc = ThreadAlloc::get();
 
     read_old = read;
-    while (read <= buffer_idx.peek(alloc))
+    while (read <= buffer_idx.peek())
     {
       val = buffer[read++];
 
@@ -61,7 +60,7 @@ struct Poller : VCown<Poller>
 
       // Check if there are new buffers between last checking and enabling
       // notifications
-      if (read <= buffer_idx.peek(alloc))
+      if (read <= buffer_idx.peek())
       {
         disable_notifications(*es);
         should_schedule_if_notified = false;
@@ -89,12 +88,10 @@ struct ExternalSource
 
   void main_es()
   {
-    auto& alloc = ThreadAlloc::get();
-
     for (int i = 0; i < 10; i++)
     {
       buffer[i] = i;
-      p->buffer_idx.update(alloc, i);
+      p->buffer_idx.update(i);
     }
 
     if (notifications_on.exchange(false))
@@ -111,7 +108,7 @@ struct ExternalSource
     for (int i = 10; i < 20; i++)
     {
       buffer[i] = i;
-      p->buffer_idx.update(alloc, i);
+      p->buffer_idx.update(i);
     }
 
     if (notifications_on.exchange(false))
@@ -147,7 +144,6 @@ void disable_notifications(ExternalSource& es)
 
 void test(SystematicTestHarness* harness)
 {
-  auto& alloc = ThreadAlloc::get();
   auto* p = new Poller();
   auto es = std::make_shared<ExternalSource>(p);
 
