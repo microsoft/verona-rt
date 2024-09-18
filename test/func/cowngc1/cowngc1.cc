@@ -201,10 +201,10 @@ struct RCown : public VCown<RCown>
       imm2 = r2->f1;
 
       // Release child CCowns that are now owned by the immutables.
-      Cown::release(alloc, r1->cown);
-      Cown::release(alloc, r1->f1->cown);
-      Cown::release(alloc, r2->cown);
-      Cown::release(alloc, r2->f1->cown);
+      Cown::release(r1->cown);
+      Cown::release(r1->f1->cown);
+      Cown::release(r2->cown);
+      Cown::release(r2->f1->cown);
 
       // Want to make sure one of the objects is RC and the other is SCC_PTR.
       check(imm1->debug_is_rc() || imm2->debug_is_rc());
@@ -212,7 +212,7 @@ struct RCown : public VCown<RCown>
     }
 
     // Release our (RCown's) refcount on the shared_child.
-    Cown::release(alloc, shared_child);
+    Cown::release(shared_child);
 
     if (more != 0)
       next = new RCown(more - 1, forward_count);
@@ -312,7 +312,7 @@ struct Ping
             Logging::cout()
               << "RCown " << rcown << " is dropping a reference to "
               << rcown->array[idx] << std::endl;
-            Cown::release(ThreadAlloc::get(), rcown->array[idx]);
+            Cown::release(rcown->array[idx]);
             rcown->array[idx] = nullptr;
           }
           break;
@@ -362,7 +362,7 @@ struct Ping
       auto n = rcown->next;
       Logging::cout() << "Break cycle between" << rcown << " and " << n
                       << std::endl;
-      Cown::release(ThreadAlloc::get(), n);
+      Cown::release(n);
       rcown->next = nullptr;
     }
     if (rcown->next == rcown_first)
@@ -388,7 +388,7 @@ void test_cown_gc_before_sched()
 {
   auto a = new CCown(nullptr);
   auto& alloc = ThreadAlloc::get();
-  Cown::release(alloc, a);
+  Cown::release(a);
 }
 
 int main(int argc, char** argv)

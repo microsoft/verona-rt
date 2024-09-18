@@ -48,7 +48,7 @@ struct LoopCown : public VCown<LoopCown>
     }
     else
     {
-      Cown::release(ThreadAlloc::get(), this);
+      Cown::release(this);
     }
   }
 

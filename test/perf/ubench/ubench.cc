@@ -178,7 +178,7 @@ namespace ubench
       if (--monitor->report_count != 0)
         schedule_lambda(all_cowns_count, all_cowns, Start(monitor));
       else
-        rt::Cown::release(sn::ThreadAlloc::get(), monitor);
+        rt::Cown::release(monitor);
     }
   };
 

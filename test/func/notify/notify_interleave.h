@@ -31,8 +31,8 @@ namespace notify_interleave
     if (count == 0)
     {
       a->run = false;
-      Shared::release(ThreadAlloc::get(), n);
-      Shared::release(ThreadAlloc::get(), a);
+      Shared::release(n);
+      Shared::release(a);
       return;
     }
     for (int i = 0; i < 5; i++)
@@ -103,7 +103,7 @@ namespace notify_interleave
       }
       else
       {
-        Shared::release(ThreadAlloc::get(), a);
+        Shared::release(a);
       }
     });
   }

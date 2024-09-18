@@ -92,7 +92,7 @@ namespace verona::rt
       auto* slots = notification->behaviour->get_slots();
       for (size_t i = 0; i < notification->behaviour->count; i++)
       {
-        Shared::release(ThreadAlloc::get(), slots[i].cown());
+        Shared::release(slots[i].cown());
       }
 
       // Need to dealloc using ABA protection for fields relating to work.
@@ -124,7 +124,7 @@ namespace verona::rt
         Systematic::yield();
         Logging::cout() << "Notification: Finished running: "
                         << (int)status.load() << std::endl;
-        Shared::release(ThreadAlloc::get(), this);
+        Shared::release(this);
         return;
       }
 

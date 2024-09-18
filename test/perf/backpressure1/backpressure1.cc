@@ -179,12 +179,12 @@ int main(int argc, char** argv)
 
       if (proxy_chain.size() > 0)
       {
-        Cown::release(alloc, proxy_chain[0]);
+        Cown::release(proxy_chain[0]);
       }
       else
       {
         for (auto* r : receiver_set)
-          Cown::release(alloc, r);
+          Cown::release(r);
       }
 
       when(e) << [](auto) {

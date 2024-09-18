@@ -68,8 +68,8 @@ namespace noticeboard_primitive_weak
       UNUSED(x_0);
       UNUSED(x_1);
 
-      Cown::release(alloc, g_reader);
-      Cown::release(alloc, g_writer);
+      Cown::release(g_reader);
+      Cown::release(g_writer);
     }
   };
 

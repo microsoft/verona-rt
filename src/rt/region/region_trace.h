@@ -490,7 +490,7 @@ namespace verona::rt
         if (p->has_ext_ref())
           ExternalReferenceTable::erase(alloc, p);
 
-        p->dealloc(alloc);
+        p->dealloc();
       }
       else
       {
@@ -581,7 +581,7 @@ namespace verona::rt
         {
           Object* q = gc.pop();
           q->destructor();
-          q->dealloc(alloc);
+          q->dealloc();
         }
       }
       else

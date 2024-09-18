@@ -148,7 +148,7 @@ namespace ext_ref_basic
       check(!is_external_reference_valid(ext_node));
       Immutable::release(alloc, ext_node);
     });
-    Cown::release(alloc, a);
+    Cown::release(a);
     sched.run();
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
   }

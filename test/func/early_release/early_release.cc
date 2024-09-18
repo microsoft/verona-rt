@@ -106,20 +106,19 @@ void early_release_test(bool first, bool second)
     finished();
   });
 
-  auto& alloc = ThreadAlloc::get();
   if (first)
   {
     schedule_lambda<YesTransfer>(a, []() { interleave(); });
   }
   else
-    Cown::release(alloc, a);
+    Cown::release(a);
 
   if (second)
   {
     schedule_lambda<YesTransfer>(b, []() { interleave(); });
   }
   else
-    Cown::release(alloc, b);
+    Cown::release(b);
 }
 
 int main(int argc, char** argv)

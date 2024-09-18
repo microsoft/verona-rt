@@ -576,7 +576,7 @@ namespace verona::rt
       while (p != this)
       {
         Object* q = p->get_next_any_mark();
-        p->dealloc(alloc);
+        p->dealloc();
         p = q;
       }
 

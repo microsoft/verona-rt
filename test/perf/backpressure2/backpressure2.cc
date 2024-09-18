@@ -171,7 +171,7 @@ int main(int argc, char** argv)
   }
 
   for (auto* r : receiver_set)
-    Cown::release(alloc, r);
+    Cown::release(r);
 
   sched.run();
 }

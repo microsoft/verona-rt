@@ -5,9 +5,8 @@
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/bag.h"
+#include "../ds/heap.h"
 #include "../ds/stack.h"
-
-#include <snmalloc/snmalloc.h>
 
 namespace verona::rt
 {
@@ -863,9 +862,9 @@ namespace verona::rt
         get_descriptor()->destructor(this);
     }
 
-    inline void dealloc(Alloc& alloc)
+    inline void dealloc()
     {
-      alloc.dealloc(&this->get_header(), size());
+      heap::dealloc(&this->get_header(), size());
     }
 
   protected:

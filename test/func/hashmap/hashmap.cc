@@ -138,7 +138,7 @@ bool test(size_t seed)
         std::cout << err.str() << "not erased: " << key << std::endl;
         return false;
       }
-      Cown::release(alloc, key);
+      Cown::release(key);
     }
   }
 
@@ -150,7 +150,7 @@ bool test(size_t seed)
   }
 
   for (auto e : model)
-    Cown::release(alloc, e.first);
+    Cown::release(e.first);
 
   return true;
 }

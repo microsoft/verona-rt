@@ -117,8 +117,8 @@ struct ExternalSource
     if (notifications_on.exchange(false))
       n->notify();
 
-    Shared::release(alloc, n);
-    Cown::release(alloc, p);
+    Shared::release(n);
+    Cown::release(p);
 
     // Notify runtime external IO thread has completed.
     schedule_lambda(Scheduler::remove_external_event_source);

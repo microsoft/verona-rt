@@ -21,7 +21,7 @@ namespace notify_basic
 
     schedule_lambda(g_a, []() {});
 
-    Cown::release(alloc, g_a);
-    Shared::release(alloc, notify);
+    Cown::release(g_a);
+    Shared::release(notify);
   }
 }

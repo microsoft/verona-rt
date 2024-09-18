@@ -125,7 +125,7 @@ void run_test()
   auto& alloc = ThreadAlloc::get();
   auto a = new A;
   schedule_lambda(a, Loop(a));
-  Cown::release(alloc, a);
+  Cown::release(a);
 }
 
 int main(int argc, char** argv)

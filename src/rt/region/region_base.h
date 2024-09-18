@@ -50,7 +50,7 @@ namespace verona::rt
     {
       ExternalReferenceTable::dealloc(alloc);
       RememberedSet::dealloc(alloc);
-      Object::dealloc(alloc);
+      Object::dealloc();
     }
   };
 

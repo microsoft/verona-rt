@@ -290,7 +290,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, f);
+            shared::release(f);
             break;
           case Object::ISO:
             assert(f != o);
@@ -307,13 +307,13 @@ namespace verona::rt
       {
         Object* o = gc.pop();
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
 
       // finally, close the region and destroy the ISO object.
       close(o);
       o->destructor();
-      o->dealloc(alloc);
+      o->dealloc();
       dealloc(alloc);
     }
 
@@ -351,7 +351,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, p);
+            shared::release(p);
             break;
           default:
             assert(0);
@@ -551,7 +551,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, f);
+            shared::release(f);
             break;
           case Object::ISO:
             // Deallocation should only happen on an opened region.
@@ -569,7 +569,7 @@ namespace verona::rt
         Object* o = gc.pop();
         reg->region_size -= 1;
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
     }
 
@@ -621,7 +621,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, p);
+            shared::release(p);
             break;
           case Object::ISO:
             //            assert(p != in);
@@ -637,7 +637,7 @@ namespace verona::rt
         Object* o = gc.pop();
         reg->region_size -= 1;
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
 
       release_sub_regions(alloc, sub_regions);

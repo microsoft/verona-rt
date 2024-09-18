@@ -178,8 +178,8 @@ namespace noticeboard_basic
     schedule_lambda(peeker->db, UpdateDB(peeker->db));
     schedule_lambda(alive, Ping(alive));
 
-    Cown::release(alloc, alive);
-    Cown::release(alloc, peeker);
+    Cown::release(alive);
+    Cown::release(peeker);
     // Ownership of db was transferred to Peeker, no need to release it.
   }
 }

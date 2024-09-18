@@ -332,7 +332,7 @@ namespace verona::rt
         {
           Object* q = to_dealloc.pop();
           q->destructor();
-          q->dealloc(alloc);
+          q->dealloc();
         }
 
         reg->discard(alloc);

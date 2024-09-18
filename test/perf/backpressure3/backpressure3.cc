@@ -110,7 +110,7 @@ struct Send
     else
     {
       // Break cycle between sender and receiver.
-      Cown::release(ThreadAlloc::get(), s->receiver);
+      Cown::release(s->receiver);
       s->receiver = nullptr;
     }
   }
@@ -154,7 +154,7 @@ int main(int argc, char** argv)
 
   for (auto* s : sender_set)
     schedule_lambda<NoTransfer>(s, Send(s));
-  Cown::release(alloc, receiver);
+  Cown::release(receiver);
 
   sched.run();
 

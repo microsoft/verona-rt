@@ -230,10 +230,10 @@ struct RCown : public VCown<RCown<region_type>>
         alloc, reg_with_imm, r2);
 
       // Release child CCowns that are now owned by the immutables.
-      Cown::release(alloc, r1->cown);
-      Cown::release(alloc, r1->f1->cown);
-      Cown::release(alloc, r2->cown);
-      Cown::release(alloc, r2->f1->cown);
+      Cown::release(r1->cown);
+      Cown::release(r1->f1->cown);
+      Cown::release(r2->cown);
+      Cown::release(r2->f1->cown);
 
       // Want to make sure one of the objects is RC and the other is SCC_PTR.
       check(
@@ -243,7 +243,7 @@ struct RCown : public VCown<RCown<region_type>>
     }
 
     // Release our (RCown's) refcount on the shared_child.
-    Cown::release(alloc, shared_child);
+    Cown::release(shared_child);
 
     if (more != 0)
       next = new Self(more - 1, forward_count);
@@ -375,7 +375,7 @@ struct Ping
     {
       assert(rcown == (RCown<region_type>*)rcown_first);
       // Clear next pointer on final iteration.
-      Cown::release(ThreadAlloc::get(), rcown->next);
+      Cown::release(rcown->next);
       rcown->next = nullptr;
     }
 
