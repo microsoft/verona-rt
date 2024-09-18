@@ -40,7 +40,7 @@ namespace verona::rt
   // Forward declaration
   namespace immutable
   {
-    void release(snmalloc::Alloc&, Object*);
+    void release(Object*);
   }
 
   /**
@@ -259,7 +259,7 @@ namespace verona::rt
           auto o = dn->o;
           alloc.dealloc<sizeof(DecNode)>(dn);
           Logging::cout() << "Delayed decref on " << o << Logging::endl;
-          immutable::release(alloc, o);
+          immutable::release(o);
         }
       }
       debug_check_count();

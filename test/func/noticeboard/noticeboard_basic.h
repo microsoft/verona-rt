@@ -145,7 +145,7 @@ namespace noticeboard_basic
       auto o = (C*)peeker->box->peek(alloc);
       Logging::cout() << "Peeked " << o << std::endl;
       // o goes out of scope
-      Immutable::release(alloc, o);
+      Immutable::release(o);
     }
   };
 

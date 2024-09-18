@@ -50,8 +50,8 @@ namespace ext_ref_merge
 
     check(!r2->debug_is_iso());
 
-    Immutable::release(alloc, wref1);
-    Immutable::release(alloc, wref2);
+    Immutable::release(wref1);
+    Immutable::release(wref2);
 
     region_release(r1);
     // Don't release r2, it was deallocated during the merge.

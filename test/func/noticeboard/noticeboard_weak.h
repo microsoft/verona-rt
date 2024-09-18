@@ -82,8 +82,8 @@ namespace noticeboard_weak
       // }
 
       // out of scope
-      Immutable::release(alloc, c_0);
-      Immutable::release(alloc, c_1);
+      Immutable::release(c_0);
+      Immutable::release(c_1);
 
       Cown::release(g_reader);
       Cown::release(g_writer);

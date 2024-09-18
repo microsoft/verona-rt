@@ -104,7 +104,7 @@ void test1()
   check(r->f1->debug_test_rc(1));
 
   // Free immutable graph.
-  Immutable::release(alloc, r);
+  Immutable::release(r);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -159,7 +159,7 @@ void test2()
   check(o3->debug_test_rc(4));
 
   // Free immutable graph.
-  Immutable::release(alloc, o1);
+  Immutable::release(o1);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -226,7 +226,7 @@ void test3()
   check(o9->debug_immutable_root() == r);
 
   // Free immutable graph.
-  Immutable::release(alloc, o1);
+  Immutable::release(o1);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -277,7 +277,7 @@ void test4()
   check(o5->debug_test_rc(1));
 
   // Free immutable graph.
-  Immutable::release(alloc, o1);
+  Immutable::release(o1);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -309,7 +309,7 @@ void test5()
   check(o1->debug_test_rc(1));
 
   // Free immutable graph.
-  Immutable::release(alloc, o1);
+  Immutable::release(o1);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -337,7 +337,7 @@ void freeze_weird_ring()
   freeze(root);
 
   // Free immutable graph.
-  Immutable::release(alloc, root);
+  Immutable::release(root);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
@@ -366,7 +366,7 @@ void test_two_rings_1()
     new Symbolic;
   }
   freeze(r);
-  Immutable::release(alloc, r);
+  Immutable::release(r);
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
 
@@ -379,7 +379,7 @@ void test_two_rings_2()
     new C1;
   }
   freeze(r);
-  Immutable::release(alloc, r);
+  Immutable::release(r);
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
 
@@ -400,7 +400,7 @@ void test_contains_immutable1()
   // Freeze the root
   freeze(root);
 
-  Immutable::release(alloc, root);
+  Immutable::release(root);
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }
 
@@ -543,7 +543,7 @@ void test_random(size_t seed = 1, size_t max_edges = 128)
   delete[] reach;
 #endif
 
-  Immutable::release(alloc, root);
+  Immutable::release(root);
 
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
 }

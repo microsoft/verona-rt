@@ -163,7 +163,7 @@ namespace verona::rt
         // false.second.
         ext_ref->o = nullptr;
         ext_ref->ert.store(nullptr, std::memory_order_relaxed);
-        Immutable::release(alloc, ext_ref);
+        Immutable::release(ext_ref);
       }
       external_map->erase(it);
     }

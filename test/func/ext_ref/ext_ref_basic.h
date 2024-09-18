@@ -146,7 +146,7 @@ namespace ext_ref_basic
       region_collect();
 
       check(!is_external_reference_valid(ext_node));
-      Immutable::release(alloc, ext_node);
+      Immutable::release(ext_node);
     });
     Cown::release(a);
     sched.run();
@@ -168,7 +168,7 @@ namespace ext_ref_basic
       auto ext_ref = create_external_reference(r);
       check(is_external_reference_valid(ext_ref));
       check(use_external_reference(ext_ref) == r);
-      Immutable::release(alloc, ext_ref);
+      Immutable::release(ext_ref);
     }
 
     region_release(r);

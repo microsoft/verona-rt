@@ -98,7 +98,7 @@ struct Loop
       }
       case EXIT:
       {
-        Immutable::release(alloc, g_ext_ref);
+        Immutable::release(g_ext_ref);
         g_ext_ref = nullptr;
         return;
       }

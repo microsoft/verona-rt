@@ -296,7 +296,7 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
         {
           MeasureTime m(true);
           for (auto root : roots)
-            Immutable::release(alloc, root);
+            Immutable::release(root);
           if (print)
           {
             std::cout << ds << ",Dispose," << list_size << ","

@@ -288,7 +288,7 @@ namespace memory_gc
       check(debug_size() == 1);
       check(scc->debug_test_rc(2)); // gc discovered reference to scc
 
-      Immutable::release(alloc, scc);
+      Immutable::release(scc);
       check(scc->debug_test_rc(1));
     }
     region_release(r);

@@ -23,23 +23,24 @@ namespace verona::rt
       o->immutable()->incref();
     }
 
-    static size_t release(Alloc& alloc, Object* o)
+    static size_t release(Object* o)
     {
       assert(o->debug_is_immutable());
       auto root = o->immutable();
 
       if (root->decref())
-        return free(alloc, root);
+        return free(root);
 
       return 0;
     }
 
   private:
-    static size_t free(Alloc& alloc, Object* o)
+    static size_t free(Object* o)
     {
       assert(o == o->immutable());
       size_t total = 0;
 
+      auto& alloc = ThreadAlloc::get();
       // Free immutable graph.
       ObjectStack f(alloc);
       LinkedObjectStack fl;
@@ -136,9 +137,9 @@ namespace verona::rt
   namespace immutable
   {
     // This is used only to break a dependency cycle.
-    inline void release(Alloc& alloc, Object* o)
+    inline void release(Object* o)
     {
-      Immutable::release(alloc, o);
+      Immutable::release(o);
     }
   } // namespace cown
 } // namespace verona::rt

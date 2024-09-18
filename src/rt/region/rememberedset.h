@@ -132,7 +132,7 @@ namespace verona::rt
         {
           assert(o->debug_is_immutable());
           Logging::cout() << "RS releasing: immutable: " << o << Logging::endl;
-          Immutable::release(alloc, o);
+          Immutable::release(o);
           break;
         }
 

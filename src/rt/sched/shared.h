@@ -189,7 +189,7 @@ namespace verona::rt
 
           case RegionMD::RC:
           case RegionMD::SCC_PTR:
-            Immutable::release(alloc, o);
+            Immutable::release(o);
             break;
 
           case RegionMD::SHARED:
