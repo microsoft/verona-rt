@@ -535,7 +535,7 @@ namespace verona::rt
       //   | Work | Behaviour | Slot ... Slot | Body |
       size_t size =
         sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
-      void* base = ThreadAlloc::get().alloc(size);
+      void* base = heap::alloc(size);
 
       Work* work = new (base) Work(f);
       void* base_behaviour = from_work(work);

@@ -48,7 +48,7 @@ struct Receive
   ~Receive()
   {
     if (receivers)
-      ThreadAlloc::get().dealloc(receivers, receiver_count * sizeof(Receiver*));
+      heap::dealloc(receivers, receiver_count * sizeof(Receiver*));
   }
 
   void trace(ObjectStack& st) const
@@ -111,7 +111,7 @@ struct Send
     const size_t receiver_count = (s->rng.next() % max_receivers) + 1;
 
     auto** receivers =
-      (Receiver**)ThreadAlloc::get().alloc(receiver_count * sizeof(Receiver*));
+      (Receiver**)heap::alloc(receiver_count * sizeof(Receiver*));
 
     for (size_t i = 0; i < receiver_count;)
     {

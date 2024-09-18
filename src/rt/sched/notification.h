@@ -194,7 +194,7 @@ namespace verona::rt
       new (&(wrapper->body)) Be(std::forward<Args>(args)...);
 
       // Allocate the notification object.
-      void* base = ThreadAlloc::get().alloc<vsizeof<Notification>>();
+      void* base = heap::alloc<vsizeof<Notification>>();
       Object* o = Object::register_object(base, descriptor<Be>());
       auto notification = new (o) Notification();
 

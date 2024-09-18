@@ -82,7 +82,7 @@ namespace verona::rt
         // External references are not allocated in any regions, but have
         // independent lifetime protected by reference counting.
         void* header_obj =
-          ThreadAlloc::get().template alloc<vsizeof<ExternalRef>>();
+          heap::alloc<vsizeof<ExternalRef>>();
         Object* obj = Object::register_object(header_obj, desc());
         return new (obj) ExternalRef(ert, o);
       }

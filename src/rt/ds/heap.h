@@ -6,13 +6,13 @@ namespace verona::rt::heap
 {
   inline void* alloc(size_t size)
   {
-    return snmalloc::ThreadAlloc::get().alloc(size);
+    return heap::alloc(size);
   }
 
   template<size_t size>
   inline void* alloc()
   {
-    return snmalloc::ThreadAlloc::get().alloc<size>();
+    return heap::alloc<size>();
   }
 
   inline void* calloc(size_t size)
@@ -29,17 +29,17 @@ namespace verona::rt::heap
 
   inline void dealloc(void* ptr)
   {
-    return snmalloc::ThreadAlloc::get().dealloc(ptr);
+    return heap::dealloc(ptr);
   }
 
   inline void dealloc(void* ptr, size_t size)
   {
-    return snmalloc::ThreadAlloc::get().dealloc(ptr, size);
+    return heap::dealloc(ptr, size);
   }
 
   template <size_t size> inline void dealloc(void* ptr)
   {
-    return snmalloc::ThreadAlloc::get().dealloc<size>(ptr);
+    return heap::dealloc<size>(ptr);
   }
 
   inline void debug_check_empty()
