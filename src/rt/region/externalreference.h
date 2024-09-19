@@ -60,7 +60,7 @@ namespace verona::rt
 
         incref();
         ert.load(std::memory_order_relaxed)
-          ->insert(ThreadAlloc::get(), o, this);
+          ->insert(o, this);
 
         o->set_has_ext_ref();
       }
@@ -114,19 +114,19 @@ namespace verona::rt
 
   public:
     ExternalReferenceTable()
-    : external_map(ExternalMap::create(ThreadAlloc::get()))
+    : external_map(ExternalMap::create())
     {}
 
-    void dealloc(Alloc& alloc)
+    void dealloc()
     {
       for (auto it = external_map->begin(); it != external_map->end(); ++it)
-        remove_ref(alloc, it);
+        remove_ref(it);
 
-      external_map->dealloc(alloc);
-      alloc.dealloc<sizeof(ExternalMap)>(external_map);
+      external_map->dealloc();
+      heap::dealloc<sizeof(ExternalMap)>(external_map);
     }
 
-    void merge(Alloc& alloc, ExternalReferenceTable* that)
+    void merge(ExternalReferenceTable* that)
     {
       for (auto e : *that->external_map)
       {
@@ -134,26 +134,26 @@ namespace verona::rt
         assert(ext_ref->o);
         ext_ref->ert.store(this, std::memory_order_relaxed);
         *e.second = nullptr;
-        insert(alloc, e.first, ext_ref);
+        insert(e.first, ext_ref);
       }
     }
 
-    void insert(Alloc& alloc, Object* object, ExternalRef* ext_ref)
+    void insert(Object* object, ExternalRef* ext_ref)
     {
       auto unique =
-        external_map->insert(alloc, std::make_pair(object, ext_ref)).first;
+        external_map->insert(std::make_pair(object, ext_ref)).first;
       assert(unique);
       UNUSED(unique);
     }
 
-    void erase(Alloc& alloc, Object* p)
+    void erase(Object* p)
     {
       auto it = external_map->find(p);
       assert(it != external_map->end());
-      remove_ref(alloc, it);
+      remove_ref(it);
     }
 
-    void remove_ref(Alloc& alloc, ExternalMap::Iterator& it)
+    void remove_ref(ExternalMap::Iterator& it)
     {
       auto*& ext_ref = it.value();
       if (ext_ref != nullptr)

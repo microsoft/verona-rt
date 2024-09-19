@@ -48,8 +48,8 @@ namespace verona::rt
   private:
     inline void dealloc(Alloc& alloc)
     {
-      ExternalReferenceTable::dealloc(alloc);
-      RememberedSet::dealloc(alloc);
+      ExternalReferenceTable::dealloc();
+      RememberedSet::dealloc();
       Object::dealloc();
     }
   };

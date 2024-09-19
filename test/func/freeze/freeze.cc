@@ -86,8 +86,6 @@ void test1()
   // Freeze an scc.
   // 1 -> 2
   // 2 -> 1
-  auto& alloc = ThreadAlloc::get();
-
   C1* r = new (RegionType::Trace) C1;
   {
     UsingRegion r2(r);
@@ -118,8 +116,6 @@ void test2()
   // 4 -> 3, 5 = ptr 2
   // 5 -> 2, 6 = ptr 2
   // 6 -> 4, 3 = ptr 2
-  auto& alloc = ThreadAlloc::get();
-
   C1* o1 = new (RegionType::Trace) C1;
   C1 *o2, *o3, *o4, *o5, *o6;
   {
@@ -176,8 +172,6 @@ void test3()
   // 7 -> 8, 8 = scc rc 1
   // 8 -> 4, 4 = scc rc 1
   // 9 -> 1, 1 = scc rc 1
-  auto& alloc = ThreadAlloc::get();
-
   auto o1 = new (RegionType::Trace) C1;
   C1 *o2, *o3, *o4, *o5, *o6, *o7, *o8, *o9;
   {
@@ -242,8 +236,6 @@ void test4()
   // 3 -> 4    = ptr 2
   // 4 -> 2, 5 = ptr 2
   // 5         = scc rc 1
-  auto& alloc = ThreadAlloc::get();
-
   C1* o1 = new (RegionType::Trace) C1;
   C1* o2 = new (RegionType::Trace) C1;
   C1 *o3, *o4, *o5;
@@ -291,8 +283,6 @@ void test5()
   //
   // Freeze 1,
   // Ptr from 2 to subregion 3
-  auto& alloc = ThreadAlloc::get();
-
   C1* o1 = new (RegionType::Trace) C1;
   std::cout << "o1: " << o1 << std::endl;
   {
@@ -316,8 +306,6 @@ void test5()
 
 void freeze_weird_ring()
 {
-  auto& alloc = ThreadAlloc::get();
-
   auto root = new (RegionType::Trace) List<Foo>;
 
   {
@@ -358,8 +346,6 @@ struct Symbolic : public V<Symbolic>
 
 void test_two_rings_1()
 {
-  auto& alloc = ThreadAlloc::get();
-
   auto r = new (RegionType::Trace) C1;
   {
     UsingRegion rr(r);
@@ -372,7 +358,6 @@ void test_two_rings_1()
 
 void test_two_rings_2()
 {
-  auto& alloc = ThreadAlloc::get();
   auto r = new (RegionType::Trace) Symbolic;
   {
     UsingRegion rr(r);
@@ -385,7 +370,6 @@ void test_two_rings_2()
 
 void test_contains_immutable1()
 {
-  auto& alloc = ThreadAlloc::get();
   Symbolic* root = new (RegionType::Trace) Symbolic;
 
   Symbolic* nested = new (RegionType::Trace) Symbolic;
@@ -395,7 +379,7 @@ void test_contains_immutable1()
   root->fields.push_back(nested);
   // Update the remembered set.
   RememberedSet* rs = root->get_region();
-  rs->insert<YesTransfer>(alloc, nested);
+  rs->insert<YesTransfer>(nested);
 
   // Freeze the root
   freeze(root);
@@ -407,7 +391,6 @@ void test_contains_immutable1()
 void test_random(size_t seed = 1, size_t max_edges = 128)
 {
   snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
-  auto& alloc = ThreadAlloc::get();
   size_t id = 0;
 
   xoroshiro::p128r32 r(seed);

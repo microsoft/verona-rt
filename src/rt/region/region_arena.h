@@ -334,7 +334,7 @@ namespace verona::rt
 
       Object::RegionMD c;
       o = o->root_and_class(c);
-      reg->RememberedSet::insert<transfer>(alloc, o);
+      reg->RememberedSet::insert<transfer>(o);
     }
 
     /**
@@ -362,8 +362,8 @@ namespace verona::rt
         o->init_next(nullptr);
 
       // Merge the ExternalRefTable and RememberedSet.
-      reg->ExternalReferenceTable::merge(alloc, other);
-      reg->RememberedSet::merge(alloc, other);
+      reg->ExternalReferenceTable::merge(other);
+      reg->RememberedSet::merge(other);
 
       // Now we can deallocate the other region's metadata object.
       other->dealloc(alloc);
@@ -590,7 +590,7 @@ namespace verona::rt
       }
 
       // Sweep the RememberedSet, to ensure destructors are called.
-      RememberedSet::sweep(alloc);
+      RememberedSet::sweep();
 
       // Deallocate RegionArena
       // Don't need to deallocate `o`, since it was part of the arena or ring.

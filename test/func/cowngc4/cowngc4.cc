@@ -343,7 +343,7 @@ struct Ping
             Logging::cout() << "RCown " << rcown << " is leaking cown "
                             << rcown->reg_with_graph->f->f->cown << std::endl;
             auto* reg = RegionClass::get(rcown->reg_with_graph);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->reg_with_graph->f->f->cown = nullptr;
           }
           break;
@@ -360,7 +360,7 @@ struct Ping
             Logging::cout() << "RCown " << rcown << " is leaking cown "
                             << rcown->reg_with_sub->f1->f2->f2 << std::endl;
             auto* reg = RegionArena::get(rcown->reg_with_sub->f1->f2->f2);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->reg_with_sub->f1->f2->f2->cown = nullptr;
           }
           break;

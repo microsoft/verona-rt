@@ -328,7 +328,7 @@ struct Ping
               << "RCown " << rcown << " is dropping a reference to "
               << rcown->otrace->cown << std::endl;
             auto* reg = RegionTrace::get(rcown->otrace);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->otrace->cown = nullptr;
           }
           break;
@@ -344,7 +344,7 @@ struct Ping
               << "RCown " << rcown << " is dropping a reference to "
               << rcown->oarena->cown << std::endl;
             auto* reg = RegionArena::get(rcown->oarena);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->oarena->cown = nullptr;
           }
           break;

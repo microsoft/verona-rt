@@ -176,7 +176,7 @@ namespace verona::rt
 
       Object::RegionMD c;
       o = o->root_and_class(c);
-      reg->RememberedSet::insert<transfer>(alloc, o);
+      reg->RememberedSet::insert<transfer>(o);
     }
 
     /**
@@ -204,8 +204,8 @@ namespace verona::rt
         reg->merge_internal(o, other_trace);
 
         // Merge the ExternalReferenceTable and RememberedSet.
-        reg->ExternalReferenceTable::merge(alloc, other_trace);
-        reg->RememberedSet::merge(alloc, other_trace);
+        reg->ExternalReferenceTable::merge(other_trace);
+        reg->RememberedSet::merge(other_trace);
 
         // Now we can deallocate the other region's metadata object.
         other_trace->dealloc(alloc);
@@ -418,12 +418,12 @@ namespace verona::rt
 
           case Object::SCC_PTR:
             p = p->immutable();
-            RememberedSet::mark(alloc, p);
+            RememberedSet::mark(p);
             break;
 
           case Object::RC:
           case Object::SHARED:
-            RememberedSet::mark(alloc, p);
+            RememberedSet::mark(p);
             break;
 
           default:
@@ -459,7 +459,7 @@ namespace verona::rt
       sweep_ring<NonTrivialRing, sweep_all>(alloc, o, primary_ring, collect);
       sweep_ring<TrivialRing, sweep_all>(alloc, o, primary_ring, collect);
 
-      RememberedSet::sweep(alloc);
+      RememberedSet::sweep();
       previous_memory_used = size_to_sizeclass_full(current_memory_used);
     }
 
@@ -488,7 +488,7 @@ namespace verona::rt
         // p is about to be collected; remove the entry for it in
         // the ExternalRefTable.
         if (p->has_ext_ref())
-          ExternalReferenceTable::erase(alloc, p);
+          ExternalReferenceTable::erase(p);
 
         p->dealloc();
       }

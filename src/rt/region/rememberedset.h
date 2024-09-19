@@ -23,25 +23,25 @@ namespace verona::rt
     HashSet* hash_set;
 
   public:
-    RememberedSet() : hash_set(HashSet::create(ThreadAlloc::get())) {}
+    RememberedSet() : hash_set(HashSet::create()) {}
 
-    inline void dealloc(Alloc& alloc)
+    inline void dealloc()
     {
-      discard(alloc, false);
-      hash_set->dealloc(alloc);
-      alloc.dealloc<sizeof(HashSet)>(hash_set);
+      discard(false);
+      hash_set->dealloc();
+      heap::dealloc<sizeof(HashSet)>(hash_set);
     }
 
     /**
      * Add the objects from another set to this set.
      */
-    void merge(Alloc& alloc, RememberedSet* that)
+    void merge(RememberedSet* that)
     {
       for (auto* e : *that->hash_set)
       {
         // If q is already present in this, decref, otherwise insert.
         // No need to call release, as the rc will not drop to zero.
-        if (!hash_set->insert(alloc, e).first)
+        if (!hash_set->insert(e).first)
         {
           e->decref();
         }
@@ -53,7 +53,7 @@ namespace verona::rt
      * and add it to the set.
      */
     template<TransferOwnership transfer>
-    void insert(Alloc& alloc, Object* o)
+    void insert(Object* o)
     {
       assert(o->debug_is_rc() || o->debug_is_shared());
 
@@ -63,7 +63,7 @@ namespace verona::rt
       if constexpr (transfer == NoTransfer)
         o->incref();
 
-      if (!hash_set->insert(alloc, o).first)
+      if (!hash_set->insert(o).first)
       {
         // If the caller is transfering ownership of a refcount, i.e., the
         // object is being moved from somewhere to this region, but the object
@@ -77,11 +77,11 @@ namespace verona::rt
      * Mark the given object. If the object is not in the set, incref and add it
      * to the set.
      */
-    void mark(Alloc& alloc, Object* o)
+    void mark(Object* o)
     {
       assert(o->debug_is_rc() || o->debug_is_shared());
 
-      auto r = hash_set->insert(alloc, o);
+      auto r = hash_set->insert(o);
       if (r.first)
         o->incref();
 
@@ -91,13 +91,13 @@ namespace verona::rt
     /**
      * Erase all unmarked entries from the set and unmark the remaining entries.
      */
-    void sweep(Alloc& alloc)
+    void sweep()
     {
       for (auto it = hash_set->begin(); it != hash_set->end(); ++it)
       {
         if (!it.is_marked())
         {
-          RememberedSet::release_internal(alloc, *it);
+          RememberedSet::release_internal(*it);
           hash_set->erase(it);
         }
         else
@@ -111,20 +111,20 @@ namespace verona::rt
      * Erase all entries from the set. If `release` is true, the remaining
      * objects will be released.
      */
-    void discard(Alloc& alloc, bool release = true)
+    void discard(bool release = true)
     {
       for (auto it = hash_set->begin(); it != hash_set->end(); ++it)
       {
         if (release)
-          RememberedSet::release_internal(alloc, *it);
+          RememberedSet::release_internal(*it);
 
         hash_set->erase(it);
       }
-      hash_set->clear(alloc);
+      hash_set->clear();
     }
 
   private:
-    static void release_internal(Alloc& alloc, Object* o)
+    static void release_internal(Object* o)
     {
       switch (o->get_class())
       {

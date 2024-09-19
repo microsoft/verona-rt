@@ -335,7 +335,7 @@ namespace verona::rt
           q->dealloc();
         }
 
-        reg->discard(alloc);
+        reg->discard();
         reg->dealloc(alloc);
       }
 
