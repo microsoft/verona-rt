@@ -184,7 +184,7 @@ namespace verona::rt
         switch (o->get_class())
         {
           case RegionMD::ISO:
-            Region::release(alloc, o);
+            Region::release(o);
             break;
 
           case RegionMD::RC:

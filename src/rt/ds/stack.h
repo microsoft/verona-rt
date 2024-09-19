@@ -7,13 +7,30 @@
 
 namespace verona::rt
 {
+  class HeapAlloc
+  {
+  public:
+    template<size_t Size>
+    ALWAYSINLINE void* alloc()
+    {
+      return heap::template alloc<Size>();
+    }
+
+    template<size_t Size>
+    ALWAYSINLINE void dealloc(void* p)
+    {
+      heap::template dealloc<Size>(p);
+    }
+  };
+
   /**
    * This class contains the core functionality for a stack using aligned blocks
    * of memory. The stack is the size of a single pointer when empty.
    */
-  template<class T, class Alloc>
+  template<class T, class Alloc = HeapAlloc>
   class StackThin
   {
+    static inline HeapAlloc default_alloc{};
   private:
     static constexpr size_t POINTER_COUNT = 64;
     static_assert(
@@ -94,7 +111,7 @@ namespace verona::rt
     }
 
     /// Deallocate the linked blocks for this stack.
-    void dealloc(Alloc& alloc)
+    void dealloc(Alloc& alloc = default_alloc)
     {
       auto local_block = get_block(index);
       while (local_block != &null_block)
@@ -119,7 +136,7 @@ namespace verona::rt
     }
 
     /// Call this to pop an element from the stack.
-    ALWAYSINLINE T* pop(Alloc& alloc)
+    ALWAYSINLINE T* pop(Alloc& alloc = default_alloc)
     {
       assert(!empty());
       if (!is_empty(index - 1))
@@ -133,7 +150,7 @@ namespace verona::rt
     }
 
     /// Call this to push an element onto the stack.
-    ALWAYSINLINE void push(T* item, Alloc& alloc)
+    ALWAYSINLINE void push(T* item, Alloc& alloc = default_alloc)
     {
       if (!is_full(index))
       {

@@ -136,8 +136,6 @@ struct RCown : public VCown<RCown<region_type>>
   RCown(size_t more, uint64_t forward_count)
   : forward(forward_count), threshold(forward_count / 4)
   {
-    auto& alloc = ThreadAlloc::get();
-
     if (rcown_first == nullptr)
       rcown_first = (RCown<RegionType::Trace>*)this;
 
@@ -158,8 +156,7 @@ struct RCown : public VCown<RCown<region_type>>
         // Construct a CCown and give it to the region.
         auto c = new CCown(shared_child);
         Logging::cout() << "  child " << c << std::endl;
-        RegionClass::template insert<TransferOwnership::YesTransfer>(
-          alloc, r, c);
+        RegionClass::template insert<TransferOwnership::YesTransfer>(r, c);
         Cown::acquire(shared_child); // acquire on behalf of child CCown
 
         reg_with_graph = r;
@@ -178,7 +175,7 @@ struct RCown : public VCown<RCown<region_type>>
       auto c = new CCown(shared_child);
       Logging::cout() << "  child " << c << std::endl;
       RegionArena::insert<TransferOwnership::YesTransfer>(
-        alloc, r->f1->f2->f2, c);
+        r->f1->f2->f2, c);
       Cown::acquire(shared_child); // acquire on behalf of child CCown
 
       reg_with_sub = r;
@@ -225,9 +222,9 @@ struct RCown : public VCown<RCown<region_type>>
 
       // Transfer ownership of immutables to the region.
       RegionClass::template insert<TransferOwnership::YesTransfer>(
-        alloc, reg_with_imm, r1);
+        reg_with_imm, r1);
       RegionClass::template insert<TransferOwnership::YesTransfer>(
-        alloc, reg_with_imm, r2);
+        reg_with_imm, r2);
 
       // Release child CCowns that are now owned by the immutables.
       Cown::release(r1->cown);

@@ -534,27 +534,27 @@ namespace memory_gc
       Logging::cout() << " sub" << s5 << std::endl;
       o5->f1 = s5;
 
-      RegionTrace::push_additional_root(o, o1, alloc);
-      RegionTrace::push_additional_root(o, o2, alloc);
-      RegionTrace::push_additional_root(o, o3, alloc);
-      RegionTrace::push_additional_root(o, o4, alloc);
-      RegionTrace::push_additional_root(o, o5, alloc);
+      RegionTrace::push_additional_root(o, o1);
+      RegionTrace::push_additional_root(o, o2);
+      RegionTrace::push_additional_root(o, o3);
+      RegionTrace::push_additional_root(o, o4);
+      RegionTrace::push_additional_root(o, o5);
 
       check(debug_size() == 11);
       region_collect();
       Logging::cout() << debug_size() << std::endl;
       check(debug_size() == 11);
 
-      RegionTrace::pop_additional_root(o, o5, alloc);
-      RegionTrace::pop_additional_root(o, o4, alloc);
+      RegionTrace::pop_additional_root(o, o5);
+      RegionTrace::pop_additional_root(o, o4);
 
       // Run another GC.
       region_collect();
       check(debug_size() == 7);
 
-      RegionTrace::pop_additional_root(o, o3, alloc);
-      RegionTrace::pop_additional_root(o, o2, alloc);
-      RegionTrace::pop_additional_root(o, o1, alloc);
+      RegionTrace::pop_additional_root(o, o3);
+      RegionTrace::pop_additional_root(o, o2);
+      RegionTrace::pop_additional_root(o, o1);
 
       // Run another GC.
       region_collect();

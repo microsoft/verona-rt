@@ -137,8 +137,6 @@ namespace noticeboard_basic
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
       Logging::cout() << "Peek" << std::endl;
       auto o = (C*)peeker->box->peek();
       Logging::cout() << "Peeked " << o << std::endl;
@@ -149,15 +147,13 @@ namespace noticeboard_basic
 
   void run_test()
   {
-    Alloc& alloc = ThreadAlloc::get();
-
     Alive* alive = new Alive;
     Logging::cout() << "Alive" << alive << std::endl;
 
     C* c = new (RegionType::Trace) C(0);
     c->next = new (RegionType::Trace) C(10);
 
-    RegionTrace::insert(alloc, c, alive);
+    RegionTrace::insert(c, alive);
     c->alive = alive;
     Logging::cout() << "Create C " << c << " with alive " << alive << std::endl;
 

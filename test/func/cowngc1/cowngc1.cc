@@ -123,8 +123,6 @@ struct RCown : public VCown<RCown>
 
   RCown(size_t more, uint64_t forward_count) : forward(forward_count)
   {
-    auto& alloc = ThreadAlloc::get();
-
     if (rcown_first == nullptr)
       rcown_first = this;
 
@@ -149,8 +147,7 @@ struct RCown : public VCown<RCown>
       otrace->cown = new CCown(shared_child);
       Logging::cout() << "  child " << otrace->cown << std::endl;
       // Transfer ownership of child CCown to the regions.
-      RegionTrace::insert<TransferOwnership::YesTransfer>(
-        alloc, otrace, otrace->cown);
+      RegionTrace::insert<TransferOwnership::YesTransfer>(otrace, otrace->cown);
       Cown::acquire(shared_child); // acquire on behalf of child CCown
     }
 
@@ -160,8 +157,7 @@ struct RCown : public VCown<RCown>
       oarena->cown = new CCown(shared_child);
       Logging::cout() << "  child " << oarena->cown << std::endl;
       // Transfer ownership of child CCown to the regions.
-      RegionArena::insert<TransferOwnership::YesTransfer>(
-        alloc, oarena, oarena->cown);
+      RegionArena::insert<TransferOwnership::YesTransfer>(oarena, oarena->cown);
       Cown::acquire(shared_child); // acquire on behalf of child CCown
     }
 
@@ -387,7 +383,6 @@ void test_cown_gc(
 void test_cown_gc_before_sched()
 {
   auto a = new CCown(nullptr);
-  auto& alloc = ThreadAlloc::get();
   Cown::release(a);
 }
 

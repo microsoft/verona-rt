@@ -23,9 +23,6 @@ namespace ext_ref_merge
   {
     using T = C;
 
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
-
     auto r1 = new (region_type) T;
     ExternalRef* wref1;
     {

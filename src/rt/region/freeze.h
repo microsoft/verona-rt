@@ -132,7 +132,7 @@ namespace verona::rt
     }
 
   public:
-    static void apply(Alloc& alloc, Object* o)
+    static void apply(Object* o)
     {
       assert(o->debug_is_iso());
 
@@ -296,7 +296,7 @@ namespace verona::rt
               while (!dealloc_regions.empty())
               {
                 Object* q = dealloc_regions.pop();
-                Region::release(alloc, q);
+                Region::release(q);
               }
 
               p = next;
@@ -336,7 +336,7 @@ namespace verona::rt
         }
 
         reg->discard();
-        reg->dealloc(alloc);
+        reg->dealloc();
       }
 
       assert(objects.empty());

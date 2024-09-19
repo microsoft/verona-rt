@@ -62,8 +62,6 @@ struct Loop
   {
     auto& state = a->state;
 
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
     switch (state)
     {
       case SETUP:
@@ -79,7 +77,7 @@ struct Loop
         }
 
         a->r = r;
-        RegionTrace::insert<YesTransfer>(alloc, a->r, a->r->f1->b);
+        RegionTrace::insert<YesTransfer>(a->r, a->r->f1->b);
         {
           UsingRegion ur(a->r);
           g_ext_ref = create_external_reference(a->r->f1);
@@ -122,7 +120,6 @@ struct Loop
 // 4. Clean up resource, and exit.
 void run_test()
 {
-  auto& alloc = ThreadAlloc::get();
   auto a = new A;
   schedule_lambda(a, Loop(a));
   Cown::release(a);

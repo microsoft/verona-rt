@@ -65,7 +65,6 @@ namespace ext_ref_basic
       first->next = last;
       last->prev = first;
 
-      auto& alloc = ThreadAlloc::get();
       auto cur = first;
       for (auto i = 0; i < n; ++i)
       {
@@ -73,7 +72,7 @@ namespace ext_ref_basic
 
         auto b = new B(this, node);
         node->element = b;
-        RegionTrace::insert<YesTransfer>(alloc, this, b);
+        RegionTrace::insert<YesTransfer>(this, b);
 
         cur->next = node;
         cur->next->prev = cur;
@@ -120,9 +119,6 @@ namespace ext_ref_basic
     size_t cores = 1;
     sched.init(cores);
 
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
-
     auto list = new (RegionType::Trace) DList(1);
     auto a = new A(list);
 
@@ -132,8 +128,6 @@ namespace ext_ref_basic
     Immutable::acquire(b->ext_node);
     auto ext_node = b->ext_node;
     schedule_lambda(a, [a, ext_node]() {
-      auto& alloc = ThreadAlloc::get();
-
       auto list = a->list;
       UsingRegion ur(list);
       check(is_external_reference_valid(ext_node));
@@ -159,9 +153,6 @@ namespace ext_ref_basic
   template<RegionType region_type>
   void singleton_region_test()
   {
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
-
     auto r = new (region_type) R;
     {
       UsingRegion ur(r);

@@ -120,17 +120,17 @@ namespace verona::rt
      * As we discover Iso pointers to other regions, we add them to our
      * worklist.
      **/
-    static void release(Alloc& alloc, Object* o)
+    static void release(Object* o)
     {
       assert(o->debug_is_iso() || o->is_opened());
       ObjectStack collect;
-      Region::release_internal(alloc, o, collect);
+      Region::release_internal(o, collect);
 
       while (!collect.empty())
       {
         o = collect.pop();
         assert(o->debug_is_iso());
-        Region::release_internal(alloc, o, collect);
+        Region::release_internal(o, collect);
       }
     }
 
@@ -153,20 +153,20 @@ namespace verona::rt
      *
      * We dispatch based on the type of region represented by `o`.
      **/
-    static void release_internal(Alloc& alloc, Object* o, ObjectStack& collect)
+    static void release_internal(Object* o, ObjectStack& collect)
     {
       auto r = o->get_region();
       switch (Region::get_type(r))
       {
         case RegionType::Trace:
-          ((RegionTrace*)r)->release_internal(alloc, o, collect);
+          ((RegionTrace*)r)->release_internal(o, collect);
           return;
         case RegionType::Arena:
-          ((RegionArena*)r)->release_internal(alloc, o, collect);
+          ((RegionArena*)r)->release_internal(o, collect);
           return;
         case RegionType::Rc:
         {
-          ((RegionRc*)r)->release_internal(alloc, o, collect);
+          ((RegionRc*)r)->release_internal(o, collect);
           return;
         }
         default:

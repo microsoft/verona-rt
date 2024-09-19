@@ -59,7 +59,7 @@ namespace memory_subregion
         r->f2->f1 = r3;
         r->f2->f1->f1 = r4;
 
-        Region::release(alloc, r);
+        Region::release(r);
       }
     }
     else
@@ -75,7 +75,7 @@ namespace memory_subregion
 
       alloc_in_region<C, F>(alloc, r); // unreachable
 
-      Region::release(alloc, r);
+      Region::release(r);
     }
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     check(live_count == 0);
@@ -136,7 +136,7 @@ namespace memory_subregion
 
       {
         UsingRegion rc(r);
-        Region::release(alloc, r);
+        Region::release(r);
       }
     }
     else
@@ -173,7 +173,7 @@ namespace memory_subregion
       r->f1->c1 = r2;
       r2->f1->f1->f1 = r3;
 
-      Region::release(alloc, r);
+      Region::release(r);
     }
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     check(live_count == 0);
@@ -234,7 +234,7 @@ namespace memory_subregion
     check(Region::debug_size(r2) == 6);
     check(Region::debug_size(r3) == 1);
 
-    Region::release(alloc, r);
+    Region::release(r);
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
   }
 
@@ -273,7 +273,7 @@ namespace memory_subregion
         check(Region::debug_size(nroot) == 1);
       }
 
-      Region::release(alloc, nroot);
+      Region::release(nroot);
       snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     }
 
@@ -302,7 +302,7 @@ namespace memory_subregion
         check(Region::debug_size(nroot) == 1);
       }
 
-      Region::release(alloc, nroot);
+      Region::release(nroot);
       snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     }
 
@@ -334,7 +334,7 @@ namespace memory_subregion
         check(Region::debug_size(nroot) == 1);
       }
 
-      Region::release(alloc, r);
+      Region::release(r);
       snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     }
   }
@@ -387,7 +387,7 @@ namespace memory_subregion
       check(Region::debug_size(r1) == 5);
     }
 
-    Region::release(alloc, r1);
+    Region::release(r1);
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
   }
 
@@ -410,7 +410,7 @@ namespace memory_subregion
     }
     std::cout << "Dealloc long region chain." << std::endl;
 
-    Region::release(alloc, r1);
+    Region::release(r1);
     snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
     std::cout << "Dealloced long region chain." << std::endl;
   }

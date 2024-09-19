@@ -40,7 +40,6 @@ namespace verona::rt
       assert(o == o->immutable());
       size_t total = 0;
 
-      auto& alloc = ThreadAlloc::get();
       // Free immutable graph.
       ObjectStack f;
       LinkedObjectStack fl;
@@ -66,7 +65,7 @@ namespace verona::rt
           while (!f.empty())
           {
             Object* u = f.pop();
-            scc_classify(alloc, u, dfs, scc);
+            scc_classify(u, dfs, scc);
           }
         }
 
@@ -98,7 +97,7 @@ namespace verona::rt
     }
 
     static inline void scc_classify(
-      Alloc& alloc, Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
+      Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
     {
       Object::RegionMD c;
       Object* r = w->root_and_class(c);

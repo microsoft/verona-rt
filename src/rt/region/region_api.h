@@ -133,7 +133,7 @@ namespace verona::rt::api
   inline T* freeze(T* r)
   {
     // Check for trace region.
-    Freeze::apply(ThreadAlloc::get(), r);
+    Freeze::apply(r);
     return r;
   }
 
@@ -152,12 +152,10 @@ namespace verona::rt::api
     switch (Region::get_type(r->get_region()))
     {
       case RegionType::Trace:
-        RegionTrace::merge(
-          ThreadAlloc::get(), RegionContext::get_entry_point(), r);
+        RegionTrace::merge(RegionContext::get_entry_point(), r);
         return r;
       case RegionType::Arena:
-        RegionArena::merge(
-          ThreadAlloc::get(), RegionContext::get_entry_point(), r);
+        RegionArena::merge(RegionContext::get_entry_point(), r);
         return r;
       case RegionType::Rc:
         abort();
@@ -199,14 +197,11 @@ namespace verona::rt::api
     switch (Region::get_type(RegionContext::get_region()))
     {
       case RegionType::Trace:
-        return RegionTrace::alloc(
-          ThreadAlloc::get(), RegionContext::get_entry_point(), d);
+        return RegionTrace::alloc(RegionContext::get_entry_point(), d);
       case RegionType::Arena:
-        return RegionArena::alloc(
-          ThreadAlloc::get(), RegionContext::get_entry_point(), d);
+        return RegionArena::alloc(RegionContext::get_entry_point(), d);
       case RegionType::Rc:
-        return RegionRc::alloc(
-          ThreadAlloc::get(), (RegionRc*)RegionContext::get_region(), d);
+        return RegionRc::alloc((RegionRc*)RegionContext::get_region(), d);
     }
     // Unreachable as case is exhaustive
     abort();
@@ -231,8 +226,7 @@ namespace verona::rt::api
   inline void decref(Object* o)
   {
     assert(Region::get_type(RegionContext::get_region()) == RegionType::Rc);
-    RegionRc::decref(
-      ThreadAlloc::get(), o, (RegionRc*)RegionContext::get_region());
+    RegionRc::decref(o, (RegionRc*)RegionContext::get_region());
   }
 
   template<typename T = Object>
@@ -242,13 +236,13 @@ namespace verona::rt::api
     switch (type)
     {
       case RegionType::Trace:
-        entry_point = RegionTrace::create(ThreadAlloc::get(), d);
+        entry_point = RegionTrace::create(d);
         break;
       case RegionType::Arena:
-        entry_point = RegionArena::create(ThreadAlloc::get(), d);
+        entry_point = RegionArena::create(d);
         break;
       case RegionType::Rc:
-        entry_point = RegionRc::create(ThreadAlloc::get(), d);
+        entry_point = RegionRc::create(d);
         break;
     }
     return {reinterpret_cast<T*>(entry_point)};
@@ -277,14 +271,13 @@ namespace verona::rt::api
     {
       case RegionType::Trace:
         // Other roots?
-        RegionTrace::gc(ThreadAlloc::get(), RegionContext::get_entry_point());
+        RegionTrace::gc(RegionContext::get_entry_point());
         break;
       case RegionType::Arena:
         // Nothing to collect here!
         break;
       case RegionType::Rc:
         RegionRc::gc_cycles(
-          ThreadAlloc::get(),
           RegionContext::get_entry_point(),
           (RegionRc*)RegionContext::get_region());
         break;
@@ -294,7 +287,7 @@ namespace verona::rt::api
   template<typename T = Object>
   inline void region_release(Object* r)
   {
-    Region::release(ThreadAlloc::get(), r);
+    Region::release(r);
   }
 
   /**

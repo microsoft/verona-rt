@@ -46,7 +46,7 @@ namespace verona::rt
     RegionBase() : Object() {}
 
   private:
-    inline void dealloc(Alloc& alloc)
+    inline void dealloc()
     {
       ExternalReferenceTable::dealloc();
       RememberedSet::dealloc();
