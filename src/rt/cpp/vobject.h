@@ -112,21 +112,7 @@ namespace verona::rt
       // region.
     }
 
-    void operator delete(void*, Alloc&)
-    {
-      // Should not be called directly, present to allow calling if the
-      // constructor throws an exception. The object lifetime is managed by the
-      // region.
-    }
-
     void operator delete(void*, Object*)
-    {
-      // Should not be called directly, present to allow calling if the
-      // constructor throws an exception. The object lifetime is managed by the
-      // region.
-    }
-
-    void operator delete(void*, Alloc&, Object*)
     {
       // Should not be called directly, present to allow calling if the
       // constructor throws an exception. The object lifetime is managed by the
