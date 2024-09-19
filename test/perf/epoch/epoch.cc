@@ -55,7 +55,7 @@ void test_epoch()
   }
 
   heap::dealloc(special);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
   (void)old;
 }
 

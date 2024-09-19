@@ -144,7 +144,7 @@ namespace ext_ref_basic
     });
     Cown::release(a);
     sched.run();
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   struct R : public V<R>
@@ -164,7 +164,7 @@ namespace ext_ref_basic
 
     region_release(r);
 
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   void run_test()

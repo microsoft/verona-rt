@@ -93,7 +93,7 @@ int main()
   spawn();
 
   sched.run();
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
   assert_variance();
 
   puts("done");

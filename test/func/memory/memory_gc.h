@@ -53,7 +53,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Allocate a lot of objects that are all connected.
@@ -103,7 +103,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
   }
 
@@ -157,7 +157,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Primary ring with objects that need finalisers.
@@ -201,7 +201,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Two rings. First and last objects in secondary ring are garbage.
@@ -245,7 +245,7 @@ namespace memory_gc
         check(debug_size() == 7);
       }
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
   }
 
@@ -290,7 +290,7 @@ namespace memory_gc
       check(scc->debug_test_rc(1));
     }
     region_release(r);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -370,7 +370,7 @@ namespace memory_gc
     }
 
     region_release(o);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -429,7 +429,7 @@ namespace memory_gc
     }
 
     region_release(r2);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -493,7 +493,7 @@ namespace memory_gc
     }
 
     region_release(nnroot);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   void test_additional_roots()
@@ -558,7 +558,7 @@ namespace memory_gc
       check(debug_size() == 1);
     }
     region_release(o);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   void run_test()

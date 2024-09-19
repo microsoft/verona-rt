@@ -42,7 +42,7 @@ void test_multimessage(size_t cores)
     };
   }
   sched.run();
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 int main(int argc, char** argv)

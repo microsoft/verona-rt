@@ -58,5 +58,5 @@ int main(int, char**)
 {
   auto a = ChainCown::make_chain(100000);
   Cown::release(a);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }

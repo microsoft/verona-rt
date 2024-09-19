@@ -311,7 +311,7 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
       }
     }
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
   //  std::cerr << std::endl;
 }
 

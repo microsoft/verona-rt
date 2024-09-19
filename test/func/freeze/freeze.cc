@@ -104,7 +104,7 @@ void test1()
   // Free immutable graph.
   Immutable::release(r);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test2()
@@ -157,7 +157,7 @@ void test2()
   // Free immutable graph.
   Immutable::release(o1);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test3()
@@ -222,7 +222,7 @@ void test3()
   // Free immutable graph.
   Immutable::release(o1);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test4()
@@ -271,7 +271,7 @@ void test4()
   // Free immutable graph.
   Immutable::release(o1);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test5()
@@ -301,7 +301,7 @@ void test5()
   // Free immutable graph.
   Immutable::release(o1);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void freeze_weird_ring()
@@ -327,7 +327,7 @@ void freeze_weird_ring()
   // Free immutable graph.
   Immutable::release(root);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 struct Symbolic : public V<Symbolic>
@@ -353,7 +353,7 @@ void test_two_rings_1()
   }
   freeze(r);
   Immutable::release(r);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test_two_rings_2()
@@ -365,7 +365,7 @@ void test_two_rings_2()
   }
   freeze(r);
   Immutable::release(r);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test_contains_immutable1()
@@ -385,12 +385,12 @@ void test_contains_immutable1()
   freeze(root);
 
   Immutable::release(root);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 void test_random(size_t seed = 1, size_t max_edges = 128)
 {
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
   size_t id = 0;
 
   xoroshiro::p128r32 r(seed);
@@ -528,7 +528,7 @@ void test_random(size_t seed = 1, size_t max_edges = 128)
 
   Immutable::release(root);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 int main(int, char**)

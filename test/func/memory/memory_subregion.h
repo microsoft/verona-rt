@@ -75,7 +75,7 @@ namespace memory_subregion
 
       Region::release(r);
     }
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
     check(live_count == 0);
   }
 
@@ -171,7 +171,7 @@ namespace memory_subregion
 
       Region::release(r);
     }
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
     check(live_count == 0);
   }
 
@@ -229,7 +229,7 @@ namespace memory_subregion
     check(Region::debug_size(r3) == 1);
 
     Region::release(r);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -266,7 +266,7 @@ namespace memory_subregion
       }
 
       Region::release(nroot);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // After swapping the root, the subregion now hangs off the entry object.
@@ -293,7 +293,7 @@ namespace memory_subregion
       }
 
       Region::release(nroot);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Swap root for the subregion, and patch up parent region's pointer.
@@ -323,7 +323,7 @@ namespace memory_subregion
       }
 
       Region::release(r);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
   }
 
@@ -374,7 +374,7 @@ namespace memory_subregion
     }
 
     Region::release(r1);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   template<RegionType region_type>
@@ -395,7 +395,7 @@ namespace memory_subregion
     std::cout << "Dealloc long region chain." << std::endl;
 
     Region::release(r1);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
     std::cout << "Dealloced long region chain." << std::endl;
   }
 

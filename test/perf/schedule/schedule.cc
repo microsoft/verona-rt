@@ -97,5 +97,5 @@ int main(int argc, char** argv)
     std::cout << "Time:" << (end - start) / (cowns * loops) << std::endl;
   }
   delete[] global_array;
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }

@@ -25,7 +25,7 @@ void test_dealloc()
   void* p = heap::alloc(size);
   heap::dealloc(p, size);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 size_t do_nothing(size_t x);

@@ -27,7 +27,7 @@ namespace memory_merge
     }
 
     region_release(r1);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
     check(live_count == 0);
   }
 
@@ -79,7 +79,7 @@ namespace memory_merge
       }
 
       region_release(o2);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
       check(live_count == 0);
     }
 

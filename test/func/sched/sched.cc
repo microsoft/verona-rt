@@ -55,7 +55,7 @@ int main()
     abort();
   }
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 
   return 0;
 }

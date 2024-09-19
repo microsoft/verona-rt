@@ -179,7 +179,7 @@ public:
       LocalEpochPool::sort();
 
       if (detect_leaks)
-        snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+        heap::debug_check_empty();
       high_resolution_clock::time_point t1 = high_resolution_clock::now();
       std::cout << "Time so far: "
                 << duration_cast<seconds>((t1 - start)).count() << " seconds"
