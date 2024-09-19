@@ -153,8 +153,6 @@ int main(int argc, char** argv)
   sched.set_fair(true);
   sched.init(cores);
 
-  auto& alloc = ThreadAlloc::get();
-
   static std::vector<Receiver*> receiver_set;
   for (size_t i = 0; i < receivers; i++)
     receiver_set.push_back(new Receiver);

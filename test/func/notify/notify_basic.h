@@ -11,8 +11,6 @@ namespace notify_basic
 
   void basic_test()
   {
-    auto& alloc = ThreadAlloc::get();
-
     g_a = new A;
 
     auto notify = make_notification(g_a, []() { g_called = true; });

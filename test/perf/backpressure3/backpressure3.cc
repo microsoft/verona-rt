@@ -50,15 +50,14 @@ struct Receive
 
   void operator()()
   {
-    auto& alloc = ThreadAlloc::get();
     if (s == nullptr)
     {
       s = r->senders[r->rng.next() % r->senders.size()];
-      auto** cowns = (Cown**)alloc.alloc<2 * sizeof(Cown*)>();
+      auto** cowns = (Cown**)heap::alloc<2 * sizeof(Cown*)>();
       cowns[0] = (Cown*)r;
       cowns[1] = (Cown*)s;
       schedule_lambda(2, cowns, Receive(r, s));
-      alloc.dealloc<2 * sizeof(Cown*)>(cowns);
+      heap::dealloc<2 * sizeof(Cown*)>(cowns);
     }
     else
     {
@@ -140,8 +139,6 @@ int main(int argc, char** argv)
   auto& sched = Scheduler::get();
   sched.set_fair(true);
   sched.init(cores);
-
-  auto& alloc = ThreadAlloc::get();
 
   static std::vector<Sender*> sender_set;
   auto* receiver = new Receiver(sender_set, seed);

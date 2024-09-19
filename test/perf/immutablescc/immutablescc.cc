@@ -241,8 +241,6 @@ Object* make_horrible_cycles_two(size_t size)
 template<typename Make>
 void test_alloc_freeze_release(std::string ds, Make make, bool print)
 {
-  auto& alloc = ThreadAlloc::get();
-
 #ifdef CI_BUILD
   size_t max_index = 10;
 #else

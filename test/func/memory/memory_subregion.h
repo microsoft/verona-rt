@@ -38,8 +38,6 @@ namespace memory_subregion
     using C = C3<region_type>;
     using F = F3<region_type>;
 
-    auto& alloc = ThreadAlloc::get();
-
     if constexpr (region_type == RegionType::Rc)
     {
       auto* r = new F;
@@ -89,8 +87,6 @@ namespace memory_subregion
   {
     using C = C3<region_type>;
     using F = F3<region_type>;
-
-    auto& alloc = ThreadAlloc::get();
 
     if constexpr (region_type == RegionType::Rc)
     {
@@ -187,8 +183,6 @@ namespace memory_subregion
     using OTrace = O<RegionType::Trace>;
     using OArena = O<RegionType::Arena>;
 
-    auto& alloc = ThreadAlloc::get();
-
     // Start with a single region.
     auto* r = new OTrace;
     r->f1 = new (alloc, r) OTrace;
@@ -250,8 +244,6 @@ namespace memory_subregion
 
     // Subregion hanging off the entry object, but then we swap root.
     {
-      auto& alloc = ThreadAlloc::get();
-
       auto* oroot = new F;
       auto* nroot = new (alloc, oroot) C;
       oroot->c1 = nroot;
@@ -279,8 +271,6 @@ namespace memory_subregion
 
     // After swapping the root, the subregion now hangs off the entry object.
     {
-      auto& alloc = ThreadAlloc::get();
-
       auto* oroot = new F;
       auto* nroot = new (alloc, oroot) F;
       oroot->f1 = new (alloc, oroot) F;
@@ -308,8 +298,6 @@ namespace memory_subregion
 
     // Swap root for the subregion, and patch up parent region's pointer.
     {
-      auto& alloc = ThreadAlloc::get();
-
       auto* r = new F;
       r->c1 = new (alloc, r) C;
       r->f1 = new (alloc, r) F;
@@ -345,8 +333,6 @@ namespace memory_subregion
     using RegionClass = typename RegionType_to_class<region_type>::T;
     using C = C3<region_type>;
     using F = F3<region_type>;
-
-    auto& alloc = ThreadAlloc::get();
 
     // Create the first region, with some unreachable objects.
     auto* r1 = new C;
@@ -395,8 +381,6 @@ namespace memory_subregion
   void test_subregion_deep()
   {
     using F = F3<region_type>;
-
-    auto& alloc = ThreadAlloc::get();
 
     // Create the first region, with some unreachable objects.
     auto* r1 = new F;

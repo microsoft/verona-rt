@@ -145,8 +145,6 @@ int main(int argc, char** argv)
   auto duration = harness.opt.is<size_t>("--duration", 10'000);
 
   harness.run([senders, receivers, proxies, duration, &harness]() {
-    Alloc& alloc = ThreadAlloc::get();
-
     for (size_t r = 0; r < receivers; r++)
       receiver_set.push_back(new Receiver);
 
@@ -160,7 +158,6 @@ int main(int argc, char** argv)
     };
 
     harness.external_thread([=]() {
-      Alloc& alloc = ThreadAlloc::get();
       for (size_t i = 0; i < senders; i++)
       {
         if (proxy_chain.size() > 0)

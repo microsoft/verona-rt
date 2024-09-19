@@ -244,7 +244,6 @@ int main(int argc, char** argv)
                  << ", percent_mutlimessage: " << percent_multimessage
                  << std::endl;
 
-  auto& alloc = sn::ThreadAlloc::get();
 #ifdef USE_SYSTEMATIC_TESTING
   Logging::enable_logging();
   Systematic::set_seed(seed);
@@ -264,12 +263,12 @@ int main(int argc, char** argv)
     new Monitor(pinger_set, initial_pings, report_interval, report_count);
 
   all_cowns_count = pingers + 1;
-  all_cowns = (rt::Cown**)alloc.alloc(all_cowns_count * sizeof(rt::Cown*));
+  all_cowns = (rt::Cown**)heap::alloc(all_cowns_count * sizeof(rt::Cown*));
   memcpy(all_cowns, pinger_set.data(), pinger_set.size() * sizeof(rt::Cown*));
   all_cowns[pinger_set.size()] = monitor;
   schedule_lambda(all_cowns_count, all_cowns, ubench::Start(monitor));
 
   sched.run();
-  alloc.dealloc(all_cowns, all_cowns_count * sizeof(rt::Cown*));
+  heap::dealloc(all_cowns, all_cowns_count * sizeof(rt::Cown*));
   return 0;
 }

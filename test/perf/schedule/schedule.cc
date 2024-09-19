@@ -72,8 +72,6 @@ int main(int argc, char** argv)
   printf("\n");
   opt::Opt opt(argc, argv);
 
-  //  auto& alloc = sn::ThreadAlloc::get();
-
   const auto cores = opt.is<size_t>("--cores", 4);
   const auto cowns = (size_t)1 << opt.is<size_t>("--cowns", 8);
   global_array_size = (size_t)1 << opt.is<size_t>("--size", 22);

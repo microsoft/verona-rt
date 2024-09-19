@@ -256,8 +256,6 @@ namespace memory_gc
    **/
   void test_freeze()
   {
-    auto& alloc = ThreadAlloc::get();
-
     // Create and freeze an SCC.
     C* scc = new (RegionType::Trace) C;
     {
@@ -502,7 +500,6 @@ namespace memory_gc
   {
     Logging::cout() << "Additional roots test" << std::endl;
 
-    auto& alloc = ThreadAlloc::get();
     auto* o = new (RegionType::Trace) C;
     Logging::cout() << "Root" << o << std::endl;
     {

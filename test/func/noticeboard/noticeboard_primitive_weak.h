@@ -71,9 +71,6 @@ namespace noticeboard_primitive_weak
 
   void run_test()
   {
-    auto& alloc = ThreadAlloc::get();
-    (void)alloc;
-
     auto x_0 = 0;
     auto x_1 = 1;
 

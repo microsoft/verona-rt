@@ -167,7 +167,6 @@ namespace verona::rt
 #endif
       Logging::cout() << "Collecting cown " << this << Logging::endl;
 
-      Alloc& alloc = ThreadAlloc::get();
       ObjectStack dummy;
       // Run finaliser before releasing our data.
       // Sub-regions handled by code below.
