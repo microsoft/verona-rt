@@ -13,10 +13,8 @@ using namespace verona::rt;
 void test_bag_base()
 {
   using E = BagElem<uintptr_t, uintptr_t>;
-  using B = BagBase<E, Alloc>;
+  using B = BagBase<E>;
   {
-    auto& alloc = ThreadAlloc::get();
-
     B bag;
     for (auto entry : bag)
     {
@@ -24,21 +22,19 @@ void test_bag_base()
       check(false);
     }
 
-    auto item = bag.insert({nullptr, 123}, alloc);
+    auto item = bag.insert({nullptr, 123});
 
     // Check that iter is setup correctly when the index points to a hole.
-    auto item2 = bag.insert({nullptr, 456}, alloc);
+    auto item2 = bag.insert({nullptr, 456});
     bag.remove(item2);
 
     for (auto entry : bag)
     {
       check(entry == item);
     }
-    bag.dealloc(alloc);
+    bag.dealloc();
   }
   {
-    auto& alloc = ThreadAlloc::get();
-
     B bag;
 
     const int NUM_OBJECTS = 127;
@@ -47,7 +43,7 @@ void test_bag_base()
     // allocation blocks to track each object in the region.
     for (uintptr_t i = 0; i < NUM_OBJECTS; i++)
     {
-      bag.insert({nullptr, i}, alloc);
+      bag.insert({nullptr, i});
     }
 
     // Iterate through the bag and make sure that all the
@@ -93,20 +89,20 @@ void test_bag_base()
 
     // Check that the freelist is used to fill existing holes before bump
     // allocation.
-    auto idx1 = bag.insert({nullptr, 123}, alloc);
+    auto idx1 = bag.insert({nullptr, 123});
     check(removed.count((uintptr_t)idx1));
 
-    auto idx2 = bag.insert({nullptr, 456}, alloc);
+    auto idx2 = bag.insert({nullptr, 456});
     check(removed.count((uintptr_t)idx2));
 
-    auto idx3 = bag.insert({nullptr, 789}, alloc);
+    auto idx3 = bag.insert({nullptr, 789});
     check(removed.count((uintptr_t)idx3));
 
     // And that new allocations go back to bump allocation
-    auto idx4 = bag.insert({nullptr, 10}, alloc);
+    auto idx4 = bag.insert({nullptr, 10});
     check(!removed.count((uintptr_t)idx4));
 
-    bag.dealloc(alloc);
+    bag.dealloc();
   }
 }
 

@@ -3,11 +3,11 @@
 #pragma once
 
 #include <cassert>
-#include <snmalloc/snmalloc.h>
+#include "heap.h"
 
 namespace verona::rt
 {
-  template<class E, class Alloc>
+  template<class E>
   class BagBase
   {
     union MaybeElem
@@ -71,7 +71,7 @@ namespace verona::rt
     }
 
   public:
-    BagBase<E, Alloc>() : index(null_index), next_free(nullptr)
+    BagBase<E>() : index(null_index), next_free(nullptr)
     {
       static_assert(
         sizeof(*this) == sizeof(void*) * 2,
@@ -79,13 +79,13 @@ namespace verona::rt
     }
 
     /// Deallocate the linked blocks for this bag.
-    void dealloc(Alloc& alloc)
+    void dealloc()
     {
       auto local_block = get_block(index);
       while (local_block != &null_block)
       {
         auto prev = get_block(local_block->prev.hole_ptr);
-        alloc.template dealloc<sizeof(Block)>(local_block);
+        heap::template dealloc<sizeof(Block)>(local_block);
         local_block = prev;
       }
       index = null_index;
@@ -99,7 +99,7 @@ namespace verona::rt
     }
 
     /// Insert an element into the bag.
-    ALWAYSINLINE E* insert(E item, Alloc& alloc)
+    ALWAYSINLINE E* insert(E item)
     {
       if (next_free != nullptr)
       {
@@ -116,16 +116,16 @@ namespace verona::rt
         index->item = item;
         return &(index->item);
       }
-      return insert_slow(item, alloc);
+      return insert_slow(item);
     }
 
   private:
     /// Slow path for insert, performs an insert, when allocation is required.
-    E* insert_slow(E item, Alloc& alloc)
+    E* insert_slow(E item)
     {
       assert(is_last_block_elem(index));
 
-      Block* next = (Block*)alloc.template alloc<sizeof(Block)>();
+      Block* next = (Block*)heap::template alloc<sizeof(Block)>();
       assert(((uintptr_t)next) % alignof(Block) == 0);
       next->prev.hole_ptr = index;
       index = &(next->data[0]);
@@ -158,12 +158,12 @@ namespace verona::rt
       friend class BagBase;
 
     public:
-      iterator(BagBase<E, Alloc>* bag) : bag(bag)
+      iterator(BagBase<E>* bag) : bag(bag)
       {
         ptr = bag->next_non_empty(bag->index);
       }
 
-      iterator(BagBase<E, Alloc>* bag, MaybeElem* p) : bag(bag), ptr(p) {}
+      iterator(BagBase<E>* bag, MaybeElem* p) : bag(bag), ptr(p) {}
 
       iterator operator++()
       {
@@ -201,7 +201,7 @@ namespace verona::rt
       }
 
     private:
-      BagBase<E, Alloc>* bag;
+      BagBase<E>* bag;
       MaybeElem* ptr;
     };
 
@@ -237,16 +237,16 @@ namespace verona::rt
    * To maintain an internal freelist with no additional space requirements, the
    * item `T` must be at least 1 machine word in size.
    */
-  template<class T, class U, class Alloc>
-  class Bag : public BagBase<BagElem<T, U>, Alloc>
+  template<class T, class U>
+  class Bag : public BagBase<BagElem<T, U>>
   {
   public:
     using Elem = BagElem<T, U>;
-    using B = BagBase<Elem, Alloc>;
+    using B = BagBase<Elem>;
     using iterator = typename B::iterator;
 
   public:
-    Bag<T, U, Alloc>() : BagBase<Elem, Alloc>() {}
+    Bag<T, U>() : BagBase<Elem>() {}
   };
 
   template<class T>
@@ -262,16 +262,16 @@ namespace verona::rt
    * This is similar to the bag data structure with the key difference that each
    * element holds only a `T*`, without an additional field.
    */
-  template<class T, class Alloc>
-  class BagThin : public BagBase<BagThinElem<T>, Alloc>
+  template<class T>
+  class BagThin : public BagBase<BagThinElem<T>>
   {
   public:
     using Elem = BagThinElem<T>;
-    using B = BagBase<Elem, Alloc>;
+    using B = BagBase<Elem>;
     using iterator = typename B::iterator;
 
   public:
-    BagThin<T, Alloc>() : BagBase<Elem, Alloc>() {}
+    BagThin<T>() : BagBase<Elem>() {}
   };
 
 } // namespace verona::rt

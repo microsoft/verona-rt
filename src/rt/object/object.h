@@ -67,7 +67,7 @@ namespace verona::rt
   class Object;
   class RegionBase;
 
-  using RefCounts = Bag<Object, uintptr_t, Alloc>;
+  using RefCounts = Bag<Object, uintptr_t>;
   using RefCount = RefCounts::Elem;
 
   using ObjectStack = Stack<Object>;
