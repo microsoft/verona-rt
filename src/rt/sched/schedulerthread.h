@@ -55,7 +55,6 @@ namespace verona::rt
     LocalSync local_sync{};
 #endif
 
-    Alloc* alloc = nullptr;
     Core* victim = nullptr;
 
     /// Local work item to avoid overhead of synchronisation
@@ -158,7 +157,7 @@ namespace verona::rt
         }
       }
 
-      auto work = core->q.dequeue(*alloc);
+      auto work = core->q.dequeue();
       if (work != nullptr)
       {
         return_next_work();
@@ -194,7 +193,6 @@ namespace verona::rt
       startup(args...);
 
       Scheduler::local() = this;
-      alloc = &ThreadAlloc::get();
       assert(core != nullptr);
       victim = core->next;
       core->servicing_threads++;
@@ -220,7 +218,7 @@ namespace verona::rt
         {
           Logging::cout() << "Destroying core " << core->affinity
                           << Logging::endl;
-          core->q.destroy(*alloc);
+          core->q.destroy();
         }
       }
 
@@ -239,7 +237,7 @@ namespace verona::rt
       // Try to steal from the victim thread.
       if (victim != core)
       {
-        work = victim->q.dequeue(*alloc);
+        work = victim->q.dequeue();
 
         if (work != nullptr)
         {
@@ -265,7 +263,7 @@ namespace verona::rt
         yield();
 
         // Check if some other thread has pushed work on our queue.
-        work = core->q.dequeue(*alloc);
+        work = core->q.dequeue();
 
         if (work != nullptr)
           return work;
@@ -273,7 +271,7 @@ namespace verona::rt
         // Try to steal from the victim thread.
         if (victim != core)
         {
-          work = victim->q.dequeue(*alloc);
+          work = victim->q.dequeue();
 
           if (work != nullptr)
           {

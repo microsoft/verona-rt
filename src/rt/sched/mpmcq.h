@@ -102,7 +102,7 @@ namespace verona::rt
      * Take an element from the queue.
      * This may spuriosly fail and surrounding code should be prepared for that.
      */
-    T* dequeue(Alloc& alloc)
+    T* dequeue()
     {
       T* next;
       T* fnt;
@@ -141,13 +141,13 @@ namespace verona::rt
 
     // The callers are expected to guarantee no one is attempting to access the
     // queue concurrently.
-    void destroy(Alloc& alloc)
+    void destroy()
     {
       assert(front.peek() == back);
       auto b = back.load();
       assert(b->next_in_queue == nullptr);
 
-      alloc.dealloc(b);
+      heap::dealloc(b);
     }
 
     /**
