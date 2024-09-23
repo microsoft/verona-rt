@@ -34,6 +34,13 @@ jobs:
             cmake-flags: "-G Ninja -DSANITIZER=address,undefined -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
             dependencies: "sudo apt install ninja-build"
 
+          - variant: "Sanitizer with replay"
+            platform: "ubuntu-latest"
+            build-type: "Release"
+            cmake-flags: "-G Ninja -DUSE_REPLAY_ALLOCATOR=On -DSANITIZER=address,undefined -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
+            dependencies: "sudo apt install ninja-build"
+
+
           - platform: "windows-2019"
             build-type: "Debug"
             # Exclude perf tests in Debug on Windows as they take too long.

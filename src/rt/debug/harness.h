@@ -146,6 +146,7 @@ public:
       Scheduler& sched = Scheduler::get();
 #ifdef USE_SYSTEMATIC_TESTING
       Systematic::set_seed(seed);
+      heap::set_seed(seed);
       if (seed % 2 == 1)
       {
         sched.set_fair(true);
