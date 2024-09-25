@@ -32,7 +32,7 @@ namespace verona::rt
   {
   private:
     friend T;
-    friend void verona::rt::yield();
+    friend bool verona::rt::yield();
 
     static constexpr uint64_t TSC_PAUSE_SLOP = 1'000'000;
     static constexpr uint64_t TSC_UNPAUSE_SLOP = TSC_PAUSE_SLOP / 2;
@@ -185,11 +185,11 @@ namespace verona::rt
       return nonlocal;
     }
 
-    static void schedule(Work* w)
+    static void schedule(Work* w, bool fifo = true)
     {
       auto* t = local();
 
-      if (t != nullptr)
+      if (t != nullptr && fifo)
       {
         t->schedule_fifo(w);
         return;

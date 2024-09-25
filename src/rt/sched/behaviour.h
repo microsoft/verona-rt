@@ -101,6 +101,8 @@ namespace verona::rt
         auto* s = new (&slots[i]) Slot(requests[i].cown());
         if (requests[i].is_move())
           s->set_move();
+        if (requests[i].is_read())
+          s->set_read_only();
       }
 
       return body;

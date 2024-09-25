@@ -47,26 +47,55 @@ namespace verona::rt
 
   struct ReadRefCount
   {
+    enum STATUS
+    {
+      LAST_READER,
+      LAST_READER_WAITING_WRITER,
+      NOT_LAST
+    };
+
+  private:
+    /**
+     * Even numbers 2n, signify n readers are reading the cown.
+     * Odd numbers 2n+1, signify n readers are reading the cown, and there is a
+     * writer waiting.
+     */
     std::atomic<size_t> count{0};
 
-    void add_read()
+  public:
+    // true means first reader is added, false otherwise
+    bool add_read(int readers = 1)
     {
-      count.fetch_add(2);
+      // Once a writer is waiting, no new readers can be added.
+      assert(count % 2 == 0);
+      return count.fetch_add(readers * 2, std::memory_order_release) == 0;
     }
 
-    // true means last reader and writer is waiting, false otherwise
-    bool release_read()
+    // Returns whether this is the last reader, and if there is a writer
+    // waiting.
+    STATUS release_read()
     {
-      if (count.fetch_sub(2) == 3)
-      {
-        Systematic::yield();
-        assert(count.load() == 1);
-        count.store(0, std::memory_order_relaxed);
-        return true;
-      }
-      return false;
+      auto old = count.fetch_sub(2, std::memory_order_acquire);
+      if (old > 3)
+        return NOT_LAST;
+      if (old == 2)
+        return LAST_READER;
+
+      assert(old == 3);
+      Systematic::yield();
+      assert(count.load() == 1);
+      count.store(0, std::memory_order_relaxed);
+      return LAST_READER_WAITING_WRITER;
     }
 
+    // This function should be not be called in parellel with itself, or
+    // add_read.
+    //
+    // The function is used to check if it is okay to proceed with a write, or
+    // if the last reader should initiate this write. The function returns
+    // * True means that there are no readers currently accessing
+    // * False means that there are readers, but the last reader is guaranteed
+    // to see LAST_READER_WAITING_WRITER.
     bool try_write()
     {
       if (count.load(std::memory_order_acquire) == 0)
@@ -79,14 +108,20 @@ namespace verona::rt
       // if in the time between reading and writing the ref count, it
       // became zero, we can now process the write, so clear the flag
       // and continue
-      count.fetch_sub(1);
+      count.store(0, std::memory_order_release);
       Systematic::yield();
       assert(count.load() == 0);
       return true;
     }
+
+    size_t get_count()
+    {
+      return count.load(std::memory_order_acquire);
+    }
   };
 
   struct Slot;
+  struct BehaviourCore;
 
   class Cown : public Shared
   {
@@ -103,7 +138,15 @@ namespace verona::rt
     template<typename T>
     friend class Noticeboard;
 
+    /**
+     * MCS Queue having both readers and writers
+     */
     std::atomic<Slot*> last_slot{nullptr};
+
+    /**
+     * Next writer in the queue
+     */
+    std::atomic<BehaviourCore*> next_writer{nullptr};
 
     /*
      * Cown's read ref count.
@@ -113,6 +156,15 @@ namespace verona::rt
     ReadRefCount read_ref_count;
 
   public:
+    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Cown& c)
+    {
+      return os << " Cown: " << &c
+                << " Last slot: " << c.last_slot.load(std::memory_order_relaxed)
+                << " Next writer: "
+                << c.next_writer.load(std::memory_order_relaxed)
+                << " Reader count: " << c.read_ref_count.get_count() << " ";
+    }
+
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
     std::vector<BaseNoticeboard*> noticeboards;
 
