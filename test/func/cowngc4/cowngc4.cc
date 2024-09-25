@@ -174,8 +174,7 @@ struct RCown : public VCown<RCown<region_type>>
       // Construct a CCown and give it to the last region.
       auto c = new CCown(shared_child);
       Logging::cout() << "  child " << c << std::endl;
-      RegionArena::insert<TransferOwnership::YesTransfer>(
-        r->f1->f2->f2, c);
+      RegionArena::insert<TransferOwnership::YesTransfer>(r->f1->f2->f2, c);
       Cown::acquire(shared_child); // acquire on behalf of child CCown
 
       reg_with_sub = r;

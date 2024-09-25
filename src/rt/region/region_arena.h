@@ -307,7 +307,7 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* alloc( Object* in, const Descriptor* desc)
+    static Object* alloc(Object* in, const Descriptor* desc)
     {
       RegionArena* reg = get(in);
       Object* o = reg->alloc_internal<size>(desc);

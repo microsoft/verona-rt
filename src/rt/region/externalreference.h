@@ -59,8 +59,7 @@ namespace verona::rt
         make_scc();
 
         incref();
-        ert.load(std::memory_order_relaxed)
-          ->insert(o, this);
+        ert.load(std::memory_order_relaxed)->insert(o, this);
 
         o->set_has_ext_ref();
       }
@@ -81,8 +80,7 @@ namespace verona::rt
 
         // External references are not allocated in any regions, but have
         // independent lifetime protected by reference counting.
-        void* header_obj =
-          heap::alloc<vsizeof<ExternalRef>>();
+        void* header_obj = heap::alloc<vsizeof<ExternalRef>>();
         Object* obj = Object::register_object(header_obj, desc());
         return new (obj) ExternalRef(ert, o);
       }
@@ -113,9 +111,7 @@ namespace verona::rt
     ExternalMap* external_map;
 
   public:
-    ExternalReferenceTable()
-    : external_map(ExternalMap::create())
-    {}
+    ExternalReferenceTable() : external_map(ExternalMap::create()) {}
 
     void dealloc()
     {
@@ -140,8 +136,7 @@ namespace verona::rt
 
     void insert(Object* object, ExternalRef* ext_ref)
     {
-      auto unique =
-        external_map->insert(std::make_pair(object, ext_ref)).first;
+      auto unique = external_map->insert(std::make_pair(object, ext_ref)).first;
       assert(unique);
       UNUSED(unique);
     }

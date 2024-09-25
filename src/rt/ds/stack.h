@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include <cassert>
 #include "heap.h"
+
+#include <cassert>
 
 namespace verona::rt
 {
@@ -31,6 +32,7 @@ namespace verona::rt
   class StackThin
   {
     static inline HeapAlloc default_alloc{};
+
   private:
     static constexpr size_t POINTER_COUNT = 64;
     static_assert(

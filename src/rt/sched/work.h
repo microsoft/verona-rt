@@ -115,8 +115,7 @@ namespace verona::rt
     template<typename T>
     static Work* make(T&& t_param)
     {
-      void* base =
-        heap::alloc<sizeof(Work) + sizeof(T)>();
+      void* base = heap::alloc<sizeof(Work) + sizeof(T)>();
       T* t_base = snmalloc::pointer_offset<T>(base, sizeof(Work));
       new (t_base) T(std::forward<T>(t_param));
       return new (base) Work(&invoke<T>);

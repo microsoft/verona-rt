@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include <cassert>
 #include "heap.h"
+
+#include <cassert>
 
 namespace verona::rt
 {

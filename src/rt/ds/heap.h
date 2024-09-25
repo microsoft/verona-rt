@@ -26,7 +26,6 @@ namespace verona::rt::heap
     return snmalloc::ThreadAlloc::get().alloc<size, snmalloc::YesZero>();
   }
 
-
   inline void dealloc(void* ptr)
   {
     return snmalloc::ThreadAlloc::get().dealloc(ptr);
@@ -37,7 +36,8 @@ namespace verona::rt::heap
     return snmalloc::ThreadAlloc::get().dealloc(ptr, size);
   }
 
-  template <size_t size> inline void dealloc(void* ptr)
+  template<size_t size>
+  inline void dealloc(void* ptr)
   {
     return snmalloc::ThreadAlloc::get().dealloc<size>(ptr);
   }

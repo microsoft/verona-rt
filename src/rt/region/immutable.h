@@ -96,8 +96,8 @@ namespace verona::rt
       o->finalise(nullptr, dummy);
     }
 
-    static inline void scc_classify(
-      Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
+    static inline void
+    scc_classify(Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
     {
       Object::RegionMD c;
       Object* r = w->root_and_class(c);

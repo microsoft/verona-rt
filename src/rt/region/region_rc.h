@@ -318,8 +318,7 @@ namespace verona::rt
     }
 
   private:
-    void release_cycles(
-      Object* o, LinkedObjectStack& gc, ObjectStack& collect)
+    void release_cycles(Object* o, LinkedObjectStack& gc, ObjectStack& collect)
     {
       ObjectStack dfs;
       while (!lins_stack.empty())
@@ -377,8 +376,7 @@ namespace verona::rt
      * stack" for their liveness to be confirmed later on. This is a performance
      * optimisation that can result in fewer passes over the graph.
      **/
-    static void
-    mark_red(Object* o, Object* in, ObjectStack& jump_stack)
+    static void mark_red(Object* o, Object* in, ObjectStack& jump_stack)
     {
       if (!o->is_rc_candidate())
       {
@@ -442,8 +440,7 @@ namespace verona::rt
       }
     }
 
-    static void
-    scan(Object* o, RegionRc* reg, ObjectStack& jump_stack)
+    static void scan(Object* o, RegionRc* reg, ObjectStack& jump_stack)
     {
       // If the RC is positive after all interior pointers in this subgraph
       // have been decrefed, then |o| is rooted by *at least one* live

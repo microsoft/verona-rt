@@ -504,8 +504,7 @@ namespace verona::rt
     }
 
     template<RingKind ring, SweepAll sweep_all>
-    void sweep_ring(
-      Object* o, RingKind primary_ring, ObjectStack& collect)
+    void sweep_ring(Object* o, RingKind primary_ring, ObjectStack& collect)
     {
       Object* prev = this;
       Object* p = ring == primary_ring ? get_next() : next_not_root;
