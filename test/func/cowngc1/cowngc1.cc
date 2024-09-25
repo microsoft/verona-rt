@@ -1,8 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include <debug/harness.h>
+#include <debug/testprng.h>
 #include <random>
-#include <test/xoroshiro.h>
 
 /**
  * This tests the cown leak detector.
@@ -40,40 +40,6 @@
  * Second test:
  * Check that the LD runs even if no work is scheduled.
  **/
-
-struct PRNG
-{
-#ifdef USE_SYSTEMATIC_TESTING
-  // Use xoroshiro for systematic testing, because it's simple and
-  // and deterministic across platforms.
-  xoroshiro::p128r64 rand;
-#else
-  // We don't mind data races for our PRNG, because concurrent testing means
-  // our results will already be nondeterministic. However, data races may
-  // cause xoroshiro to abort.
-  std::mt19937_64 rand;
-#endif
-
-  PRNG(size_t seed) : rand(seed) {}
-
-  uint64_t next()
-  {
-#ifdef USE_SYSTEMATIC_TESTING
-    return rand.next();
-#else
-    return rand();
-#endif
-  }
-
-  void seed(size_t seed)
-  {
-#ifdef USE_SYSTEMATIC_TESTING
-    return rand.set_state(seed);
-#else
-    return rand.seed(seed);
-#endif
-  }
-};
 
 static constexpr uint64_t others_count = 3;
 
@@ -261,8 +227,8 @@ struct Pong
 struct Ping
 {
   RCown* rcown;
-  PRNG* rand;
-  Ping(RCown* rcown, PRNG* rand) : rcown(rcown), rand(rand) {}
+  TestPRNG* rand;
+  Ping(RCown* rcown, TestPRNG* rand) : rcown(rcown), rand(rand) {}
 
   void operator()()
   {
@@ -372,7 +338,7 @@ void test_cown_gc(
   uint64_t forward_count,
   size_t ring_size,
   SystematicTestHarness* h,
-  PRNG* rand)
+  TestPRNG* rand)
 {
   rcown_first = nullptr;
   auto a = new RCown(ring_size, forward_count);
@@ -389,7 +355,7 @@ void test_cown_gc_before_sched()
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
-  PRNG rand(harness.seed_lower);
+  TestPRNG rand(harness.seed_lower);
 
   size_t ring = harness.opt.is<size_t>("--ring", 10);
   uint64_t forward = harness.opt.is<uint64_t>("--forward", 10);
