@@ -14,7 +14,6 @@
 
 #include "debug/log.h"
 #include "test/opt.h"
-#include "test/xoroshiro.h"
 #include "verona.h"
 
 #include <chrono>
@@ -82,14 +81,11 @@ struct Sender : public VCown<Sender>
   timer::time_point start = timer::now();
   timer::duration duration;
   std::vector<Receiver*>& receivers;
-  xoroshiro::p128r32 rng;
+  PRNG<> rng;
 
   Sender(
-    timer::duration duration_,
-    std::vector<Receiver*>& receivers_,
-    size_t seed1,
-    size_t seed2)
-  : duration(duration_), receivers(receivers_), rng(seed1, seed2)
+    timer::duration duration_, std::vector<Receiver*>& receivers_, size_t seed1)
+  : duration(duration_), receivers(receivers_), rng(seed1)
   {}
 
   void trace(ObjectStack& st) const
@@ -157,14 +153,14 @@ int main(int argc, char** argv)
   for (size_t i = 0; i < receivers; i++)
     receiver_set.push_back(new Receiver);
 
-  xoroshiro::p128r32 rng(seed);
+  verona::rt::PRNG<> rng(seed);
   for (size_t i = 0; i < senders; i++)
   {
     for (auto* r : receiver_set)
       Cown::acquire(r);
 
-    auto* s = new Sender(
-      std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
+    auto* s =
+      new Sender(std::chrono::milliseconds(duration), receiver_set, rng.next());
     schedule_lambda<YesTransfer>(s, Send(s));
   }
 

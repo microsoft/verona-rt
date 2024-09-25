@@ -144,8 +144,8 @@ void test_dining(
     Logging::cout() << "Fork " << i << " " << f << std::endl;
   }
 
-  verona::Scramble scrambler;
-  xoroshiro::p128r32 rand(h->current_seed());
+  verona::rt::Scramble scrambler;
+  verona::rt::PRNG<> rand{h->current_seed()};
 
   for (size_t i = 0; i < philosophers; i++)
   {

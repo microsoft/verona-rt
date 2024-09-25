@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include <debug/harness.h>
-#include <test/xoroshiro.h>
 /**
  * This example is design to test a long chain of cowns being collected.
  **/

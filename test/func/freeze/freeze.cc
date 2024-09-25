@@ -1,7 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include "debug/harness.h"
-#include "test/xoroshiro.h"
+#include "ds/prng.h"
 
 #include <vector>
 #include <verona.h>
@@ -393,7 +393,7 @@ void test_random(size_t seed = 1, size_t max_edges = 128)
   heap::debug_check_empty();
   size_t id = 0;
 
-  xoroshiro::p128r32 r(seed);
+  PRNG<> r(seed);
   Symbolic* root = new (RegionType::Trace) Symbolic;
 #ifndef NDEBUG
   bool* reach = new bool[max_edges * max_edges];

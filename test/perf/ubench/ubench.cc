@@ -18,7 +18,6 @@
 
 #include "debug/log.h"
 #include "test/opt.h"
-#include "test/xoroshiro.h"
 #include "verona.h"
 
 #include <chrono>
@@ -37,7 +36,7 @@ namespace ubench
   struct Pinger : public rt::VCown<Pinger>
   {
     vector<Pinger*>& pingers;
-    xoroshiro::p128r32 rng;
+    rt::PRNG<> rng;
     size_t select_mod = 0;
     bool running = false;
     size_t count = 0;

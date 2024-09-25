@@ -3,8 +3,8 @@
 #include "ds/hashmap.h"
 
 #include "debug/harness.h"
+#include "ds/prng.h"
 #include "test/opt.h"
-#include "test/xoroshiro.h"
 #include "verona.h"
 
 #include <unordered_map>
@@ -64,7 +64,7 @@ bool test(size_t seed)
   ObjectMap<std::pair<Key*, int32_t>> map;
   std::unordered_map<Key*, int32_t> model;
 
-  xoroshiro::p128r64 rng{seed};
+  verona::rt::PRNG<> rng{seed};
   std::stringstream err;
 
   map.debug_layout(err) << "\n";
@@ -102,7 +102,7 @@ bool test(size_t seed)
       return false;
     }
 
-    if ((rng.next() % 10) == 0)
+    if ((rng.next(10)) == 0)
     {
       err << "update " << key << "\n";
       entry.second = -entry.second;
@@ -121,7 +121,7 @@ bool test(size_t seed)
       }
     }
 
-    if ((rng.next() % 10) == 0)
+    if ((rng.next(10)) == 0)
     {
       err << "erase " << key << "\n";
       model.erase(key);
