@@ -89,8 +89,8 @@ namespace verona::rt
      * Next slot in the MCS Queue
      *
      * Bit 0 - Possible values:
-     *          1 - Current slot active
-     *          0 - Current slot blocked
+     *          1 - Current slot read available
+     *          0 - Current slot read not available
      *
      * Bit 1 - Possible values:
      *          0 - Next slot Writer
@@ -102,13 +102,17 @@ namespace verona::rt
      *
      * Assumption - Slots are allocated at 4 byte boundary. Last 2 bits are
      * zero.
+     *
+     * The read available status allows that a newly added reader can
+     * immediately be scheduled if the slot it is following has this
+     * status.
      */
     std::atomic<uintptr_t> status;
 
-    static constexpr uintptr_t STATUS_SLOT_ACTIVE_FLAG = 0x1;
+    static constexpr uintptr_t STATUS_SLOT_READ_AVAILABLE_FLAG = 0x1;
     static constexpr uintptr_t STATUS_NEXT_SLOT_READER_FLAG = 0x2;
     static constexpr uintptr_t STATUS_NEXT_SLOT_MASK =
-      ~(STATUS_SLOT_ACTIVE_FLAG | STATUS_NEXT_SLOT_READER_FLAG);
+      ~(STATUS_SLOT_READ_AVAILABLE_FLAG | STATUS_NEXT_SLOT_READER_FLAG);
 
     /**
      * Points to the behaviour associated with this slot.
@@ -177,29 +181,29 @@ namespace verona::rt
     }
 
     /**
-     * Mark the reader slot as active i.e. the behaviour is scheduled.
+     * Mark the reader slot as read available i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
-     * Returns true if the next is set before active, and contains a reader
+     * Returns true if the next is set before read available, and contains a reader
      */
-    bool set_active_is_next_reader()
+    bool set_read_available_is_next_reader()
     {
       assert(is_read_only());
       yield();
       uintptr_t next =
-        status.fetch_add(STATUS_SLOT_ACTIVE_FLAG, std::memory_order_acq_rel);
+        status.fetch_add(STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_acq_rel);
       return ((next & STATUS_NEXT_SLOT_READER_FLAG) != 0);
     }
 
     /**
-     * Mark the reader slot as active i.e. the behaviour is scheduled.
+     * Mark the reader slot as read available i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
      */
-    void set_active()
+    void set_read_available()
     {
       assert(is_read_only());
       assert(status == 0);
       yield();
-      status.store(STATUS_SLOT_ACTIVE_FLAG, std::memory_order_release);
+      status.store(STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_release);
     }
 
     /**
@@ -245,7 +249,7 @@ namespace verona::rt
      */
     bool set_next_slot_reader(Slot* n)
     {
-      // Should only be called when neither the active nor reader bit have been
+      // Should only be called when neither the read-available nor reader bit have been
       // set.
       assert(((uintptr_t)n & ~STATUS_NEXT_SLOT_MASK) == 0);
       assert(no_successor());
@@ -270,7 +274,7 @@ namespace verona::rt
                       << " new_status_val: " << new_status_val << Logging::endl;
 
       return (
-        (old_status_val & STATUS_SLOT_ACTIVE_FLAG) != STATUS_SLOT_ACTIVE_FLAG);
+        (old_status_val & STATUS_SLOT_READ_AVAILABLE_FLAG) != STATUS_SLOT_READ_AVAILABLE_FLAG);
     }
 
     /**
@@ -290,7 +294,7 @@ namespace verona::rt
      */
     void set_next_slot_writer(BehaviourCore* b)
     {
-      // Requires that neither the READONLY or ACTIVE bits are set.
+      // Requires that neither the READONLY or read-available bits are set.
       assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
       status.store(
         status.load(std::memory_order_acquire) | ((uintptr_t)b),
@@ -367,9 +371,9 @@ namespace verona::rt
             0)
         << " Is_reader bit: "
         << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
-        << " Is_Active: "
+        << " Is_read_available: "
         << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_SLOT_ACTIVE_FLAG) != 0)
+             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
         << " Next pointer: "
         << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
         << " Is_next_reader: "
@@ -807,7 +811,7 @@ namespace verona::rt
             Logging::cout() << "Reader at head of queue and got the cown "
                             << *curr_slot << Logging::endl;
             yield();
-            curr_slot->set_active();
+            curr_slot->set_read_available();
             ec[std::get<0>(indexes[first_chain_index])]++;
             yield();
             acquire_with_transfer(cown, transfer_count, 1 + first_reader);
@@ -866,7 +870,7 @@ namespace verona::rt
           Logging::cout() << " Reader got the cown " << *curr_slot
                           << Logging::endl;
           yield();
-          curr_slot->set_active();
+          curr_slot->set_read_available();
           ec[std::get<0>(indexes[first_chain_index])]++;
           if (first_reader)
           {
@@ -1095,7 +1099,7 @@ namespace verona::rt
     while (true)
     {
       reader_queue.push_back(curr_slot);
-      if (!curr_slot->set_active_is_next_reader())
+      if (!curr_slot->set_read_available_is_next_reader())
         break;
       yield();
       curr_slot = curr_slot->next_slot();
