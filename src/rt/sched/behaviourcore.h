@@ -183,14 +183,15 @@ namespace verona::rt
     /**
      * Mark the reader slot as read available i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
-     * Returns true if the next is set before read available, and contains a reader
+     * Returns true if the next is set before read available, and contains a
+     * reader
      */
     bool set_read_available_is_next_reader()
     {
       assert(is_read_only());
       yield();
-      uintptr_t next =
-        status.fetch_add(STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_acq_rel);
+      uintptr_t next = status.fetch_add(
+        STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_acq_rel);
       return ((next & STATUS_NEXT_SLOT_READER_FLAG) != 0);
     }
 
@@ -249,8 +250,8 @@ namespace verona::rt
      */
     bool set_next_slot_reader(Slot* n)
     {
-      // Should only be called when neither the read-available nor reader bit have been
-      // set.
+      // Should only be called when neither the read-available nor reader bit
+      // have been set.
       assert(((uintptr_t)n & ~STATUS_NEXT_SLOT_MASK) == 0);
       assert(no_successor());
 
@@ -274,7 +275,8 @@ namespace verona::rt
                       << " new_status_val: " << new_status_val << Logging::endl;
 
       return (
-        (old_status_val & STATUS_SLOT_READ_AVAILABLE_FLAG) != STATUS_SLOT_READ_AVAILABLE_FLAG);
+        (old_status_val & STATUS_SLOT_READ_AVAILABLE_FLAG) !=
+        STATUS_SLOT_READ_AVAILABLE_FLAG);
     }
 
     /**
