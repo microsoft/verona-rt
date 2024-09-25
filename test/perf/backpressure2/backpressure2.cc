@@ -48,7 +48,7 @@ struct Receive
   ~Receive()
   {
     if (receivers)
-      ThreadAlloc::get().dealloc(receivers, receiver_count * sizeof(Receiver*));
+      heap::dealloc(receivers, receiver_count * sizeof(Receiver*));
   }
 
   void trace(ObjectStack& st) const
@@ -111,7 +111,7 @@ struct Send
     const size_t receiver_count = (s->rng.next() % max_receivers) + 1;
 
     auto** receivers =
-      (Receiver**)ThreadAlloc::get().alloc(receiver_count * sizeof(Receiver*));
+      (Receiver**)heap::alloc(receiver_count * sizeof(Receiver*));
 
     for (size_t i = 0; i < receiver_count;)
     {
@@ -153,11 +153,9 @@ int main(int argc, char** argv)
   sched.set_fair(true);
   sched.init(cores);
 
-  auto& alloc = ThreadAlloc::get();
-
   static std::vector<Receiver*> receiver_set;
   for (size_t i = 0; i < receivers; i++)
-    receiver_set.push_back(new (alloc) Receiver);
+    receiver_set.push_back(new Receiver);
 
   xoroshiro::p128r32 rng(seed);
   for (size_t i = 0; i < senders; i++)
@@ -165,13 +163,13 @@ int main(int argc, char** argv)
     for (auto* r : receiver_set)
       Cown::acquire(r);
 
-    auto* s = new (alloc) Sender(
+    auto* s = new Sender(
       std::chrono::milliseconds(duration), receiver_set, seed, rng.next());
     schedule_lambda<YesTransfer>(s, Send(s));
   }
 
   for (auto* r : receiver_set)
-    Cown::release(alloc, r);
+    Cown::release(r);
 
   sched.run();
 }

@@ -277,14 +277,14 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* create(Alloc& alloc, const Descriptor* desc)
+    static Object* create(const Descriptor* desc)
     {
       void* p = Object::register_object(
-        alloc.alloc<vsizeof<RegionArena>>(), RegionArena::desc());
+        heap::alloc<vsizeof<RegionArena>>(), RegionArena::desc());
       RegionArena* reg = new (p) RegionArena();
 
       // o might be allocated in the arena or the large object ring.
-      Object* o = reg->alloc_internal<size>(alloc, desc);
+      Object* o = reg->alloc_internal<size>(desc);
       assert(Object::debug_is_aligned(o));
 
       o->init_iso();
@@ -307,10 +307,10 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* alloc(Alloc& alloc, Object* in, const Descriptor* desc)
+    static Object* alloc(Object* in, const Descriptor* desc)
     {
       RegionArena* reg = get(in);
-      Object* o = reg->alloc_internal<size>(alloc, desc);
+      Object* o = reg->alloc_internal<size>(desc);
       assert(Object::debug_is_aligned(o));
       return o;
     }
@@ -327,14 +327,14 @@ namespace verona::rt
      * the caller to cast?
      **/
     template<TransferOwnership transfer = NoTransfer>
-    static void insert(Alloc& alloc, Object* into, Object* o)
+    static void insert(Object* into, Object* o)
     {
       assert(o->debug_is_immutable() || o->debug_is_shared());
       RegionArena* reg = get(into);
 
       Object::RegionMD c;
       o = o->root_and_class(c);
-      reg->RememberedSet::insert<transfer>(alloc, o);
+      reg->RememberedSet::insert<transfer>(o);
     }
 
     /**
@@ -343,7 +343,7 @@ namespace verona::rt
      *
      * TODO(region): how to handle merging different types of regions?
      **/
-    static void merge(Alloc& alloc, Object* into, Object* o)
+    static void merge(Object* into, Object* o)
     {
       assert(o->debug_is_iso());
       RegionArena* reg = get(into);
@@ -362,11 +362,11 @@ namespace verona::rt
         o->init_next(nullptr);
 
       // Merge the ExternalRefTable and RememberedSet.
-      reg->ExternalReferenceTable::merge(alloc, other);
-      reg->RememberedSet::merge(alloc, other);
+      reg->ExternalReferenceTable::merge(other);
+      reg->RememberedSet::merge(other);
 
       // Now we can deallocate the other region's metadata object.
-      other->dealloc(alloc);
+      other->dealloc();
     }
 
     /**
@@ -419,7 +419,7 @@ namespace verona::rt
      * e.g. first fit or best fit.
      **/
     template<size_t size = 0>
-    Object* alloc_internal(Alloc& alloc, const Descriptor* desc)
+    Object* alloc_internal(const Descriptor* desc)
     {
       assert((size == 0) || (desc->size == size));
 
@@ -429,9 +429,9 @@ namespace verona::rt
         // Allocate object.
         void* p = nullptr;
         if constexpr (size == 0)
-          p = alloc.alloc(desc->size);
+          p = heap::alloc(desc->size);
         else
-          p = alloc.alloc<size>();
+          p = heap::alloc<size>();
 
         auto o = Object::register_object(p, desc);
 
@@ -445,7 +445,7 @@ namespace verona::rt
       // allocate a new arena.
       if (last_arena == nullptr || last_arena->free_space() < sz)
       {
-        void* p = alloc.alloc<sizeof(Arena)>();
+        void* p = heap::alloc<sizeof(Arena)>();
         Arena* a = new (p) Arena();
 
         if (last_arena == nullptr)
@@ -544,7 +544,7 @@ namespace verona::rt
      *
      * Note: this does not release subregions. Use Region::release instead.
      **/
-    void release_internal(Alloc& alloc, Object* o, ObjectStack& collect)
+    void release_internal(Object* o, ObjectStack& collect)
     {
       assert(o->debug_is_iso());
       // Don't trace or finalise o, we'll do it when looping over the large
@@ -576,7 +576,7 @@ namespace verona::rt
       while (p != this)
       {
         Object* q = p->get_next_any_mark();
-        p->dealloc(alloc);
+        p->dealloc();
         p = q;
       }
 
@@ -585,16 +585,16 @@ namespace verona::rt
       while (arena != nullptr)
       {
         Arena* q = arena->next;
-        alloc.dealloc<sizeof(Arena)>(arena);
+        heap::dealloc<sizeof(Arena)>(arena);
         arena = q;
       }
 
       // Sweep the RememberedSet, to ensure destructors are called.
-      RememberedSet::sweep(alloc);
+      RememberedSet::sweep();
 
       // Deallocate RegionArena
       // Don't need to deallocate `o`, since it was part of the arena or ring.
-      dealloc(alloc);
+      dealloc();
     }
 
   public:

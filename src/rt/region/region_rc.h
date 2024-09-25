@@ -40,7 +40,7 @@ namespace verona::rt
 
     // Objects which may be in a cycle, so will be checked by gc_cycles.
     // FIXME: Use two stacks to simulate per-block queue based behaviour.
-    StackThin<Object, Alloc> lins_stack;
+    StackThin<Object> lins_stack;
 
     // Memory usage in the region.
     size_t current_memory_used = 0;
@@ -85,17 +85,17 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* create(Alloc& alloc, const Descriptor* desc)
+    static Object* create(const Descriptor* desc)
     {
-      void* p = alloc.alloc<vsizeof<RegionRc>>();
+      void* p = heap::alloc<vsizeof<RegionRc>>();
       Object* o = Object::register_object(p, RegionRc::desc());
       auto reg = new (o) RegionRc();
       reg->use_memory(desc->size);
 
       if constexpr (size == 0)
-        p = alloc.alloc(desc->size);
+        p = heap::alloc(desc->size);
       else
-        p = alloc.alloc<size>();
+        p = heap::alloc<size>();
       o = Object::register_object(p, desc);
 
       reg->region_size += 1;
@@ -117,16 +117,16 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* alloc(Alloc& alloc, RegionRc* reg, const Descriptor* desc)
+    static Object* alloc(RegionRc* reg, const Descriptor* desc)
     {
       assert((size == 0) || (size == desc->size));
       assert(reg != nullptr);
 
       void* p = nullptr;
       if constexpr (size == 0)
-        p = alloc.alloc(desc->size);
+        p = heap::alloc(desc->size);
       else
-        p = alloc.alloc<size>();
+        p = heap::alloc<size>();
 
       auto o = (Object*)Object::register_object(p, desc);
       assert(Object::debug_is_aligned(o));
@@ -166,18 +166,18 @@ namespace verona::rt
     /// Decrements the reference count of `o`. The object `in` is the entry
     /// point to the region that contains `o`. If `decref` is called on an
     /// object with only one reference, then the object will be deallocated.
-    static bool decref(Alloc& alloc, Object* o, RegionRc* reg)
+    static bool decref(Object* o, RegionRc* reg)
     {
       if (decref_inner(o))
       {
-        dealloc_object(alloc, o, reg);
+        dealloc_object(o, reg);
         return true;
       }
 
       if (o->get_rc_colour() != RcColour::BLACK)
       {
         o->set_rc_colour(RcColour::BLACK);
-        reg->lins_stack.push(o, alloc);
+        reg->lins_stack.push(o);
       }
       return false;
     }
@@ -221,19 +221,19 @@ namespace verona::rt
      *  3. o's subgraph is re-traced a final time, and any remaining red objects
      *  are deallocated.
      **/
-    static void gc_cycles(Alloc& alloc, Object* o, RegionRc* reg)
+    static void gc_cycles(Object* o, RegionRc* reg)
     {
       assert(o->get_class() == RegionMD::OPEN_ISO);
       UNUSED(o);
-      ObjectStack jump_stack(alloc);
+      ObjectStack jump_stack;
       while (!reg->lins_stack.empty())
       {
-        auto p = reg->lins_stack.pop(alloc);
+        auto p = reg->lins_stack.pop();
 
         if (p->get_rc_colour() == RcColour::BLACK)
         {
-          mark_red(alloc, p, reg, jump_stack);
-          scan(alloc, p, reg, jump_stack);
+          mark_red(p, reg, jump_stack);
+          scan(p, reg, jump_stack);
         }
       }
     }
@@ -244,7 +244,7 @@ namespace verona::rt
      *
      * Note: this does not release subregions. Use Region::release instead.
      **/
-    void release_internal(Alloc& alloc, Object* o, ObjectStack& collect)
+    void release_internal(Object* o, ObjectStack& collect)
     {
       open(o);
       assert(o->get_class() == RegionMD::OPEN_ISO);
@@ -253,7 +253,7 @@ namespace verona::rt
         abort();
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
       LinkedObjectStack gc;
 
@@ -290,7 +290,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, f);
+            shared::release(f);
             break;
           case Object::ISO:
             assert(f != o);
@@ -301,30 +301,29 @@ namespace verona::rt
       }
 
       // Clean up any cyclic garbage not reachable from the entry point.
-      release_cycles(alloc, o, gc, collect);
+      release_cycles(o, gc, collect);
 
       while (!gc.empty())
       {
         Object* o = gc.pop();
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
 
       // finally, close the region and destroy the ISO object.
       close(o);
       o->destructor();
-      o->dealloc(alloc);
-      dealloc(alloc);
+      o->dealloc();
+      dealloc();
     }
 
   private:
-    void release_cycles(
-      Alloc& alloc, Object* o, LinkedObjectStack& gc, ObjectStack& collect)
+    void release_cycles(Object* o, LinkedObjectStack& gc, ObjectStack& collect)
     {
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       while (!lins_stack.empty())
       {
-        dfs.push(lins_stack.pop(alloc));
+        dfs.push(lins_stack.pop());
       }
       while (!dfs.empty())
       {
@@ -351,7 +350,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, p);
+            shared::release(p);
             break;
           default:
             assert(0);
@@ -377,8 +376,7 @@ namespace verona::rt
      * stack" for their liveness to be confirmed later on. This is a performance
      * optimisation that can result in fewer passes over the graph.
      **/
-    static void
-    mark_red(Alloc& alloc, Object* o, Object* in, ObjectStack& jump_stack)
+    static void mark_red(Object* o, Object* in, ObjectStack& jump_stack)
     {
       if (!o->is_rc_candidate())
       {
@@ -390,7 +388,7 @@ namespace verona::rt
         o->set_rc_colour(RcColour::RED);
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
 
       while (!dfs.empty())
@@ -442,8 +440,7 @@ namespace verona::rt
       }
     }
 
-    static void
-    scan(Alloc& alloc, Object* o, RegionRc* reg, ObjectStack& jump_stack)
+    static void scan(Object* o, RegionRc* reg, ObjectStack& jump_stack)
     {
       // If the RC is positive after all interior pointers in this subgraph
       // have been decrefed, then |o| is rooted by *at least one* live
@@ -451,7 +448,7 @@ namespace verona::rt
       // refcounts restored.
       if (o->is_rc_candidate() && get_ref_count(o) > 0)
       {
-        restore_green(alloc, o, reg);
+        restore_green(o, reg);
         return;
       }
 
@@ -460,11 +457,11 @@ namespace verona::rt
         Object* p = jump_stack.pop();
         if (p->get_rc_colour() == RcColour::RED && get_ref_count(p) > 0)
         {
-          restore_green(alloc, p, reg);
+          restore_green(p, reg);
         }
       }
 
-      dealloc_reds(alloc, o, reg);
+      dealloc_reds(o, reg);
     }
 
     /**
@@ -474,10 +471,10 @@ namespace verona::rt
      * Green objects won't be collected, so this method is called on objects
      * known to have live, non-cyclic references after the mark_red phase.
      **/
-    static void restore_green(Alloc& alloc, Object* o, Object* in)
+    static void restore_green(Object* o, Object* in)
     {
       o->set_rc_colour(RcColour::GREEN);
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       o->trace(dfs);
 
       while (!dfs.empty())
@@ -508,16 +505,16 @@ namespace verona::rt
      * be called after all potential live objects which were eagerly marked red
      * are restored to green via the jump stack.
      **/
-    static void dealloc_reds(Alloc& alloc, Object* o, RegionRc* reg)
+    static void dealloc_reds(Object* o, RegionRc* reg)
     {
       if (o->get_rc_colour() != RcColour::RED)
       {
         return;
       }
 
-      ObjectStack dfs(alloc);
+      ObjectStack dfs;
       LinkedObjectStack gc;
-      ObjectStack sub_regions(alloc);
+      ObjectStack sub_regions;
       o->trace(dfs);
       while (!dfs.empty())
       {
@@ -551,7 +548,7 @@ namespace verona::rt
             f->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, f);
+            shared::release(f);
             break;
           case Object::ISO:
             // Deallocation should only happen on an opened region.
@@ -562,14 +559,14 @@ namespace verona::rt
         }
       }
 
-      release_sub_regions(alloc, sub_regions);
+      release_sub_regions(sub_regions);
 
       while (!gc.empty())
       {
         Object* o = gc.pop();
         reg->region_size -= 1;
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
     }
 
@@ -579,12 +576,12 @@ namespace verona::rt
       return (o->get_ref_count() == 0);
     }
 
-    static void dealloc_object(Alloc& alloc, Object* o, RegionRc* reg)
+    static void dealloc_object(Object* o, RegionRc* reg)
     {
       // We first need to decref -- and potentially deallocate -- any object
       // pointed to through `o`'s fields.
-      ObjectStack dfs(alloc);
-      ObjectStack sub_regions(alloc);
+      ObjectStack dfs;
+      ObjectStack sub_regions;
       o->trace(dfs);
       LinkedObjectStack gc;
 
@@ -621,7 +618,7 @@ namespace verona::rt
             p->decref();
             break;
           case Object::SHARED:
-            shared::release(alloc, p);
+            shared::release(p);
             break;
           case Object::ISO:
             //            assert(p != in);
@@ -637,13 +634,13 @@ namespace verona::rt
         Object* o = gc.pop();
         reg->region_size -= 1;
         o->destructor();
-        o->dealloc(alloc);
+        o->dealloc();
       }
 
-      release_sub_regions(alloc, sub_regions);
+      release_sub_regions(sub_regions);
     }
 
-    static void release_sub_regions(Alloc& alloc, ObjectStack& sub_regions)
+    static void release_sub_regions(ObjectStack& sub_regions)
     {
       while (!sub_regions.empty())
       {
@@ -656,11 +653,11 @@ namespace verona::rt
         // Unfortunately, we can't use Region::release_internal because of a
         // circular dependency between header files.
         if (RegionTrace::is_trace_region(r))
-          ((RegionTrace*)r)->release_internal(alloc, o, sub_regions);
+          ((RegionTrace*)r)->release_internal(o, sub_regions);
         else if (RegionArena::is_arena_region(r))
-          ((RegionArena*)r)->release_internal(alloc, o, sub_regions);
+          ((RegionArena*)r)->release_internal(o, sub_regions);
         else if (RegionRc::is_rc_region(r))
-          ((RegionRc*)r)->release_internal(alloc, o, sub_regions);
+          ((RegionRc*)r)->release_internal(o, sub_regions);
         else
           abort();
       }

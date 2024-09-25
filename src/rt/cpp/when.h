@@ -72,7 +72,7 @@ namespace verona::cpp
       size_t acq_size =
         ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
       act_array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
-        snmalloc::ThreadAlloc::get().alloc(act_size + acq_size));
+        heap::alloc(act_size + acq_size));
 
       for (size_t i = 0; i < ptr_span.length; i++)
       {
@@ -119,7 +119,7 @@ namespace verona::cpp
     {
       if (act_array)
       {
-        snmalloc::ThreadAlloc::get().dealloc(act_array);
+        heap::dealloc(act_array);
       }
     }
 
@@ -416,7 +416,7 @@ namespace verona::cpp
       {
         is_req_extended = true;
         req_extended = reinterpret_cast<Request*>(
-          snmalloc::ThreadAlloc::get().alloc(req_count * (sizeof(Request))));
+          heap::alloc(req_count * (sizeof(Request))));
       }
     }
 
@@ -436,7 +436,7 @@ namespace verona::cpp
     {
       if (is_req_extended)
       {
-        snmalloc::ThreadAlloc::get().dealloc(req_extended);
+        heap::dealloc(req_extended);
       }
     }
   };

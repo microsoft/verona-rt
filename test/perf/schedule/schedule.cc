@@ -48,7 +48,7 @@ struct LoopCown : public VCown<LoopCown>
     }
     else
     {
-      Cown::release(ThreadAlloc::get(), this);
+      Cown::release(this);
     }
   }
 
@@ -71,8 +71,6 @@ int main(int argc, char** argv)
   }
   printf("\n");
   opt::Opt opt(argc, argv);
-
-  //  auto& alloc = sn::ThreadAlloc::get();
 
   const auto cores = opt.is<size_t>("--cores", 4);
   const auto cowns = (size_t)1 << opt.is<size_t>("--cowns", 8);
@@ -99,5 +97,5 @@ int main(int argc, char** argv)
     std::cout << "Time:" << (end - start) / (cowns * loops) << std::endl;
   }
   delete[] global_array;
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }

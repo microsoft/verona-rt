@@ -61,8 +61,7 @@ struct Key : public VCown<Key>
 
 bool test(size_t seed)
 {
-  auto& alloc = ThreadAlloc::get();
-  ObjectMap<std::pair<Key*, int32_t>> map(alloc);
+  ObjectMap<std::pair<Key*, int32_t>> map;
   std::unordered_map<Key*, int32_t> model;
 
   xoroshiro::p128r64 rng{seed};
@@ -73,7 +72,7 @@ bool test(size_t seed)
   static constexpr size_t entries = 100;
   for (size_t i = 0; i < entries; i++)
   {
-    auto* key = new (alloc) Key();
+    auto* key = new Key();
     auto entry = std::make_pair(key, (int32_t)i);
     err << "insert " << key
 #ifdef USE_SYSTEMATIC_TESTING
@@ -81,7 +80,7 @@ bool test(size_t seed)
 #endif
         << "\n";
     model.insert(entry);
-    auto insertion = map.insert(alloc, entry);
+    auto insertion = map.insert(entry);
     if ((insertion.first != true) || (insertion.second.key() != key))
     {
       map.debug_layout(err)
@@ -108,7 +107,7 @@ bool test(size_t seed)
       err << "update " << key << "\n";
       entry.second = -entry.second;
       model.insert(entry);
-      insertion = map.insert(alloc, entry);
+      insertion = map.insert(entry);
       if (!model_check(map, model, err))
       {
         std::cout << err.str() << std::flush;
@@ -138,11 +137,11 @@ bool test(size_t seed)
         std::cout << err.str() << "not erased: " << key << std::endl;
         return false;
       }
-      Cown::release(alloc, key);
+      Cown::release(key);
     }
   }
 
-  map.clear(alloc);
+  map.clear();
   if (map.size() != 0)
   {
     map.debug_layout(std::cout) << "not empty" << std::endl;
@@ -150,7 +149,7 @@ bool test(size_t seed)
   }
 
   for (auto e : model)
-    Cown::release(alloc, e.first);
+    Cown::release(e.first);
 
   return true;
 }

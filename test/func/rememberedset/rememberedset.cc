@@ -35,8 +35,6 @@ void basic_test()
 {
   using RegionClass = typename RegionType_to_class<region_type>::T;
 
-  auto& alloc = ThreadAlloc::get();
-
   // This will be our root object.
   auto o1 = new (region_type) C1;
 
@@ -59,40 +57,38 @@ void basic_test()
   }
 
   // Move from the stack to o1.
-  RegionClass::template insert<YesTransfer>(alloc, o1, o2);
+  RegionClass::template insert<YesTransfer>(o1, o2);
   check(o2->debug_rc() == 1 && o3->debug_rc() == 1);
-  RegionClass::template insert<NoTransfer>(alloc, o1, o3);
+  RegionClass::template insert<NoTransfer>(o1, o3);
   check(o2->debug_rc() == 1 && o3->debug_rc() == 2);
 
-  Immutable::release(alloc, o3);
+  Immutable::release(o3);
   check(o2->debug_rc() == 1 && o3->debug_rc() == 1);
 
   if constexpr (region_type == RegionType::Trace)
   {
-    RegionTrace::gc(alloc, o1);
+    RegionTrace::gc(o1);
     check(o2->debug_rc() == 1 && o3->debug_rc() == 1);
 
     Immutable::acquire(o2);
     check(o2->debug_rc() == 2 && o3->debug_rc() == 1);
     o1->f1 = nullptr;
-    RegionTrace::gc(alloc, o1);
+    RegionTrace::gc(o1);
     check(o2->debug_rc() == 1 && o3->debug_rc() == 1);
 
-    Immutable::release(alloc, o2);
+    Immutable::release(o2);
     // o2 is now gone.
   }
 
   region_release(o1);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 template<RegionType region_type>
 void merge_test()
 {
   using RegionClass = typename RegionType_to_class<region_type>::T;
-
-  auto& alloc = ThreadAlloc::get();
 
   // Create two regions.
   auto r1 = new (region_type) C1;
@@ -120,14 +116,14 @@ void merge_test()
     r2->f2 = o3;
   }
 
-  RegionClass::template insert<YesTransfer>(alloc, r1, o1);
+  RegionClass::template insert<YesTransfer>(r1, o1);
   check(o1->debug_rc() == 1 && o2->debug_rc() == 1 && o3->debug_rc() == 1);
-  RegionClass::insert(alloc, r1, o3);
+  RegionClass::insert(r1, o3);
   check(o1->debug_rc() == 1 && o2->debug_rc() == 1 && o3->debug_rc() == 2);
 
-  RegionClass::template insert<YesTransfer>(alloc, r2, o2);
+  RegionClass::template insert<YesTransfer>(r2, o2);
   check(o1->debug_rc() == 1 && o2->debug_rc() == 1 && o3->debug_rc() == 2);
-  RegionClass::insert(alloc, r2, o3);
+  RegionClass::insert(r2, o3);
   check(o1->debug_rc() == 1 && o2->debug_rc() == 1 && o3->debug_rc() == 3);
 
   {
@@ -139,16 +135,16 @@ void merge_test()
   if constexpr (region_type == RegionType::Trace)
   {
     r1->f2 = nullptr;
-    RegionTrace::gc(alloc, r1);
+    RegionTrace::gc(r1);
     // o2 is now gone
     check(o1->debug_rc() == 1 && o3->debug_rc() == 1);
   }
 
-  Immutable::release(alloc, o3);
+  Immutable::release(o3);
   region_release(r1);
   // Don't release r2, it was deallocated during the merge.
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 int main(int argc, char** argv)

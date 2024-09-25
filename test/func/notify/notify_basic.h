@@ -11,8 +11,6 @@ namespace notify_basic
 
   void basic_test()
   {
-    auto& alloc = ThreadAlloc::get();
-
     g_a = new A;
 
     auto notify = make_notification(g_a, []() { g_called = true; });
@@ -21,7 +19,7 @@ namespace notify_basic
 
     schedule_lambda(g_a, []() {});
 
-    Cown::release(alloc, g_a);
-    Shared::release(alloc, notify);
+    Cown::release(g_a);
+    Shared::release(notify);
   }
 }

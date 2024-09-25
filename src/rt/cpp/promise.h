@@ -86,13 +86,13 @@ namespace verona::rt
       ~PromiseR()
       {
         if (promise)
-          Cown::release(ThreadAlloc::get(), promise);
+          Cown::release(promise);
       }
 
       PromiseR& operator=(PromiseR&& old)
       {
         if (promise)
-          Cown::release(ThreadAlloc::get(), promise);
+          Cown::release(promise);
         promise = old.promise;
         old.promise = nullptr;
         return *this;
@@ -152,7 +152,7 @@ namespace verona::rt
       PromiseW& operator=(PromiseW&& old)
       {
         if (promise)
-          Cown::release(ThreadAlloc::get(), promise);
+          Cown::release(promise);
         promise = old.promise;
         old.promise = nullptr;
         return *this;
@@ -165,7 +165,7 @@ namespace verona::rt
           if (!promise->fulfilled)
             promise->slot.release();
           else
-            Cown::release(ThreadAlloc::get(), promise);
+            Cown::release(promise);
         }
       }
     };
@@ -220,7 +220,7 @@ namespace verona::rt
       Promise* p = new Promise<T>;
       PromiseR r(p);
       PromiseW w(p);
-      Cown::release(ThreadAlloc::get(), p);
+      Cown::release(p);
 
       return std::make_pair(std::move(r), std::move(w));
     }

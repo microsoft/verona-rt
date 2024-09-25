@@ -16,7 +16,6 @@ void schedule_run(size_t decay)
   if (decay == 0)
     return;
 
-  auto& alloc = ThreadAlloc::get();
   auto runner = make_cown<Runner>();
   when(runner) << [decay](auto) { schedule_run(decay - 1); };
 }

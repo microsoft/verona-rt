@@ -118,10 +118,9 @@ void eat_send(Philosopher* p)
 {
   if (p->to_eat == 0)
   {
-    auto& alloc = ThreadAlloc::get();
     Logging::cout() << "Releasing Philosopher " << p->id << " " << p
                     << std::endl;
-    Cown::release(alloc, p);
+    Cown::release(p);
     return;
   }
 
@@ -178,7 +177,7 @@ void test_dining(
 
   for (size_t i = 0; i < philosophers; i++)
   {
-    Cown::release(ThreadAlloc::get(), forks[i]);
+    Cown::release(forks[i]);
   }
 }
 

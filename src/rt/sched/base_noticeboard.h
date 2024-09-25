@@ -52,13 +52,12 @@ namespace verona::rt
       update_buffer.push_back((CT)v);
     }
 
-    void flush_n(Alloc& alloc, size_t n)
+    void flush_n(size_t n)
     {
       assert(n > 0);
 
       if (is_fundamental)
       {
-        (void)alloc;
         auto prev = get<uint64_t>();
         for (size_t i = 0; i < n; ++i)
         {
@@ -70,7 +69,7 @@ namespace verona::rt
       }
       else
       {
-        Epoch e(alloc);
+        Epoch e;
         auto prev = get<Object*>();
         for (size_t i = 0; i < n; ++i)
         {
@@ -85,7 +84,7 @@ namespace verona::rt
     }
 
   public:
-    void flush_all(Alloc& alloc)
+    void flush_all()
     {
       if (update_buffer.empty())
       {
@@ -93,10 +92,10 @@ namespace verona::rt
       }
       Logging::cout() << "Flushing values on noticeboard: " << this
                       << Logging::endl;
-      flush_n(alloc, update_buffer.size());
+      flush_n(update_buffer.size());
     }
 
-    void flush_some(Alloc& alloc)
+    void flush_some()
     {
       if (update_buffer.empty())
       {
@@ -109,7 +108,7 @@ namespace verona::rt
       {
         return;
       }
-      flush_n(alloc, pick);
+      flush_n(pick);
     }
 #endif
   };

@@ -117,7 +117,7 @@ void promise_transfer1()
 
   Promise<int>* p = rp.get_promise();
   Logging::cout() << p << std::endl;
-  Cown::release(ThreadAlloc::get(), p);
+  Cown::release(p);
 }
 
 void promise_transfer2()
@@ -132,7 +132,7 @@ void promise_transfer2()
   Logging::cout() << p1 << std::endl;
   Logging::cout() << p2 << std::endl;
 
-  Cown::release(ThreadAlloc::get(), p1);
+  Cown::release(p1);
   auto rp2 = Promise<int>::PromiseR(p2, YesTransfer);
 }
 

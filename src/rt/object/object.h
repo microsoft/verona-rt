@@ -5,9 +5,8 @@
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/bag.h"
+#include "../ds/heap.h"
 #include "../ds/stack.h"
-
-#include <snmalloc/snmalloc.h>
 
 namespace verona::rt
 {
@@ -68,10 +67,10 @@ namespace verona::rt
   class Object;
   class RegionBase;
 
-  using RefCounts = Bag<Object, uintptr_t, Alloc>;
+  using RefCounts = Bag<Object, uintptr_t>;
   using RefCount = RefCounts::Elem;
 
-  using ObjectStack = Stack<Object, Alloc>;
+  using ObjectStack = Stack<Object>;
   static constexpr size_t descriptor_alignment =
     snmalloc::bits::min<size_t>(8, alignof(void*));
 
@@ -863,9 +862,9 @@ namespace verona::rt
         get_descriptor()->destructor(this);
     }
 
-    inline void dealloc(Alloc& alloc)
+    inline void dealloc()
     {
-      alloc.dealloc(&this->get_header(), size());
+      heap::dealloc(&this->get_header(), size());
     }
 
   protected:

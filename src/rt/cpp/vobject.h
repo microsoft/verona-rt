@@ -112,21 +112,7 @@ namespace verona::rt
       // region.
     }
 
-    void operator delete(void*, Alloc&)
-    {
-      // Should not be called directly, present to allow calling if the
-      // constructor throws an exception. The object lifetime is managed by the
-      // region.
-    }
-
     void operator delete(void*, Object*)
-    {
-      // Should not be called directly, present to allow calling if the
-      // constructor throws an exception. The object lifetime is managed by the
-      // region.
-    }
-
-    void operator delete(void*, Alloc&, Object*)
     {
       // Should not be called directly, present to allow calling if the
       // constructor throws an exception. The object lifetime is managed by the
@@ -181,13 +167,7 @@ namespace verona::rt
     void* operator new(size_t)
     {
       return Object::register_object(
-        ThreadAlloc::get().alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
-    }
-
-    void* operator new(size_t, Alloc& alloc)
-    {
-      return Object::register_object(
-        alloc.alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
+        heap::alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
     }
   };
 } // namespace verona::rt

@@ -40,7 +40,7 @@ namespace verona::rt
   // Forward declaration
   namespace immutable
   {
-    void release(snmalloc::Alloc&, Object*);
+    void release(Object*);
   }
 
   /**
@@ -178,9 +178,9 @@ namespace verona::rt
       debug_check_count();
     }
 
-    void add_to_dec_list(Alloc& alloc, Object* p)
+    void add_to_dec_list(Object* p)
     {
-      auto node = (DecNode*)alloc.alloc<sizeof(DecNode)>();
+      auto node = (DecNode*)heap::alloc<sizeof(DecNode)>();
       node->o = p;
       dec_list.enqueue(node);
       (*get_to_dec(2))++;
@@ -188,7 +188,7 @@ namespace verona::rt
       debug_check_count();
     }
 
-    inline void use_epoch(Alloc& a)
+    inline void use_epoch()
     {
       if (lock.internal_acquire())
       {
@@ -196,14 +196,14 @@ namespace verona::rt
         auto old_epoch = get_epoch();
 
         if (old_epoch != new_epoch)
-          use_epoch_rare(a, old_epoch);
+          use_epoch_rare(old_epoch);
       }
     }
 
-    inline void release_epoch(Alloc& a)
+    inline void release_epoch()
     {
       if ((lock.internal_count() == 1) && (advance_is_sensible()))
-        release_epoch_rare(a);
+        release_epoch_rare();
 
       lock.internal_release();
     }
@@ -226,7 +226,7 @@ namespace verona::rt
     /**
      * Deals with the old epoch's delayed operations for this thread.
      */
-    void flush_old_epoch(Alloc& alloc)
+    void flush_old_epoch()
     {
       debug_check_count();
 
@@ -238,7 +238,7 @@ namespace verona::rt
         {
           auto d = delete_list.dequeue();
           Logging::cout() << "Delayed delete on " << d << Logging::endl;
-          alloc.dealloc(d);
+          heap::dealloc(d);
         }
         *cell = 0;
 
@@ -257,9 +257,9 @@ namespace verona::rt
           // invariant is re-established.
           (*cell)--;
           auto o = dn->o;
-          alloc.dealloc<sizeof(DecNode)>(dn);
+          heap::dealloc<sizeof(DecNode)>(dn);
           Logging::cout() << "Delayed decref on " << o << Logging::endl;
-          immutable::release(alloc, o);
+          immutable::release(o);
         }
       }
       debug_check_count();
@@ -304,7 +304,7 @@ namespace verona::rt
      * Used to advance the epoch to the current global epoch.
      * Should only be called when the thread has not been ejected.
      */
-    inline void refresh(Alloc& a)
+    inline void refresh()
     {
       assert(lock.debug_internal_held());
 
@@ -315,12 +315,12 @@ namespace verona::rt
       if (old_epoch != new_epoch)
       {
         assert(inc_epoch_by(old_epoch, 1) == new_epoch);
-        flush_old_epoch(a);
+        flush_old_epoch();
         epoch.store(new_epoch, std::memory_order_release);
       }
     }
 
-    NOINLINE void rejoin_epoch(Alloc& a)
+    NOINLINE void rejoin_epoch()
     {
       uint64_t old_epoch = get_epoch();
       assert(old_epoch & EJECTED_BIT);
@@ -369,7 +369,7 @@ namespace verona::rt
       size_t max_steps = 4;
       do
       {
-        flush_old_epoch(a);
+        flush_old_epoch();
         old_epoch = inc_epoch_by(old_epoch, 1);
       } while ((old_epoch != new_epoch) && (--max_steps > 0));
     }
@@ -458,24 +458,24 @@ namespace verona::rt
       return true;
     }
 
-    void use_epoch_rare(Alloc& a, uint64_t old_epoch)
+    void use_epoch_rare(uint64_t old_epoch)
     {
       if ((old_epoch & EJECTED_BIT) == 0)
       {
-        refresh(a);
+        refresh();
       }
       else
       {
-        rejoin_epoch(a);
+        rejoin_epoch();
       }
     }
 
-    NOINLINE void release_epoch_rare(Alloc& a)
+    NOINLINE void release_epoch_rare()
     {
-      refresh(a);
+      refresh();
 
       if (try_advance_global_epoch(advance_is_urgent()))
-        refresh(a);
+        refresh();
     }
 
     void debug_check_count()
@@ -557,19 +557,18 @@ namespace verona::rt
   class Epoch
   {
   private:
-    Alloc& alloc;
     LocalEpoch* local_epoch;
 
   public:
     Epoch(const Epoch&) = delete;
     Epoch& operator=(const Epoch&) = delete;
 
-    Epoch(Alloc& a) : alloc(a)
+    Epoch()
     {
       static thread_local ThreadLocalEpoch thread_local_epoch;
       yield();
       local_epoch = thread_local_epoch.ptr;
-      local_epoch->use_epoch(a);
+      local_epoch->use_epoch();
     }
 
     ~Epoch()
@@ -578,7 +577,7 @@ namespace verona::rt
         return;
 
       yield();
-      local_epoch->release_epoch(alloc);
+      local_epoch->release_epoch();
       yield();
     }
 
@@ -594,7 +593,7 @@ namespace verona::rt
 
     void dec_in_epoch(Object* object)
     {
-      local_epoch->add_to_dec_list(alloc, object);
+      local_epoch->add_to_dec_list(object);
     }
 
     /**
@@ -602,7 +601,7 @@ namespace verona::rt
      * has been advanced, and should only be called when this is safe due to
      * other synchronization, such as during teardown.
      */
-    static void flush(Alloc& a)
+    static void flush()
     {
       auto curr = LocalEpochPool::iterate();
 
@@ -610,7 +609,7 @@ namespace verona::rt
       {
         // There are four epoch that can be cleared.
         for (int i = 0; i < 4; i++)
-          curr->flush_old_epoch(a);
+          curr->flush_old_epoch();
 
         curr->eject();
 

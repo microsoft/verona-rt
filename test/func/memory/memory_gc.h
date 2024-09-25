@@ -53,7 +53,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Allocate a lot of objects that are all connected.
@@ -103,7 +103,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
   }
 
@@ -157,7 +157,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Primary ring with objects that need finalisers.
@@ -201,7 +201,7 @@ namespace memory_gc
       }
 
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
 
     // Two rings. First and last objects in secondary ring are garbage.
@@ -245,7 +245,7 @@ namespace memory_gc
         check(debug_size() == 7);
       }
       region_release(o);
-      snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+      heap::debug_check_empty();
     }
   }
 
@@ -256,8 +256,6 @@ namespace memory_gc
    **/
   void test_freeze()
   {
-    auto& alloc = ThreadAlloc::get();
-
     // Create and freeze an SCC.
     C* scc = new (RegionType::Trace) C;
     {
@@ -288,11 +286,11 @@ namespace memory_gc
       check(debug_size() == 1);
       check(scc->debug_test_rc(2)); // gc discovered reference to scc
 
-      Immutable::release(alloc, scc);
+      Immutable::release(scc);
       check(scc->debug_test_rc(1));
     }
     region_release(r);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -372,7 +370,7 @@ namespace memory_gc
     }
 
     region_release(o);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -431,7 +429,7 @@ namespace memory_gc
     }
 
     region_release(r2);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   /**
@@ -495,14 +493,13 @@ namespace memory_gc
     }
 
     region_release(nnroot);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   void test_additional_roots()
   {
     Logging::cout() << "Additional roots test" << std::endl;
 
-    auto& alloc = ThreadAlloc::get();
     auto* o = new (RegionType::Trace) C;
     Logging::cout() << "Root" << o << std::endl;
     {
@@ -534,34 +531,34 @@ namespace memory_gc
       Logging::cout() << " sub" << s5 << std::endl;
       o5->f1 = s5;
 
-      RegionTrace::push_additional_root(o, o1, alloc);
-      RegionTrace::push_additional_root(o, o2, alloc);
-      RegionTrace::push_additional_root(o, o3, alloc);
-      RegionTrace::push_additional_root(o, o4, alloc);
-      RegionTrace::push_additional_root(o, o5, alloc);
+      RegionTrace::push_additional_root(o, o1);
+      RegionTrace::push_additional_root(o, o2);
+      RegionTrace::push_additional_root(o, o3);
+      RegionTrace::push_additional_root(o, o4);
+      RegionTrace::push_additional_root(o, o5);
 
       check(debug_size() == 11);
       region_collect();
       Logging::cout() << debug_size() << std::endl;
       check(debug_size() == 11);
 
-      RegionTrace::pop_additional_root(o, o5, alloc);
-      RegionTrace::pop_additional_root(o, o4, alloc);
+      RegionTrace::pop_additional_root(o, o5);
+      RegionTrace::pop_additional_root(o, o4);
 
       // Run another GC.
       region_collect();
       check(debug_size() == 7);
 
-      RegionTrace::pop_additional_root(o, o3, alloc);
-      RegionTrace::pop_additional_root(o, o2, alloc);
-      RegionTrace::pop_additional_root(o, o1, alloc);
+      RegionTrace::pop_additional_root(o, o3);
+      RegionTrace::pop_additional_root(o, o2);
+      RegionTrace::pop_additional_root(o, o1);
 
       // Run another GC.
       region_collect();
       check(debug_size() == 1);
     }
     region_release(o);
-    snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+    heap::debug_check_empty();
   }
 
   void run_test()

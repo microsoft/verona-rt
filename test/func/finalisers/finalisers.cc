@@ -183,7 +183,7 @@ void basic_test()
   }
   region_release(e0);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 int main(int, char**)

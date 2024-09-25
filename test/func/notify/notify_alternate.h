@@ -40,8 +40,8 @@ namespace notify_empty_queue
       if (a->recv_count == 10)
       {
         check(a->send_count == 10);
-        Shared::release(ThreadAlloc::get(), n);
-        Shared::release(ThreadAlloc::get(), a);
+        Shared::release(n);
+        Shared::release(a);
         return;
       }
 

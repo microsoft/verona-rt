@@ -31,7 +31,7 @@ void test_runtime_pause(SystematicTestHarness* harness, size_t pauses)
           Logging::cout() << "running message " << i << std::endl;
         });
       }
-      schedule_lambda(a, [a]() { Cown::release(ThreadAlloc::get(), a); });
+      schedule_lambda(a, [a]() { Cown::release(a); });
 
       schedule_lambda([]() {
         Logging::cout() << "Remove external event source" << std::endl;

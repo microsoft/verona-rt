@@ -145,13 +145,11 @@ int main(int argc, char** argv)
   auto duration = harness.opt.is<size_t>("--duration", 10'000);
 
   harness.run([senders, receivers, proxies, duration, &harness]() {
-    Alloc& alloc = ThreadAlloc::get();
-
     for (size_t r = 0; r < receivers; r++)
-      receiver_set.push_back(new (alloc) Receiver);
+      receiver_set.push_back(new Receiver);
 
     for (size_t p = 0; p < proxies; p++)
-      proxy_chain.push_back(new (alloc) Proxy(p));
+      proxy_chain.push_back(new Proxy(p));
 
     auto e = make_cown<int>();
     when(e) << [](auto) {
@@ -160,7 +158,6 @@ int main(int argc, char** argv)
     };
 
     harness.external_thread([=]() {
-      Alloc& alloc = ThreadAlloc::get();
       for (size_t i = 0; i < senders; i++)
       {
         if (proxy_chain.size() > 0)
@@ -173,18 +170,18 @@ int main(int argc, char** argv)
             Cown::acquire(r);
         }
 
-        auto* s = new (alloc) Sender(std::chrono::milliseconds(duration));
+        auto* s = new Sender(std::chrono::milliseconds(duration));
         schedule_lambda<YesTransfer>(s, Send(s));
       }
 
       if (proxy_chain.size() > 0)
       {
-        Cown::release(alloc, proxy_chain[0]);
+        Cown::release(proxy_chain[0]);
       }
       else
       {
         for (auto* r : receiver_set)
-          Cown::release(alloc, r);
+          Cown::release(r);
       }
 
       when(e) << [](auto) {

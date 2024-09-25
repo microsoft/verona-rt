@@ -24,15 +24,15 @@ struct ChainCown : public VCown<ChainCown>
 
   ChainCown(LinkObject* next) : next(next) {}
 
-  static ChainCown* make_chain(Alloc& alloc, size_t length)
+  static ChainCown* make_chain(size_t length)
   {
     ChainCown* hd = nullptr;
     for (; length > 0; length--)
     {
       auto next = new (RegionType::Trace) LinkObject(hd);
       if (hd != nullptr)
-        RegionTrace::insert<TransferOwnership::YesTransfer>(alloc, next, hd);
-      hd = new (alloc) ChainCown(next);
+        RegionTrace::insert<TransferOwnership::YesTransfer>(next, hd);
+      hd = new ChainCown(next);
     }
     return hd;
   }
@@ -56,8 +56,7 @@ void LinkObject::trace(ObjectStack& fields) const
 
 int main(int, char**)
 {
-  auto& alloc = ThreadAlloc::get();
-  auto a = ChainCown::make_chain(alloc, 100000);
-  Cown::release(alloc, a);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  auto a = ChainCown::make_chain(100000);
+  Cown::release(a);
+  heap::debug_check_empty();
 }

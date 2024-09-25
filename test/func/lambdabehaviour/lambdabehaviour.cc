@@ -15,13 +15,12 @@ struct A
 
   A(int v_) : v(v_)
   {
-    auto& alloc = ThreadAlloc::get();
-    t = new (alloc) TestCown;
+    t = new TestCown;
   }
 
   ~A()
   {
-    Cown::release(ThreadAlloc::get(), t);
+    Cown::release(t);
   }
 };
 
@@ -48,7 +47,7 @@ void lambda_cown()
 {
   TestCown* c = new TestCown;
   schedule_lambda(c, []() { std::cout << "Hello world!\n"; });
-  Cown::release(ThreadAlloc::get(), c);
+  Cown::release(c);
 }
 
 int main(int argc, char** argv)

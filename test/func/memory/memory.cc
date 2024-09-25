@@ -21,13 +21,11 @@
 
 void test_dealloc()
 {
-  auto& alloc = ThreadAlloc::get();
-
   size_t size = 1 << 25;
-  void* p = alloc.alloc(size);
-  alloc.dealloc(p, size);
+  void* p = heap::alloc(size);
+  heap::dealloc(p, size);
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
 }
 
 size_t do_nothing(size_t x);

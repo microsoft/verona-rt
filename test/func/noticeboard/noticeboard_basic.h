@@ -109,21 +109,19 @@ namespace noticeboard_basic
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
       C* new_c = new (RegionType::Trace) C(1);
 
       Logging::cout() << "Update DB Create C " << new_c << std::endl;
 
       freeze(new_c);
-      db->box.update(alloc, new_c);
+      db->box.update(new_c);
 
       // Try to trigger a rapid collection.
       // Disable yield to avoid being preempted.
       Systematic::disable_yield();
       for (int i = 0; i < 100024; i++)
       {
-        Epoch e(alloc);
+        Epoch e;
         UNUSED(e);
       }
       Systematic::enable_yield();
@@ -139,27 +137,23 @@ namespace noticeboard_basic
 
     void operator()()
     {
-      auto& alloc = ThreadAlloc::get();
-
       Logging::cout() << "Peek" << std::endl;
-      auto o = (C*)peeker->box->peek(alloc);
+      auto o = (C*)peeker->box->peek();
       Logging::cout() << "Peeked " << o << std::endl;
       // o goes out of scope
-      Immutable::release(alloc, o);
+      Immutable::release(o);
     }
   };
 
   void run_test()
   {
-    Alloc& alloc = ThreadAlloc::get();
-
-    Alive* alive = new (alloc) Alive;
+    Alive* alive = new Alive;
     Logging::cout() << "Alive" << alive << std::endl;
 
     C* c = new (RegionType::Trace) C(0);
     c->next = new (RegionType::Trace) C(10);
 
-    RegionTrace::insert(alloc, c, alive);
+    RegionTrace::insert(c, alive);
     c->alive = alive;
     Logging::cout() << "Create C " << c << " with alive " << alive << std::endl;
 
@@ -178,8 +172,8 @@ namespace noticeboard_basic
     schedule_lambda(peeker->db, UpdateDB(peeker->db));
     schedule_lambda(alive, Ping(alive));
 
-    Cown::release(alloc, alive);
-    Cown::release(alloc, peeker);
+    Cown::release(alive);
+    Cown::release(peeker);
     // Ownership of db was transferred to Peeker, no need to release it.
   }
 }

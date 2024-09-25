@@ -43,7 +43,7 @@ namespace verona::rt
     }
 
     // NOTE: the rc of new_o is not incremented
-    void update(Alloc& alloc, T new_o)
+    void update(T new_o)
     {
       if constexpr (!std::is_fundamental_v<T>)
       {
@@ -51,7 +51,7 @@ namespace verona::rt
       }
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
       update_buffer_push(new_o);
-      flush_some(alloc);
+      flush_some();
       yield();
 #else
       if constexpr (!std::is_fundamental_v<T>)
@@ -63,25 +63,23 @@ namespace verona::rt
 
         put(new_o);
         yield();
-        Epoch e(alloc);
+        Epoch e;
         e.dec_in_epoch(local_content);
         Logging::cout() << "Dec ref from noticeboard update" << local_content
                         << Logging::endl;
       }
       else
       {
-        UNUSED(alloc);
         put(new_o);
       }
       yield();
 #endif
     }
 
-    T peek(Alloc& alloc)
+    T peek()
     {
       if constexpr (std::is_fundamental_v<T>)
       {
-        UNUSED(alloc);
         return get<T>();
       }
       else
@@ -89,7 +87,7 @@ namespace verona::rt
         T local_content;
         {
           // only protect incref with epoch
-          Epoch e(alloc);
+          Epoch e;
           local_content = get<T>();
           yield();
           Logging::cout() << "Inc ref from noticeboard peek" << local_content

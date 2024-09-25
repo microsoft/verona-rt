@@ -507,7 +507,7 @@ namespace verona::rt
         // Release transfer - required times, we needed one as we woke up
         // the cown, but the rest were not required.
         for (int j = 0; j < transfer - required; j++)
-          Cown::release(ThreadAlloc::get(), cown);
+          Cown::release(cown);
         return;
       }
 
@@ -535,7 +535,7 @@ namespace verona::rt
       //   | Work | Behaviour | Slot ... Slot | Body |
       size_t size =
         sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
-      void* base = ThreadAlloc::get().alloc(size);
+      void* base = heap::alloc(size);
 
       Work* work = new (base) Work(f);
       void* base_behaviour = from_work(work);
@@ -994,7 +994,7 @@ namespace verona::rt
       Logging::cout() << *this
                       << " Last Reader releasing the cown no writer waiting"
                       << Logging::endl;
-      shared::release(ThreadAlloc::get(), cown());
+      shared::release(cown());
     }
   }
 
@@ -1029,7 +1029,7 @@ namespace verona::rt
         // queue.
         Logging::cout() << *this << " CAS Success No more work for cown "
                         << Logging::endl;
-        shared::release(ThreadAlloc::get(), cown());
+        shared::release(cown());
         return;
       }
 

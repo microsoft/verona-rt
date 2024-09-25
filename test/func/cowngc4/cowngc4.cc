@@ -136,8 +136,6 @@ struct RCown : public VCown<RCown<region_type>>
   RCown(size_t more, uint64_t forward_count)
   : forward(forward_count), threshold(forward_count / 4)
   {
-    auto& alloc = ThreadAlloc::get();
-
     if (rcown_first == nullptr)
       rcown_first = (RCown<RegionType::Trace>*)this;
 
@@ -158,8 +156,7 @@ struct RCown : public VCown<RCown<region_type>>
         // Construct a CCown and give it to the region.
         auto c = new CCown(shared_child);
         Logging::cout() << "  child " << c << std::endl;
-        RegionClass::template insert<TransferOwnership::YesTransfer>(
-          alloc, r, c);
+        RegionClass::template insert<TransferOwnership::YesTransfer>(r, c);
         Cown::acquire(shared_child); // acquire on behalf of child CCown
 
         reg_with_graph = r;
@@ -177,8 +174,7 @@ struct RCown : public VCown<RCown<region_type>>
       // Construct a CCown and give it to the last region.
       auto c = new CCown(shared_child);
       Logging::cout() << "  child " << c << std::endl;
-      RegionArena::insert<TransferOwnership::YesTransfer>(
-        alloc, r->f1->f2->f2, c);
+      RegionArena::insert<TransferOwnership::YesTransfer>(r->f1->f2->f2, c);
       Cown::acquire(shared_child); // acquire on behalf of child CCown
 
       reg_with_sub = r;
@@ -225,15 +221,15 @@ struct RCown : public VCown<RCown<region_type>>
 
       // Transfer ownership of immutables to the region.
       RegionClass::template insert<TransferOwnership::YesTransfer>(
-        alloc, reg_with_imm, r1);
+        reg_with_imm, r1);
       RegionClass::template insert<TransferOwnership::YesTransfer>(
-        alloc, reg_with_imm, r2);
+        reg_with_imm, r2);
 
       // Release child CCowns that are now owned by the immutables.
-      Cown::release(alloc, r1->cown);
-      Cown::release(alloc, r1->f1->cown);
-      Cown::release(alloc, r2->cown);
-      Cown::release(alloc, r2->f1->cown);
+      Cown::release(r1->cown);
+      Cown::release(r1->f1->cown);
+      Cown::release(r2->cown);
+      Cown::release(r2->f1->cown);
 
       // Want to make sure one of the objects is RC and the other is SCC_PTR.
       check(
@@ -243,7 +239,7 @@ struct RCown : public VCown<RCown<region_type>>
     }
 
     // Release our (RCown's) refcount on the shared_child.
-    Cown::release(alloc, shared_child);
+    Cown::release(shared_child);
 
     if (more != 0)
       next = new Self(more - 1, forward_count);
@@ -343,7 +339,7 @@ struct Ping
             Logging::cout() << "RCown " << rcown << " is leaking cown "
                             << rcown->reg_with_graph->f->f->cown << std::endl;
             auto* reg = RegionClass::get(rcown->reg_with_graph);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->reg_with_graph->f->f->cown = nullptr;
           }
           break;
@@ -360,7 +356,7 @@ struct Ping
             Logging::cout() << "RCown " << rcown << " is leaking cown "
                             << rcown->reg_with_sub->f1->f2->f2 << std::endl;
             auto* reg = RegionArena::get(rcown->reg_with_sub->f1->f2->f2);
-            reg->discard(ThreadAlloc::get());
+            reg->discard();
             rcown->reg_with_sub->f1->f2->f2->cown = nullptr;
           }
           break;
@@ -375,7 +371,7 @@ struct Ping
     {
       assert(rcown == (RCown<region_type>*)rcown_first);
       // Clear next pointer on final iteration.
-      Cown::release(ThreadAlloc::get(), rcown->next);
+      Cown::release(rcown->next);
       rcown->next = nullptr;
     }
 

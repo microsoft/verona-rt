@@ -11,7 +11,7 @@ namespace verona::rt
   namespace shared
   {
     // This is used only to break a dependency cycle.
-    inline void release(Alloc& alloc, Object* o);
+    inline void release(Object* o);
   } // namespace shared
 
   class Immutable
@@ -23,25 +23,25 @@ namespace verona::rt
       o->immutable()->incref();
     }
 
-    static size_t release(Alloc& alloc, Object* o)
+    static size_t release(Object* o)
     {
       assert(o->debug_is_immutable());
       auto root = o->immutable();
 
       if (root->decref())
-        return free(alloc, root);
+        return free(root);
 
       return 0;
     }
 
   private:
-    static size_t free(Alloc& alloc, Object* o)
+    static size_t free(Object* o)
     {
       assert(o == o->immutable());
       size_t total = 0;
 
       // Free immutable graph.
-      ObjectStack f(alloc);
+      ObjectStack f;
       LinkedObjectStack fl;
       LinkedObjectStack scc;
       LinkedObjectStack dfs;
@@ -65,7 +65,7 @@ namespace verona::rt
           while (!f.empty())
           {
             Object* u = f.pop();
-            scc_classify(alloc, u, dfs, scc);
+            scc_classify(u, dfs, scc);
           }
         }
 
@@ -77,7 +77,7 @@ namespace verona::rt
           Object* w = fl.pop();
           total += w->size();
           w->destructor();
-          w->dealloc(alloc);
+          w->dealloc();
         }
       }
 
@@ -92,12 +92,12 @@ namespace verona::rt
     static inline void run_finaliser(Object* o)
     {
       // We don't need the actual subregions here, as they have been frozen.
-      ObjectStack dummy(ThreadAlloc::get());
+      ObjectStack dummy;
       o->finalise(nullptr, dummy);
     }
 
-    static inline void scc_classify(
-      Alloc& alloc, Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
+    static inline void
+    scc_classify(Object* w, LinkedObjectStack& dfs, LinkedObjectStack& scc)
     {
       Object::RegionMD c;
       Object* r = w->root_and_class(c);
@@ -123,7 +123,7 @@ namespace verona::rt
         case Object::SHARED:
         {
           Logging::cout() << "Immutable releasing cown: " << w << Logging::endl;
-          shared::release(alloc, w);
+          shared::release(w);
           break;
         }
 
@@ -136,9 +136,9 @@ namespace verona::rt
   namespace immutable
   {
     // This is used only to break a dependency cycle.
-    inline void release(Alloc& alloc, Object* o)
+    inline void release(Object* o)
     {
-      Immutable::release(alloc, o);
+      Immutable::release(o);
     }
   } // namespace cown
 } // namespace verona::rt

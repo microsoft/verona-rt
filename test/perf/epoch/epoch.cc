@@ -12,10 +12,9 @@ void test_epoch()
   // Used to prevent malloc from being optimised away.
   static void* old = nullptr;
 
-  auto& alloc = ThreadAlloc::get();
   constexpr int count = 10000000;
   constexpr int size = 48;
-  void* special = alloc.alloc(size);
+  void* special = heap::alloc(size);
   void* obj = nullptr;
 
   std::cout << "Start epoch test" << std::endl;
@@ -25,12 +24,12 @@ void test_epoch()
     m << "with_epoch   ";
     for (int n = 0; n < count; n++)
     {
-      Epoch e(alloc);
-      obj = alloc.alloc(size);
+      Epoch e;
+      obj = heap::alloc(size);
       e.delete_in_epoch(obj);
     }
 
-    Epoch::flush(alloc);
+    Epoch::flush();
   }
 
   {
@@ -38,9 +37,9 @@ void test_epoch()
     m << "without_epoch";
     for (int n = 0; n < count; n++)
     {
-      obj = alloc.alloc(size);
+      obj = heap::alloc(size);
       old = obj;
-      alloc.dealloc(obj, size);
+      heap::dealloc(obj, size);
     }
   }
 
@@ -49,14 +48,14 @@ void test_epoch()
     m << "template_no_e";
     for (int n = 0; n < count; n++)
     {
-      obj = alloc.alloc<size>();
+      obj = heap::alloc<size>();
       old = obj;
-      alloc.dealloc<size>(obj);
+      heap::dealloc<size>(obj);
     }
   }
 
-  alloc.dealloc(special);
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::dealloc(special);
+  heap::debug_check_empty();
   (void)old;
 }
 

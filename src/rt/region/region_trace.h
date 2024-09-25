@@ -70,7 +70,7 @@ namespace verona::rt
     snmalloc::sizeclass_t previous_memory_used;
 
     // Stack of stack based entry points into the region.
-    StackThin<Object, Alloc> additional_entry_points{};
+    StackThin<Object> additional_entry_points{};
 
     explicit RegionTrace()
     : RegionBase(), next_not_root(this), last_not_root(this)
@@ -107,17 +107,17 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* create(Alloc& alloc, const Descriptor* desc)
+    static Object* create(const Descriptor* desc)
     {
-      void* p = alloc.alloc<vsizeof<RegionTrace>>();
+      void* p = heap::alloc<vsizeof<RegionTrace>>();
       Object* o = Object::register_object(p, RegionTrace::desc());
       auto reg = new (o) RegionTrace();
       reg->use_memory(desc->size);
 
       if constexpr (size == 0)
-        p = alloc.alloc(desc->size);
+        p = heap::alloc(desc->size);
       else
-        p = alloc.alloc<size>();
+        p = heap::alloc<size>();
       o = Object::register_object(p, desc);
 
       reg->init_next(o);
@@ -138,7 +138,7 @@ namespace verona::rt
      * every object must contain a descriptor, so 0 is not a valid size.
      **/
     template<size_t size = 0>
-    static Object* alloc(Alloc& alloc, Object* in, const Descriptor* desc)
+    static Object* alloc(Object* in, const Descriptor* desc)
     {
       assert((size == 0) || (size == desc->size));
       RegionTrace* reg = get(in);
@@ -147,9 +147,9 @@ namespace verona::rt
 
       void* p = nullptr;
       if constexpr (size == 0)
-        p = alloc.alloc(desc->size);
+        p = heap::alloc(desc->size);
       else
-        p = alloc.alloc<size>();
+        p = heap::alloc<size>();
 
       auto o = (Object*)Object::register_object(p, desc);
       assert(Object::debug_is_aligned(o));
@@ -169,14 +169,14 @@ namespace verona::rt
      * pass the template argument `transfer = YesTransfer`.
      **/
     template<TransferOwnership transfer = NoTransfer>
-    static void insert(Alloc& alloc, Object* into, Object* o)
+    static void insert(Object* into, Object* o)
     {
       assert(o->debug_is_immutable() || o->debug_is_shared());
       RegionTrace* reg = get(into);
 
       Object::RegionMD c;
       o = o->root_and_class(c);
-      reg->RememberedSet::insert<transfer>(alloc, o);
+      reg->RememberedSet::insert<transfer>(o);
     }
 
     /**
@@ -185,7 +185,7 @@ namespace verona::rt
      *
      * TODO(region): how to handle merging different types of regions?
      **/
-    static void merge(Alloc& alloc, Object* into, Object* o)
+    static void merge(Object* into, Object* o)
     {
       assert(o->debug_is_iso());
       RegionTrace* reg = get(into);
@@ -204,11 +204,11 @@ namespace verona::rt
         reg->merge_internal(o, other_trace);
 
         // Merge the ExternalReferenceTable and RememberedSet.
-        reg->ExternalReferenceTable::merge(alloc, other_trace);
-        reg->RememberedSet::merge(alloc, other_trace);
+        reg->ExternalReferenceTable::merge(other_trace);
+        reg->RememberedSet::merge(other_trace);
 
         // Now we can deallocate the other region's metadata object.
-        other_trace->dealloc(alloc);
+        other_trace->dealloc();
       }
       else
         // TODO: Merge on other region types?
@@ -236,15 +236,15 @@ namespace verona::rt
      * Only `o`'s region will be GC'd; we ignore pointers to Immutables and
      * other regions.
      **/
-    static void gc(Alloc& alloc, Object* o)
+    static void gc(Object* o)
     {
       Logging::cout() << "Region GC called for: " << o << Logging::endl;
       assert(o->debug_is_iso());
       assert(is_trace_region(o->get_region()));
 
       RegionTrace* reg = get(o);
-      ObjectStack f(alloc);
-      ObjectStack collect(alloc);
+      ObjectStack f;
+      ObjectStack collect;
 
       // Copy additional roots into f.
       reg->additional_entry_points.forall([&f](Object* o) {
@@ -252,8 +252,8 @@ namespace verona::rt
         f.push(o);
       });
 
-      reg->mark(alloc, o, f);
-      reg->sweep(alloc, o, collect);
+      reg->mark(o, f);
+      reg->sweep(o, collect);
 
       // `collect` contains all the iso objects to unreachable subregions.
       // Since they are unreachable, we can just release them.
@@ -272,9 +272,9 @@ namespace verona::rt
         // Unfortunately, we can't use Region::release_internal because of a
         // circular dependency between header files.
         if (RegionTrace::is_trace_region(r))
-          ((RegionTrace*)r)->release_internal(alloc, o, collect);
+          ((RegionTrace*)r)->release_internal(o, collect);
         else if (RegionArena::is_arena_region(r))
-          ((RegionArena*)r)->release_internal(alloc, o, collect);
+          ((RegionArena*)r)->release_internal(o, collect);
         else
           abort();
       }
@@ -283,19 +283,19 @@ namespace verona::rt
     /// Add object `o` to the additional root stack of the region referenced to
     /// by `entry`.
     /// Preserves for object for a GC.
-    static void push_additional_root(Object* entry, Object* o, Alloc& alloc)
+    static void push_additional_root(Object* entry, Object* o)
     {
       RegionTrace* reg = get(entry);
-      reg->additional_entry_points.push(o, alloc);
+      reg->additional_entry_points.push(o);
     }
 
     /// Remove object `o` from the additional root stack of the region
     /// referenced to by `entry`.
     /// Must be called in reverse order with respect to push_additional_root.
-    static void pop_additional_root(Object* entry, Object* o, Alloc& alloc)
+    static void pop_additional_root(Object* entry, Object* o)
     {
       RegionTrace* reg = get(entry);
-      auto result = reg->additional_entry_points.pop(alloc);
+      auto result = reg->additional_entry_points.pop();
       assert(result == o);
       UNUSED(result);
       UNUSED(o);
@@ -398,7 +398,7 @@ namespace verona::rt
      * object `o`. We don't follow pointers to subregions. Also will trace
      * from anything already in `dfs`.
      **/
-    void mark(Alloc& alloc, Object* o, ObjectStack& dfs)
+    void mark(Object* o, ObjectStack& dfs)
     {
       o->trace(dfs);
       while (!dfs.empty())
@@ -418,12 +418,12 @@ namespace verona::rt
 
           case Object::SCC_PTR:
             p = p->immutable();
-            RememberedSet::mark(alloc, p);
+            RememberedSet::mark(p);
             break;
 
           case Object::RC:
           case Object::SHARED:
-            RememberedSet::mark(alloc, p);
+            RememberedSet::mark(p);
             break;
 
           default:
@@ -447,7 +447,7 @@ namespace verona::rt
      * and the Iso object is collected as well.
      **/
     template<SweepAll sweep_all = SweepAll::No>
-    void sweep(Alloc& alloc, Object* o, ObjectStack& collect)
+    void sweep(Object* o, ObjectStack& collect)
     {
       current_memory_used = 0;
 
@@ -456,10 +456,10 @@ namespace verona::rt
       // We sweep the non-trivial ring first, as finalisers in there could refer
       // to other objects. The ISO object o could be deallocated by either of
       // these two lines.
-      sweep_ring<NonTrivialRing, sweep_all>(alloc, o, primary_ring, collect);
-      sweep_ring<TrivialRing, sweep_all>(alloc, o, primary_ring, collect);
+      sweep_ring<NonTrivialRing, sweep_all>(o, primary_ring, collect);
+      sweep_ring<TrivialRing, sweep_all>(o, primary_ring, collect);
 
-      RememberedSet::sweep(alloc);
+      RememberedSet::sweep();
       previous_memory_used = size_to_sizeclass_full(current_memory_used);
     }
 
@@ -469,7 +469,6 @@ namespace verona::rt
      */
     template<RingKind ring>
     void sweep_object(
-      Alloc& alloc,
       Object* p,
       Object* region,
       LinkedObjectStack* gc,
@@ -488,14 +487,12 @@ namespace verona::rt
         // p is about to be collected; remove the entry for it in
         // the ExternalRefTable.
         if (p->has_ext_ref())
-          ExternalReferenceTable::erase(alloc, p);
+          ExternalReferenceTable::erase(p);
 
-        p->dealloc(alloc);
+        p->dealloc();
       }
       else
       {
-        UNUSED(alloc);
-
         assert(!p->is_trivial());
         p->finalise(region, sub_regions);
 
@@ -507,8 +504,7 @@ namespace verona::rt
     }
 
     template<RingKind ring, SweepAll sweep_all>
-    void sweep_ring(
-      Alloc& alloc, Object* o, RingKind primary_ring, ObjectStack& collect)
+    void sweep_ring(Object* o, RingKind primary_ring, ObjectStack& collect)
     {
       Object* prev = this;
       Object* p = ring == primary_ring ? get_next() : next_not_root;
@@ -530,7 +526,7 @@ namespace verona::rt
             // entire region anyway.
             if constexpr (sweep_all == SweepAll::Yes)
             {
-              sweep_object<ring>(alloc, p, o, &gc, collect);
+              sweep_object<ring>(p, o, &gc, collect);
             }
             else
             {
@@ -555,7 +551,7 @@ namespace verona::rt
           {
             Object* q = p->get_next();
             Logging::cout() << "Sweep " << p << Logging::endl;
-            sweep_object<ring>(alloc, p, o, &gc, collect);
+            sweep_object<ring>(p, o, &gc, collect);
 
             if (ring != primary_ring && prev == this)
               next_not_root = q;
@@ -581,7 +577,7 @@ namespace verona::rt
         {
           Object* q = gc.pop();
           q->destructor();
-          q->dealloc(alloc);
+          q->dealloc();
         }
       }
       else
@@ -597,7 +593,7 @@ namespace verona::rt
      *
      * Note: this does not release subregions. Use Region::release instead.
      **/
-    void release_internal(Alloc& alloc, Object* o, ObjectStack& collect)
+    void release_internal(Object* o, ObjectStack& collect)
     {
       assert(o->debug_is_iso());
 
@@ -614,9 +610,9 @@ namespace verona::rt
       Logging::cout() << "Region release: trace region: " << o << Logging::endl;
 
       // Sweep everything, including the entrypoint.
-      sweep<SweepAll::Yes>(alloc, o, collect);
+      sweep<SweepAll::Yes>(o, collect);
 
-      dealloc(alloc);
+      dealloc();
     }
 
     void use_memory(size_t size)

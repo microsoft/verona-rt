@@ -132,15 +132,15 @@ namespace verona::rt
     }
 
   public:
-    static void apply(Alloc& alloc, Object* o)
+    static void apply(Object* o)
     {
       assert(o->debug_is_iso());
 
-      ObjectStack objects(alloc);
-      ObjectStack dfs(alloc);
-      ObjectStack iso(alloc);
-      ObjectStack pending(alloc);
-      ObjectStack dealloc_regions(alloc);
+      ObjectStack objects;
+      ObjectStack dfs;
+      ObjectStack iso;
+      ObjectStack pending;
+      ObjectStack dealloc_regions;
 
       iso.push(o);
 
@@ -296,7 +296,7 @@ namespace verona::rt
               while (!dealloc_regions.empty())
               {
                 Object* q = dealloc_regions.pop();
-                Region::release(alloc, q);
+                Region::release(q);
               }
 
               p = next;
@@ -332,11 +332,11 @@ namespace verona::rt
         {
           Object* q = to_dealloc.pop();
           q->destructor();
-          q->dealloc(alloc);
+          q->dealloc();
         }
 
-        reg->discard(alloc);
-        reg->dealloc(alloc);
+        reg->discard();
+        reg->dealloc();
       }
 
       assert(objects.empty());

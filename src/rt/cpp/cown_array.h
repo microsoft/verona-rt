@@ -26,7 +26,7 @@ namespace verona::cpp
     void constr_helper(cown_ptr<T>* arr)
     {
       array = reinterpret_cast<cown_ptr<T>*>(
-        snmalloc::ThreadAlloc::get().alloc(length * sizeof(cown_ptr<T>*)));
+        heap::alloc(length * sizeof(cown_ptr<T>*)));
 
       for (size_t i = 0; i < length; i++)
         new (&array[i]) cown_ptr<T>(arr[i]);
@@ -54,7 +54,7 @@ namespace verona::cpp
         for (size_t i = 0; i < length; i++)
           array[i].~cown_ptr<T>();
 
-        snmalloc::ThreadAlloc::get().dealloc(array);
+        heap::dealloc(array);
       }
     }
 

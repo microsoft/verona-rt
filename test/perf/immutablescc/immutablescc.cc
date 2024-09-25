@@ -241,8 +241,6 @@ Object* make_horrible_cycles_two(size_t size)
 template<typename Make>
 void test_alloc_freeze_release(std::string ds, Make make, bool print)
 {
-  auto& alloc = ThreadAlloc::get();
-
 #ifdef CI_BUILD
   size_t max_index = 10;
 #else
@@ -296,7 +294,7 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
         {
           MeasureTime m(true);
           for (auto root : roots)
-            Immutable::release(alloc, root);
+            Immutable::release(root);
           if (print)
           {
             std::cout << ds << ",Dispose," << list_size << ","
@@ -313,7 +311,7 @@ void test_alloc_freeze_release(std::string ds, Make make, bool print)
       }
     }
 
-  snmalloc::debug_check_empty<snmalloc::Alloc::Config>();
+  heap::debug_check_empty();
   //  std::cerr << std::endl;
 }
 

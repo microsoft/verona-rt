@@ -93,8 +93,7 @@ namespace verona::cpp
         // Condition to handle moved weak cown ptrs.
         if (allocated_cown != nullptr)
         {
-          auto& alloc = verona::rt::ThreadAlloc::get();
-          allocated_cown->weak_release(alloc);
+          allocated_cown->weak_release();
           allocated_cown = nullptr;
         }
       }
@@ -304,8 +303,7 @@ namespace verona::cpp
       // Condition to handle moved cown ptrs.
       if (allocated_cown != nullptr)
       {
-        auto& alloc = verona::rt::ThreadAlloc::get();
-        verona::rt::Cown::release(alloc, allocated_cown);
+        verona::rt::Cown::release(allocated_cown);
         allocated_cown = nullptr;
       }
     }

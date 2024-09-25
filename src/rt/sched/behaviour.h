@@ -68,8 +68,7 @@ namespace verona::rt
     {
       // TODO Remove vector allocation here.  This is a temporary fix to
       // as we transition to using Request through the code base.
-      auto& alloc = ThreadAlloc::get();
-      Request* requests = (Request*)alloc.alloc(count * sizeof(Request));
+      Request* requests = (Request*)heap::alloc(count * sizeof(Request));
 
       for (size_t i = 0; i < count; ++i)
       {
@@ -82,7 +81,7 @@ namespace verona::rt
 
       schedule<Be>(count, requests, std::forward<Be>(f));
 
-      alloc.dealloc(requests);
+      heap::dealloc(requests);
     }
 
     /**
