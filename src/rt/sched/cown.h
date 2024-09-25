@@ -88,8 +88,14 @@ namespace verona::rt
       return LAST_READER_WAITING_WRITER;
     }
 
-    // True means I can write,
-    // false means I can't and need to set next_writer.
+    // This function should be not be called in parellel with itself, or
+    // add_read.
+    //
+    // The function is used to check if it is okay to proceed with a write, or
+    // if the last reader should initiate this write. The function returns
+    // * True means that there are no readers currently accessing
+    // * False means that there are readers, but the last reader is guaranteed
+    // to see LAST_READER_WAITING_WRITER.
     bool try_write()
     {
       if (count.load(std::memory_order_acquire) == 0)
