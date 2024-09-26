@@ -252,7 +252,8 @@ struct Ping
 
   RCown<region_type>* rcown;
   PRNG<true>* rand;
-  Ping(RCown<region_type>* rcown, PRNG<true>* rand) : rcown(rcown), rand(rand) {}
+  Ping(RCown<region_type>* rcown, PRNG<true>* rand) : rcown(rcown), rand(rand)
+  {}
 
   void operator()()
   {
