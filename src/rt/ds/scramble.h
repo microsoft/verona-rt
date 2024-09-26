@@ -1,13 +1,14 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #pragma once
-#include "test/xoroshiro.h"
+
+#include "ds/prng.h"
 
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
 
-namespace verona
+namespace verona::rt
 {
   /**
    * This class is used to provide alternative orderings on a pointer type.
@@ -35,7 +36,7 @@ namespace verona
   public:
     Scramble() {}
 
-    void setup(xoroshiro::p128r32& r)
+    void setup(verona::rt::PRNG<>& r)
     {
       for (size_t i = 0; i < ROUNDS; i++)
       {

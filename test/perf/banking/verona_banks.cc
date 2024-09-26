@@ -39,11 +39,11 @@ struct Worker
 {
   std::shared_ptr<Accounts> accounts;
 
-  xoroshiro::p128r64 rand;
+  verona::rt::PRNG<> rand;
 
   Worker(std::shared_ptr<Accounts> accounts, size_t seed) : accounts(accounts)
   {
-    rand.set_state(seed + 1);
+    rand.set_seed(seed + 1);
   }
 
   ~Worker()

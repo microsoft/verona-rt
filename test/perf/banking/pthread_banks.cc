@@ -1,6 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 #include "args.h"
+#include "ds/prng.h"
 
 #include <algorithm>
 #include <cassert>
@@ -27,8 +28,8 @@ namespace
 void thread_main(size_t id)
 {
   size_t a, b;
-  xoroshiro::p128r64 rand;
-  rand.set_state(id + 1);
+  verona::rt::PRNG<> rand;
+  rand.set_seed(id + 1);
 
   for (size_t i = 0; i < (TRANSACTIONS / NUM_WORKERS); i++)
   {

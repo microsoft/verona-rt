@@ -13,7 +13,6 @@
 
 #include "debug/log.h"
 #include "test/opt.h"
-#include "test/xoroshiro.h"
 #include "verona.h"
 
 #include <chrono>
@@ -26,7 +25,7 @@ struct Sender;
 struct Receiver : public VCown<Receiver>
 {
   std::vector<Sender*>& senders;
-  xoroshiro::p128r32 rng;
+  PRNG<> rng;
   size_t msgs = 0;
   timer::time_point prev = timer::now();
 

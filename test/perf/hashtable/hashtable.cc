@@ -82,7 +82,7 @@ auto concurrency = std::make_shared<std::array<std::atomic<size_t>, 1024>>();
 void test_hash_table()
 {
   auto t1 = high_resolution_clock::now();
-  xoroshiro::p128r32 rand{Systematic::get_prng_next()};
+  PRNG<> rand{Systematic::get_prng_next()};
 
   std::shared_ptr<std::vector<cown_ptr<Bucket>>> buckets =
     std::make_shared<std::vector<cown_ptr<Bucket>>>();

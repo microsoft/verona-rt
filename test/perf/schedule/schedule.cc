@@ -10,7 +10,6 @@
 
 #include "debug/log.h"
 #include "test/opt.h"
-#include "test/xoroshiro.h"
 #include "verona.h"
 
 #include <chrono>
@@ -29,11 +28,11 @@ size_t writes;
 struct LoopCown : public VCown<LoopCown>
 {
   size_t count;
-  xoroshiro::p128r32 rng;
+  PRNG<> rng;
 
   LoopCown(size_t count, size_t seed) : count(count)
   {
-    rng.set_state(seed);
+    rng.set_seed(seed);
   }
 
   void go()

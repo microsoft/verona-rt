@@ -4,8 +4,8 @@
 
 #include "../debug/logging.h"
 #include "../pal/semaphore.h"
+#include "ds/prng.h"
 #include "ds/scramble.h"
-#include "test/xoroshiro.h"
 
 #include <snmalloc/snmalloc.h>
 
@@ -86,9 +86,9 @@ namespace verona::rt
     /// Return a mutable reference to the pseudo random number generator (PRNG).
     /// It is assumed that the PRNG will only be setup once via `set_seed`.
     /// After it is setup, the PRNG must only be used via `get_prng_next`.
-    static xoroshiro::p128r32& get_prng_for_setup()
+    static PRNG<>& get_prng_for_setup()
     {
-      static xoroshiro::p128r32 prng;
+      static PRNG<> prng;
       return prng;
     }
 
@@ -96,9 +96,9 @@ namespace verona::rt
     /// scrambler will only be setup once via `set_seed`. After it is setup, the
     /// scrambler must only be accessed via a const reference
     /// (see `get_scrambler`).
-    static verona::Scramble& get_scrambler_for_setup()
+    static verona::rt::Scramble& get_scrambler_for_setup()
     {
-      static verona::Scramble scrambler;
+      static verona::rt::Scramble scrambler;
       return scrambler;
     }
 
@@ -113,7 +113,7 @@ namespace verona::rt
     }
 
     /// Return a const reference to the scrambler.
-    static const verona::Scramble& get_scrambler()
+    static const verona::rt::Scramble& get_scrambler()
     {
       return get_scrambler_for_setup();
     }
@@ -121,7 +121,7 @@ namespace verona::rt
     static void set_seed(uint64_t seed)
     {
       auto& rng = get_prng_for_setup();
-      rng.set_state(seed);
+      rng.set_seed(seed);
       get_scrambler_for_setup().setup(rng);
     }
 
