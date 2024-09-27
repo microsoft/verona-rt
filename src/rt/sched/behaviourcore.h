@@ -673,6 +673,7 @@ namespace verona::rt
       // one from the execution count on finishing phase 2 of the
       // 2PL. This ensures that the behaviour cannot be
       // deallocated until we finish phase 2.
+      std::cout << "Body count " << body_count << std::endl;
       StackArray<size_t> ec(body_count);
       for (size_t i = 0; i < body_count; i++)
         ec[i] = 1;
@@ -692,11 +693,16 @@ namespace verona::rt
         auto slots = bodies[i]->get_slots();
         for (size_t j = 0; j < bodies[i]->count; j++)
         {
-          std::get<0>(cown_to_behaviour_slot_map[idx]) = i;
-          std::get<1>(cown_to_behaviour_slot_map[idx]) = &slots[j];
+          cown_to_behaviour_slot_map[idx] = {i,&slots[j]};
           idx++;
         }
       }
+
+      // First phase - Prepare phase
+      // For each unique cown, build a chain of behaviours that need to be
+      // scheduled.
+      // First order the cowns to find the unique ones and the prepare the
+      // chains
 
       // Sort the indexing array so we make the requests in the correct order
       // across the whole set of behaviours.  A consistent order is required to
@@ -746,15 +752,17 @@ namespace verona::rt
           cown_to_behaviour_slot_map.get() + cown_count,
           compare);
 
-      // First phase - Prepare phase
-      // For each unique chain you need to keep the cown, the first index,
-      // the Slot for that cown in the last body in the chain
-      // the transfer count for reference counting, and a bool that will be
-      // used later to indicate that the chain had no predecessor
+      // Helper struct to be used after building the chains in the next phases
+      struct ChainInfo {
+        Cown *cown;
+        size_t first_body_index;
+        Slot *slot;
+        size_t transfer_count;
+        bool had_no_predecessor;
+      };
       size_t i = 0;
       size_t chain_count = 0;
-      StackArray<std::tuple<Cown*, size_t, Slot*, size_t, bool>> chain_info(
-        cown_count);
+      StackArray<ChainInfo> chain_info(cown_count);
 
       while (i < cown_count)
       {
@@ -813,11 +821,7 @@ namespace verona::rt
 
         // For each chain you need the cown, the first and the last body of the
         // chain
-        std::get<0>(chain_info[chain_count]) = cown;
-        std::get<1>(chain_info[chain_count]) = first_body_index;
-        std::get<2>(chain_info[chain_count]) = last_slot;
-        std::get<3>(chain_info[chain_count]) = transfer_count;
-        std::get<4>(chain_info[chain_count++]) = false;
+        chain_info[chain_count++] = {cown, first_body_index, last_slot, transfer_count, false};
 
         // Mark the slot as ready for scheduling
         last_slot->reset_status();
@@ -829,10 +833,10 @@ namespace verona::rt
       // Second phase - Acquire phase
       for (size_t i = 0; i < chain_count; i++)
       {
-        auto* cown = std::get<0>(chain_info[i]);
-        auto first_body_index = std::get<1>(chain_info[i]);
+        auto* cown = chain_info[i].cown;
+        auto first_body_index = chain_info[i].first_body_index;
         auto* first_body = bodies[first_body_index];
-        auto* new_slot = std::get<2>(chain_info[i]);
+        auto* new_slot = chain_info[i].slot;
 
         auto prev_slot =
           cown->last_slot.exchange(new_slot, std::memory_order_acq_rel);
@@ -841,7 +845,7 @@ namespace verona::rt
 
         if (prev_slot == nullptr)
         {
-          std::get<4>(chain_info[i]) = true;
+          chain_info[i].had_no_predecessor = true;
           continue;
         }
 
@@ -893,16 +897,15 @@ namespace verona::rt
         Logging::cout() << "Release phase for behaviour " << bodies[i]
                         << Logging::endl;
       }
-      // FIXME: Shouldn't this be only over chains?
-      // Do we avoid the if this way?
-      for (size_t i = 0; i < cown_count; i++)
+
+      for (size_t i = 0; i < chain_count; i++)
       {
         yield();
-        auto slot = std::get<1>(cown_to_behaviour_slot_map[i]);
+        auto slot = chain_info[i].slot;
         Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
-        if (slot->is_wait_2pl())
-          slot->set_ready();
+        // Is this ok?
+        slot->set_ready();
       }
 
       // Fourth phase - Process & Resolve
@@ -910,12 +913,12 @@ namespace verona::rt
       // Process first reference count and the chains with no predecessor
       for (size_t i = 0; i < chain_count; i++)
       {
-        auto* cown = std::get<0>(chain_info[i]);
-        auto first_body_index = std::get<1>(chain_info[i]);
+        auto* cown = chain_info[i].cown;
+        auto first_body_index = chain_info[i].first_body_index;
         auto* first_body = bodies[first_body_index];
-        auto* curr_slot = std::get<2>(chain_info[i]);
-        auto chain_had_no_predecessor = std::get<4>(chain_info[i]);
-        auto transfer_count = std::get<3>(chain_info[i]);
+        auto* curr_slot = chain_info[i].slot;
+        auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
+        auto transfer_count = chain_info[i].transfer_count;
 
         if (chain_had_no_predecessor)
         {
@@ -943,6 +946,7 @@ namespace verona::rt
           {
             Logging::cout() << " Writer at head of queue and got the cown "
                             << *curr_slot << Logging::endl;
+            std::cout << "First body index = " << first_body_index << std::endl;
             ec[first_body_index]++;
             yield();
             continue;
