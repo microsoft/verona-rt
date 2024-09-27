@@ -761,7 +761,7 @@ namespace verona::rt
         auto cown = std::get<1>(cown_to_behaviour_slot_map[i])->cown();
         auto body = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
         auto last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
-        size_t first_body_index = i;
+        size_t first_body_index = std::get<0>(cown_to_behaviour_slot_map[i]);
 
         // The number of RCs provided for the current cown by the when.
         // I.e. how many moves of cown_refs there were.
