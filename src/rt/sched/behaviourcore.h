@@ -914,14 +914,10 @@ namespace verona::rt
         auto first_body_index = std::get<1>(chain_info[i]);
         auto* first_body = bodies[first_body_index];
         auto* curr_slot = std::get<2>(chain_info[i]);
-        auto chain_had_predecessor = std::get<4>(chain_info[i]);
+        auto chain_had_no_predecessor = std::get<4>(chain_info[i]);
         auto transfer_count = std::get<3>(chain_info[i]);
 
-        if (chain_had_predecessor)
-        {
-          acquire_with_transfer(cown, transfer_count, 0);
-        }
-        else
+        if (chain_had_no_predecessor)
         {
           if (curr_slot->is_read_only())
           {
@@ -957,6 +953,10 @@ namespace verona::rt
           yield();
           // Was this a bug in the previous implementation?
           cown->next_writer = first_body;
+        }
+        else
+        {
+          acquire_with_transfer(cown, transfer_count, 0);
         }
       }
 
