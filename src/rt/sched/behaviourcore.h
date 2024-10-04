@@ -875,6 +875,10 @@ namespace verona::rt
           Logging::cout() << " Reader got the cown " << *new_slot
                           << Logging::endl;
           yield();
+
+          // TODO: This will not be correct in the multi-schedule cases.
+          // There needs to be a check that ensures the chain contains only
+          // reads. This will be calculated in the prepare phase.
           new_slot->set_read_available();
           ec[first_body_index]++;
           if (first_reader)
@@ -908,6 +912,8 @@ namespace verona::rt
         Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
         slot->set_ready();
+
+        // TODO: We chould also set the READ_AVAILABLE here
       }
 
       // Fourth phase - Process & Resolve
@@ -926,6 +932,9 @@ namespace verona::rt
         {
           if (curr_slot->is_read_only())
           {
+            // TODO: To revisit and simplify after adding support for
+            // multi-sched readonly. This part of the code will look closer
+            // to release.
             yield();
             bool first_reader = cown->read_ref_count.add_read();
             Logging::cout() << "Reader at head of queue and got the cown "
@@ -956,7 +965,6 @@ namespace verona::rt
           Logging::cout() << " Writer waiting for previous readers cown "
                           << *curr_slot << Logging::endl;
           yield();
-          // Was this a bug in the previous implementation?
           cown->next_writer = first_body;
         }
         else
