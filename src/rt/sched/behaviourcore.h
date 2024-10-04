@@ -692,7 +692,7 @@ namespace verona::rt
         auto slots = bodies[i]->get_slots();
         for (size_t j = 0; j < bodies[i]->count; j++)
         {
-          cown_to_behaviour_slot_map[idx] = {i,&slots[j]};
+          cown_to_behaviour_slot_map[idx] = {i, &slots[j]};
           idx++;
         }
       }
@@ -811,6 +811,8 @@ namespace verona::rt
 
             // Extend the chain of behaviours linking on this behaviour
             last_slot->set_next_slot_writer(body);
+            last_slot->set_ready();
+
             last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
             continue;
           }
