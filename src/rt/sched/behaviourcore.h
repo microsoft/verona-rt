@@ -519,6 +519,39 @@ namespace verona::rt
         Cown::acquire(cown);
     }
 
+    static std::tuple<size_t, size_t>
+    handle_read_only_enqueue(Slot* prev_slot, Slot* new_slot, Cown* cown)
+    {
+      size_t ref_count = 0, ex_count = 0;
+      bool first_reader;
+
+      if (prev_slot && (prev_slot->set_next_slot_reader(new_slot)))
+      {
+        Logging::cout() << " Previous slot is a writer or blocked reader cown "
+                        << *new_slot << Logging::endl;
+        yield();
+        goto OUT;
+      }
+
+      yield();
+      first_reader = cown->read_ref_count.add_read();
+      Logging::cout() << " Reader got the cown " << *new_slot << Logging::endl;
+      yield();
+
+      // TODO: This will not be correct in the multi-schedule cases.
+      // There needs to be a check that ensures the chain contains only
+      // reads. This will be calculated in the prepare phase.
+      new_slot->set_read_available();
+
+      ex_count = 1;
+      if (first_reader)
+      {
+        ref_count = 1;
+      }
+    OUT:
+      return {ref_count, ex_count};
+    }
+
     /**
      * @brief Constructs a behaviour.  Leaves space for the closure.
      *
@@ -759,6 +792,9 @@ namespace verona::rt
         Slot* last_slot;
         size_t transfer_count;
         bool had_no_predecessor;
+        // The last two are only use for reads only chains
+        size_t ref_count;
+        size_t ex_count;
       };
       size_t i = 0;
       size_t chain_count = 0;
@@ -824,7 +860,7 @@ namespace verona::rt
         // For each chain you need the cown, the first and the last body of the
         // chain
         chain_info[chain_count++] = {
-          cown, first_body_index, last_slot, transfer_count, false};
+          cown, first_body_index, last_slot, transfer_count, false, 0, 0};
 
         // Mark the slot as ready for scheduling
         last_slot->reset_status();
@@ -849,6 +885,10 @@ namespace verona::rt
         if (prev_slot == nullptr)
         {
           chain_info[i].had_no_predecessor = true;
+          if (new_slot->is_read_only())
+          {
+            handle_read_only_enqueue(prev_slot, new_slot, cown);
+          }
           continue;
         }
 
@@ -861,33 +901,9 @@ namespace verona::rt
 
         if (new_slot->is_read_only())
         {
-          if (prev_slot->set_next_slot_reader(new_slot))
-          {
-            Logging::cout()
-              << " Previous slot is a writer or blocked reader cown "
-              << *new_slot << Logging::endl;
-            yield();
-            continue;
-          }
-
-          yield();
-          bool first_reader = cown->read_ref_count.add_read();
-          Logging::cout() << " Reader got the cown " << *new_slot
-                          << Logging::endl;
-          yield();
-
-          // TODO: This will not be correct in the multi-schedule cases.
-          // There needs to be a check that ensures the chain contains only
-          // reads. This will be calculated in the prepare phase.
-          new_slot->set_read_available();
-          ec[first_body_index]++;
-          if (first_reader)
-          {
-            Logging::cout()
-              << "Acquiring reference count for first reader on cown "
-              << *new_slot << Logging::endl;
-            Cown::acquire(cown);
-          }
+          auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
+          chain_info[i].ref_count = std::get<0>(counts);
+          chain_info[i].ex_count = std::get<1>(counts);
           continue;
         }
 
@@ -918,7 +934,6 @@ namespace verona::rt
 
       // Fourth phase - Process & Resolve
 
-      // Process first reference count and the chains with no predecessor
       for (size_t i = 0; i < chain_count; i++)
       {
         auto* cown = chain_info[i].cown;
@@ -927,50 +942,37 @@ namespace verona::rt
         auto* curr_slot = chain_info[i].last_slot;
         auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
         auto transfer_count = chain_info[i].transfer_count;
+        auto ref_count = chain_info[i].ref_count;
+        auto ex_count = chain_info[i].ex_count;
 
+        // Process reference count
         if (chain_had_no_predecessor)
         {
-          if (curr_slot->is_read_only())
-          {
-            // TODO: To revisit and simplify after adding support for
-            // multi-sched readonly. This part of the code will look closer
-            // to release.
-            yield();
-            bool first_reader = cown->read_ref_count.add_read();
-            Logging::cout() << "Reader at head of queue and got the cown "
-                            << *curr_slot << Logging::endl;
-            yield();
-            curr_slot->set_read_available();
-            ec[first_body_index]++;
-            yield();
-            acquire_with_transfer(cown, transfer_count, 1 + first_reader);
-            continue;
-          }
+          ref_count++;
+        }
+        acquire_with_transfer(cown, transfer_count, ref_count);
 
-          yield();
-
-          acquire_with_transfer(cown, transfer_count, 1);
-
-          yield();
-
+        // Process writes without predecessor
+        if ((chain_had_no_predecessor) && (!curr_slot->is_read_only()))
+        {
           if (cown->read_ref_count.try_write())
           {
             Logging::cout() << " Writer at head of queue and got the cown "
                             << *curr_slot << Logging::endl;
-            ec[first_body_index]++;
+            ex_count++;
             yield();
-            continue;
           }
+          else
+          {
+            Logging::cout() << " Writer waiting for previous readers cown "
+                            << *curr_slot << Logging::endl;
+            yield();
+            cown->next_writer = first_body;
+          }
+        }
 
-          Logging::cout() << " Writer waiting for previous readers cown "
-                          << *curr_slot << Logging::endl;
-          yield();
-          cown->next_writer = first_body;
-        }
-        else
-        {
-          acquire_with_transfer(cown, transfer_count, 0);
-        }
+        // Process execution count
+        ec[first_body_index] += ex_count;
       }
 
       for (size_t i = 0; i < body_count; i++)
