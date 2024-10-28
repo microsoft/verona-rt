@@ -530,7 +530,7 @@ namespace verona::rt
         Logging::cout() << " Previous slot is a writer or blocked reader cown "
                         << *new_slot << Logging::endl;
         yield();
-        goto OUT;
+        goto fn_out;
       }
 
       yield();
@@ -548,7 +548,8 @@ namespace verona::rt
       {
         ref_count = 1;
       }
-    OUT:
+
+    fn_out:
       return {ref_count, ex_count};
     }
 
@@ -887,7 +888,9 @@ namespace verona::rt
           chain_info[i].had_no_predecessor = true;
           if (new_slot->is_read_only())
           {
-            handle_read_only_enqueue(prev_slot, new_slot, cown);
+            auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
+            chain_info[i].ref_count = std::get<0>(counts);
+            chain_info[i].ex_count = std::get<1>(counts);
           }
           continue;
         }
