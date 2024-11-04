@@ -796,6 +796,7 @@ namespace verona::rt
         // The last two are only use for reads only chains
         size_t ref_count;
         size_t ex_count;
+        bool all_reads;
       };
       size_t i = 0;
       size_t chain_count = 0;
@@ -811,6 +812,8 @@ namespace verona::rt
         // The number of RCs provided for the current cown by the when.
         // I.e. how many moves of cown_refs there were.
         size_t transfer_count = last_slot->is_move();
+
+        auto all_reads = last_slot->is_read_only();
 
         Logging::cout() << "Processing " << cown << " " << body << " "
                         << last_slot << " Index " << i << Logging::endl;
@@ -842,27 +845,37 @@ namespace verona::rt
             continue;
           }
 
-          // For writers, create a chain of behaviours
-          if (!std::get<1>(cown_to_behaviour_slot_map[i])->is_read_only())
+          if (std::get<1>(cown_to_behaviour_slot_map[i])->is_read_only())
           {
-            body = body_next;
+            // Extend the chain of behaviours linking on this behaviour
+            last_slot->set_next_slot_reader(last_slot);
+
+            // FIXME: Do I need to do everything else here?
+          }
+          else
+          {
+            all_reads = false;
 
             // Extend the chain of behaviours linking on this behaviour
             last_slot->set_next_slot_writer(body);
-            last_slot->set_ready();
-
-            last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
-            continue;
           }
 
-          // TODO: Chain with reads and writes is not implemented.
-          abort();
+          last_slot->set_ready();
+          body = body_next;
+          last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
         }
 
         // For each chain you need the cown, the first and the last body of the
         // chain
         chain_info[chain_count++] = {
-          cown, first_body_index, last_slot, transfer_count, false, 0, 0};
+          cown,
+          first_body_index,
+          last_slot,
+          transfer_count,
+          false,
+          0,
+          0,
+          all_reads};
 
         // Mark the slot as ready for scheduling
         last_slot->reset_status();
