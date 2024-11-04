@@ -524,6 +524,7 @@ namespace verona::rt
       Slot* new_slot_head,
       Slot* new_slot_tail,
       bool all_reads,
+      size_t consecutive_readers_start,
       Cown* cown)
     {
       size_t ref_count = 0, ex_count = 0;
@@ -538,7 +539,7 @@ namespace verona::rt
       }
 
       yield();
-      first_reader = cown->read_ref_count.add_read();
+      first_reader = cown->read_ref_count.add_read(consecutive_readers_start);
       Logging::cout() << " Reader got the cown " << *new_slot_head
                       << Logging::endl;
       yield();
@@ -801,6 +802,7 @@ namespace verona::rt
         size_t ref_count;
         size_t ex_count;
         bool all_reads;
+        size_t consecutive_readers_start;
       };
       size_t i = 0;
       size_t chain_count = 0;
@@ -823,6 +825,8 @@ namespace verona::rt
         Logging::cout() << "Processing " << cown << " " << body << " "
                         << last_slot << " Index " << i << Logging::endl;
 
+        size_t consecutive_readers_start = all_reads;
+
         // Detect duplicates for this cown.
         // This is required in two cases:
         //  * overlaps within a single behaviour.
@@ -836,9 +840,13 @@ namespace verona::rt
           // Check if the caller passed an RC and add to the total.
           transfer_count +=
             std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
-
+          auto slot_next = std::get<1>(cown_to_behaviour_slot_map[i]);
           if (body_next == body)
           {
+            // Check if the caller passed an RC and add to the total.
+            transfer_count +=
+              std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
+
             Logging::cout() << "Duplicate " << cown << " for " << body
                             << " Index " << i << Logging::endl;
             // We need to reduce the execution count by one, as we can't wait
@@ -850,26 +858,24 @@ namespace verona::rt
             continue;
           }
 
-          if (std::get<1>(cown_to_behaviour_slot_map[i])->is_read_only())
+          if (slot_next->is_read_only())
           {
             // Extend the chain of behaviours linking on this behaviour
-            last_slot->set_next_slot_reader(last_slot);
-
-            // FIXME: Do I need to do everything else here?
-            // what about the execution count?
-            // when would I wake them up?
+            last_slot->set_next_slot_reader(slot_next);
+            if (all_reads)
+              consecutive_readers_start++;
           }
           else
           {
             all_reads = false;
 
             // Extend the chain of behaviours linking on this behaviour
-            last_slot->set_next_slot_writer(body);
+            last_slot->set_next_slot_writer(body_next);
           }
 
           last_slot->set_ready();
           body = body_next;
-          last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
+          last_slot = slot_next;
         }
 
         // For each chain you need the cown, the first and the last body of the
@@ -883,7 +889,8 @@ namespace verona::rt
           false,
           0,
           0,
-          all_reads};
+          all_reads,
+          consecutive_readers_start};
 
         // Mark the slot as ready for scheduling
         last_slot->reset_status();
@@ -899,6 +906,7 @@ namespace verona::rt
         auto first_body_index = chain_info[i].first_body_index;
         auto* first_body = bodies[first_body_index];
         auto* new_slot = chain_info[i].last_slot;
+        auto* first_slot_in_chain = chain_info[i].first_slot;
 
         auto prev_slot =
           cown->last_slot.exchange(new_slot, std::memory_order_acq_rel);
@@ -908,14 +916,14 @@ namespace verona::rt
         if (prev_slot == nullptr)
         {
           chain_info[i].had_no_predecessor = true;
-          if (new_slot->is_read_only())
+          if (first_slot_in_chain->is_read_only())
           {
-            auto* chain_head_slot = chain_info[i].first_slot;
             auto counts = handle_read_only_enqueue(
               prev_slot,
-              chain_head_slot,
+              first_slot_in_chain,
               new_slot,
               chain_info[i].all_reads,
+              chain_info[i].consecutive_readers_start,
               cown);
             chain_info[i].ref_count = std::get<0>(counts);
             chain_info[i].ex_count = std::get<1>(counts);
@@ -938,6 +946,7 @@ namespace verona::rt
             chain_head_slot,
             new_slot,
             chain_info[i].all_reads,
+            chain_info[i].consecutive_readers_start,
             cown);
           chain_info[i].ref_count = std::get<0>(counts);
           chain_info[i].ex_count = std::get<1>(counts);
@@ -965,8 +974,6 @@ namespace verona::rt
         Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
         slot->set_ready();
-
-        // TODO: We chould also set the READ_AVAILABLE here
       }
 
       // Fourth phase - Process & Resolve
@@ -976,11 +983,13 @@ namespace verona::rt
         auto* cown = chain_info[i].cown;
         auto first_body_index = chain_info[i].first_body_index;
         auto* first_body = bodies[first_body_index];
-        auto* curr_slot = chain_info[i].last_slot;
+        auto* head_slot = chain_info[i].first_slot;
         auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
         auto transfer_count = chain_info[i].transfer_count;
         auto ref_count = chain_info[i].ref_count;
         auto ex_count = chain_info[i].ex_count;
+        auto consecutive_readers_start =
+          chain_info[i].consecutive_readers_start;
 
         // Process reference count
         if (chain_had_no_predecessor)
@@ -990,19 +999,19 @@ namespace verona::rt
         acquire_with_transfer(cown, transfer_count, ref_count);
 
         // Process writes without predecessor
-        if ((chain_had_no_predecessor) && (!curr_slot->is_read_only()))
+        if ((chain_had_no_predecessor) && (!head_slot->is_read_only()))
         {
           if (cown->read_ref_count.try_write())
           {
             Logging::cout() << " Writer at head of queue and got the cown "
-                            << *curr_slot << Logging::endl;
+                            << *head_slot << Logging::endl;
             ex_count++;
             yield();
           }
           else
           {
             Logging::cout() << " Writer waiting for previous readers cown "
-                            << *curr_slot << Logging::endl;
+                            << *head_slot << Logging::endl;
             yield();
             cown->next_writer = first_body;
           }
@@ -1010,6 +1019,9 @@ namespace verona::rt
 
         // Process execution count
         ec[first_body_index] += ex_count;
+
+        for (int i = 1; i < consecutive_readers_start; i++)
+          ec[first_body_index + i] += 1;
       }
 
       for (size_t i = 0; i < body_count; i++)

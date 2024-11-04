@@ -183,13 +183,14 @@ int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
 
-  // harness.run(test_body);
-  // harness.run(test_body_read_mixed);
+  harness.run(test_body);
+  harness.run(test_body_same);
+  harness.run(test_body_smart);
+
+  harness.run(test_body_read_mixed);
   harness.run(test_body_read_only_same);
-  // harness.run(test_body_read_same1);
-  // harness.run(test_body_read_same2);
-  // harness.run(test_body_same);
-  // harness.run(test_body_smart);
+  harness.run(test_body_read_same1);
+  harness.run(test_body_read_same2);
 
   return 0;
 }
