@@ -34,8 +34,8 @@ namespace verona::rt
 
     std::atomic<NextPtr*> back{&front};
 
-    // Multi-threaded end of the "queue" requires ABA protection.
-    // Used for work stealing and posting new work from another thread.
+    // Multi-threaded end of the "queue".
+    // Used for work stealing and dequeue individual items.
     NextPtr front{nullptr};
 
     // Common function that is used to make the queue appear empty to any other
@@ -108,7 +108,7 @@ namespace verona::rt
 
       Systematic::yield();
 
-      auto b = back.exchange(ls.end, std::memory_order_seq_cst);
+      auto b = back.exchange(ls.end, std::memory_order_acq_rel);
 
       Systematic::yield();
 
@@ -202,7 +202,7 @@ namespace verona::rt
     {
       Systematic::yield();
 
-      return back.load(std::memory_order_acquire) == &front;
+      return back.load(std::memory_order_relaxed) == &front;
     }
 
     ~MPMCQ()
