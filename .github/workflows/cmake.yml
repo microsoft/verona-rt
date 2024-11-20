@@ -47,7 +47,7 @@ jobs:
     runs-on: ${{matrix.platform}}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: mjp41/workaround8649@c8550b715ccdc17f89c8d5c28d7a48eeff9c94a8
       with:
@@ -70,7 +70,7 @@ jobs:
   format:
     runs-on: "ubuntu-latest"
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install build dependencies
       run: |
