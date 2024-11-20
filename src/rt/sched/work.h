@@ -42,7 +42,6 @@ namespace verona::rt
      */
     void dealloc()
     {
-      auto& alloc = ThreadAlloc::get();
       heap::dealloc(this);
     }
   };
