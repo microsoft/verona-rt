@@ -20,6 +20,16 @@ public:
     return index;
   }
 
+  size_t operator--(int)
+  {
+    auto result = index;
+    if (result == 0)
+      index = N - 1;
+    else
+      index--;
+    return result;
+  }
+
   operator size_t() const
   {
     return index;

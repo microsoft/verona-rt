@@ -47,8 +47,7 @@ namespace verona::rt
 
     void enqueue_front(Work* work)
     {
-      // TODO should this be --dequeue_index?
-      queues[++enqueue_index].enqueue_front(work);
+      queues[dequeue_index--].enqueue_front(work);
     }
 
     // Dequeue a single node from any of the queues.

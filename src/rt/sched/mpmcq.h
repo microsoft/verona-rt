@@ -126,8 +126,17 @@ namespace verona::rt
 
     void enqueue_front(T* node)
     {
-      // No longer support put on the back.
-      enqueue_segment({node, &node->next_in_queue});
+      auto old_front = acquire_front();
+      if (old_front == nullptr)
+      {
+        // Post to back.
+        enqueue(node);
+        return;
+      }
+
+      // Link into the front.
+      node->next_in_queue.store(old_front, std::memory_order_relaxed);
+      front.store(node, std::memory_order_release);
     }
 
     /**
