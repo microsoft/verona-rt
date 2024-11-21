@@ -65,7 +65,7 @@ namespace Logging
   };
 
   // Filled in later by the scheduler thread
-  std::string get_systematic_id();
+  const std::string& get_systematic_id();
 
   class LocalLog : public snmalloc::Pooled<LocalLog>
   {

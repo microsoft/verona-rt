@@ -328,7 +328,7 @@ namespace Logging
 {
   using namespace verona::rt;
 
-  inline std::string get_systematic_id()
+  inline std::string create_systematic_id()
   {
 #if defined(USE_SYSTEMATIC_TESTING) || defined(USE_FLIGHT_RECORDER)
     static std::atomic<size_t> external_id_source = 1;
@@ -366,5 +366,11 @@ namespace Logging
 #else
     return "";
 #endif
+  }
+
+  inline const std::string& get_systematic_id()
+  {
+    static thread_local std::string id = create_systematic_id();
+    return id;
   }
 }
