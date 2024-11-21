@@ -146,14 +146,22 @@ namespace verona::rt
 
       if (core->should_steal_for_fairness)
       {
-        // Can race with other threads on the same core.
-        // This is a heuristic, so we don't care.
-        core->should_steal_for_fairness = false;
-        auto work = try_steal();
-        if (work != nullptr)
+        // Check if we have some work. We should only reschedule the token
+        // if we do have some work.  Otherwise, the token will be rescheduled
+        // and we will fail to reach quicescence.
+        if (!core->q.is_empty())
         {
-          return_next_work();
-          return work;
+          auto work = try_steal();
+          // Set the flag before rescheduling the token so that we don't have
+          // a race.
+          core->should_steal_for_fairness = false;
+          // Reschedule the token.
+          core->q.enqueue(core->token_work);
+          if (work != nullptr)
+          {
+            return_next_work();
+            return work;
+          }
         }
       }
 
@@ -218,7 +226,6 @@ namespace verona::rt
         {
           Logging::cout() << "Destroying core " << core->affinity
                           << Logging::endl;
-          core->q.destroy();
         }
       }
 
@@ -235,16 +242,13 @@ namespace verona::rt
     {
       Work* work = nullptr;
       // Try to steal from the victim thread.
-      if (victim != core)
-      {
-        work = victim->q.dequeue();
+      work = core->q.steal(victim->q);
 
-        if (work != nullptr)
-        {
-          // stats.steal();
-          Logging::cout() << "Fast-steal work " << work << " from "
-                          << victim->affinity << Logging::endl;
-        }
+      if (work != nullptr)
+      {
+        core->stats.steal();
+        Logging::cout() << "Fast-steal work " << work << " from "
+                        << victim->affinity << Logging::endl;
       }
 
       // Move to the next victim thread.
@@ -269,17 +273,14 @@ namespace verona::rt
           return work;
 
         // Try to steal from the victim thread.
-        if (victim != core)
-        {
-          work = victim->q.dequeue();
+        work = core->q.steal(victim->q);
 
-          if (work != nullptr)
-          {
-            core->stats.steal();
-            Logging::cout() << "Stole work " << work << " from "
-                            << victim->affinity << Logging::endl;
-            return work;
-          }
+        if (work != nullptr)
+        {
+          core->stats.steal();
+          Logging::cout() << "Stole work " << work << " from "
+                          << victim->affinity << Logging::endl;
+          return work;
         }
 
         // We were unable to steal, move to the next victim thread.

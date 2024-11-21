@@ -288,7 +288,7 @@ namespace verona::rt
       {
         Logging::cout() << "Checking for pending work on thread " << c->affinity
                         << Logging::endl;
-        if (!c->q.nothing_old())
+        if (!c->q.is_empty())
         {
           Logging::cout() << "Found pending work!" << Logging::endl;
           return true;

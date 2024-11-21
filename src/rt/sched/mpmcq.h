@@ -7,66 +7,92 @@
 namespace verona::rt
 {
   /**
-   * Multiple Producer Multiple Consumer Queue.
+   * Multiple Producer Multiple Consumer Queue with steal all
    *
    * This queue forms the primary scheduler queue for each thread to
-   * schedule cowns.
+   * schedule work.
    *
    * The queue has two ends.
    *
    *   - the back end can be used by multiple thread using
    *     `enqueue` to add elements to the queue in a FIFO way wrt to `dequeue`.
-   *   - the front end can be used by multiple threads to `dequeue` elements
-   *     and `enqueue_front` elements. `enqueue_front` behaves in a LIFO way wrt
-   *     to `dequeue`.
+   *   - the front end can be used by multiple threads to `dequeue` and
+   * `dequeue_all` elements.  It is possible for dequeue to not see elements
+   * added by enqueue and spuriously return nullptr.
+   *
+   * The empty representation of the queue has the back pointing at the front.
+   * So that moving from empty to non-empty will not require branching.
    *
    * The queue uses an intrusive list in the elements of the queue.  (For
-   * Verona this is the Cowns). To make this memory safe and ABA safe we use
-   * two mechanisms.
-   *
-   *   - ABA protection from snmalloc - this will use LL/SC or Double-word
-   *     compare and swap.  This ensures that the same element can be added
-   *     to the queue multiple times without leading to ABA issues.
-   *   - Memory safety, the underlying elements of the queue my also be
-   *     deallocated however, if this occurs, then we could potentially access
-   *     decommitted memory with the optimistic concurrency. To protect against
-   *     this we use an epoch mechanism, that is, elements may only
-   *     deallocated, if sufficient epochs have passed since it was last in
-   *     the queue.
-   *
-   * Using two mechanisms means that we can have intrusive `next` fields,
-   * which gives zero allocation scheduling, but don't have to wait for the
-   * epoch to advance to reschedule.
-   *
-   * The queue also has a notion of a token. This is used to determine once
-   * the queue has been flushed through.  The client can check if the value
-   * popped is a token.  This is used to monitor how quickly this queue is
-   * completed, and then can be used for fairness scheduling.
-   *
-   * The queue doesn't know which work elements are the token, but the non-empty
-   * nature needs it to exist otherwise, we can't reach a quicent state.
+   * Verona this is the Work items).
    */
   template<class T>
   class MPMCQ
   {
   private:
-    friend T;
-    static constexpr uintptr_t BIT = 1;
-    // Multi-threaded enqueue end of the "queue"
-    // modified using exchange.
-    std::atomic<T*> back;
-    // Multi-threaded end of the "queue" requires ABA protection.
-    // Used for work stealing and posting new work from another thread.
-    snmalloc::ABA<T> front;
+    using NextPtr = std::atomic<T*>;
+
+    std::atomic<NextPtr*> back{&front};
+
+    // Multi-threaded end of the "queue".
+    // Used for work stealing and dequeue individual items.
+    NextPtr front{nullptr};
+
+    // Common function that is used to make the queue appear empty to any other
+    // dequeue or dequeue_all operations.
+    T* acquire_front()
+    {
+      Systematic::yield();
+
+      // Nothing in the queue
+      if (front.load(std::memory_order_relaxed) == nullptr)
+      {
+        return nullptr;
+      }
+
+      Systematic::yield();
+
+      // Remove head element.  This is like locking the queue for other
+      // removals.
+      return front.exchange(nullptr, std::memory_order_acquire);
+    }
 
   public:
-    explicit MPMCQ(T* token)
+    struct Segment
     {
-      assert(token);
-      token->next_in_queue = nullptr;
-      back = token;
-      front.init(token);
-    }
+      T* start;
+      NextPtr* end;
+
+      Segment(T* s, NextPtr* e) : start(s), end(e) {}
+
+      // In place removes the first element from the segment.
+      // Returns nullptr if the first element cannot be removed.
+      // This can be for three reasons:
+      // 1. The segment is empty
+      // 2. The segment has a single element.
+      // 3. The segment has link has not been completed.
+      T* take_one()
+      {
+        auto n = start;
+        if (n == nullptr)
+        {
+          return nullptr;
+        }
+
+        Systematic::yield();
+
+        auto next = n->next_in_queue.load(std::memory_order_acquire);
+        if (next == nullptr)
+        {
+          return nullptr;
+        }
+
+        start = next;
+        return n;
+      }
+    };
+
+    explicit MPMCQ() {}
 
     /**
      * Enqueue a node, this is not linearisable with respect
@@ -74,28 +100,43 @@ namespace verona::rt
      * once we return, due to other enqueues that have not
      * completed.
      */
-    void enqueue(T* node)
+    void enqueue_segment(Segment ls)
     {
-      node->next_in_queue.store(nullptr, std::memory_order_relaxed);
-      auto b = back.exchange(node, std::memory_order_seq_cst);
+      Systematic::yield();
+
+      ls.end->store(nullptr, std::memory_order_relaxed);
+
+      Systematic::yield();
+
+      auto b = back.exchange(ls.end, std::memory_order_acq_rel);
+
+      Systematic::yield();
+
       // The element we are writing into must have made its next pointer null
       // before exchanging into the structure, as the element cannot be removed
       // if it has a null next pointer, we know the write is safe.
-      assert(b->next_in_queue == nullptr);
-      b->next_in_queue.store(node, std::memory_order_release);
+      assert(b->load() == nullptr);
+      b->store(ls.start, std::memory_order_release);
+    }
+
+    void enqueue(T* node)
+    {
+      enqueue_segment({node, &node->next_in_queue});
     }
 
     void enqueue_front(T* node)
     {
-      auto cmp = front.read();
-
-      do
+      auto old_front = acquire_front();
+      if (old_front == nullptr)
       {
-        node->next_in_queue.store(cmp.ptr(), std::memory_order_relaxed);
-      } while (!cmp.store_conditional(node));
-      // TODO: Add this into the ABA protection.
-      // Requires snmalloc PR to add store_conditional to take a memory_order.
-      std::atomic_thread_fence(std::memory_order_seq_cst);
+        // Post to back.
+        enqueue(node);
+        return;
+      }
+
+      // Link into the front.
+      node->next_in_queue.store(old_front, std::memory_order_relaxed);
+      front.store(node, std::memory_order_release);
     }
 
     /**
@@ -104,81 +145,79 @@ namespace verona::rt
      */
     T* dequeue()
     {
-      T* next;
-      T* fnt;
+      auto old_front = acquire_front();
 
-      // Hold epoch to ensure that the value read from `front` cannot be
-      // deallocated during this operation.  This must occur before read of
-      // front.
-      Epoch e;
-      uint64_t epoch = e.get_local_epoch_epoch();
+      Systematic::yield();
 
-      auto cmp = front.read();
-      do
+      // Queue is empty or someone else is stealing, and hence it will be empty
+      if (old_front == nullptr)
       {
-        fnt = cmp.ptr();
-        // This operation is memory safe due to holding the epoch.
-        next = fnt->next_in_queue.load(std::memory_order_acquire);
+        return nullptr;
+      }
 
-        // If next is nullptr, then this is most likely the next entry has not
-        // been enqueued.  Due to the non-linearisable nature, there may be
-        // completed enqueues that are not visible.  This means we can get
-        // spurious failures and the context must cope with this. It may also
-        // return nullptr, due to an ABA where next is observed to be nullptr
-        // after the element has been removed.  This spurious nullptr could be
-        // removed by adding ABA protection, however, as the context must
-        // already deal with spurious failure, we do not bother with that check.
-        if (next == nullptr)
-          return nullptr;
-      } while (!cmp.store_conditional(next));
+      auto new_front = old_front->next_in_queue.load(std::memory_order_acquire);
 
-      assert(epoch != T::NO_EPOCH_SET);
+      Systematic::yield();
 
-      fnt->epoch_when_popped = epoch;
+      if (new_front != nullptr)
+      {
+        // Remove one element from the queue
+        front.store(new_front, std::memory_order_release);
+        return old_front;
+      }
 
-      return fnt;
-    }
+      Systematic::yield();
 
-    // The callers are expected to guarantee no one is attempting to access the
-    // queue concurrently.
-    void destroy()
-    {
-      assert(front.peek() == back);
-      auto b = back.load();
-      assert(b->next_in_queue == nullptr);
+      // Queue contains a single element, attempt to close the queue
+      auto next_ptr = &old_front->next_in_queue;
+      if (back.compare_exchange_strong(
+            next_ptr,
+            &front,
+            std::memory_order_acq_rel,
+            std::memory_order_relaxed))
+        return old_front;
 
-      heap::dealloc(b);
+      Systematic::yield();
+
+      // Failed to close the queue, something is being added, try again later.
+      front.store(old_front, std::memory_order_release);
+      return nullptr;
     }
 
     /**
-     * Returns true if nothing older than this call is in the queue.
-     *
-     * This is not linearisable, so a linearisable is_empty check is not
-     * possible.
-     *
-     * We use a happens-before semantics to explain its behaviour. If this
-     * returns true, then all enqueues that 'happened-before' this call, have
-     * been dequeued by the time this call returns. Parallel enqueues may or
-     * may-not be observed, so it may not be empty when it returns.
-     *
-     * The precise semantics of this are required for `unpause`/`pause`.  If
-     * during `pause`, we observe `nothing_old` to be true, then anything that
-     * is in the queue after this function returns must have been added not
-     * happens-before this call. As any addition must call `unpause` afterwards,
-     * we know that we can't read `nothing_old` as true, and then go to sleep
-     * with stuff still in our queue, as the `unpause` is guaranteed to wake us
-     * up.
+     * Take all elements from the queue.
+     * This may spuriosly fail and surrounding code should be prepared for that.
      */
-    bool nothing_old()
+    Segment dequeue_all()
     {
-      auto local_back = back.load(std::memory_order_acquire);
-      // Check if last element is the token cown.
-      // Last element should be the token work, but we don't need to check that
-      // as something else will have two things if we don't have the token.
+      auto old_front = acquire_front();
 
-      // Check first element is the last, hence if true, then all elements
-      // in the queue have been enqueued since this call started.
-      return local_back == front.peek();
+      // Queue is empty or someone else is popping, so just return.
+      if (old_front == nullptr)
+      {
+        return {nullptr, nullptr};
+      }
+
+      Systematic::yield();
+
+      auto old_back = back.exchange(&front, std::memory_order_acq_rel);
+
+      Systematic::yield();
+
+      return {old_front, old_back};
+    }
+
+    bool is_empty()
+    {
+      Systematic::yield();
+
+      return back.load(std::memory_order_relaxed) == &front;
+    }
+
+    ~MPMCQ()
+    {
+      // Ensure that the queue is empty before destruction.
+      assert(is_empty());
     }
   };
 } // namespace verona::rt
