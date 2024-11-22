@@ -43,7 +43,7 @@ namespace verona::rt::heap
     static inline std::array<Node*, 256> allocs;
     static inline std::array<size_t, 256> lengths;
     static inline snmalloc::FlagWord lock;
-    static inline PRNG rng;
+    static inline PRNG<> rng;
 
   public:
     static void set_seed(uint64_t seed)
