@@ -6,6 +6,8 @@
 #include <array>
 #include <snmalloc/snmalloc.h>
 
+#include "ds/prng.h"
+
 #if defined(__SANITIZE_ADDRESS__)
 #  define HAS_ASAN
 #elif defined(__has_feature)
@@ -113,7 +115,7 @@ namespace verona::rt::heap
           hd = next;
           count++;
         }
-        assert(count == lengths[i]);
+        SNMALLOC_ASSERT(count == lengths[i]);
         lengths[i] = 0;
         allocs[i] = nullptr;
       }

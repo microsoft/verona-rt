@@ -1,7 +1,9 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 
-#define USE_REPLAY_ALLOCATOR
+#ifndef USE_REPLAY_ALLOCATOR
+#  define USE_REPLAY_ALLOCATOR
+#endif
 
 #include <debug/harness.h>
 #include <test/opt.h>
