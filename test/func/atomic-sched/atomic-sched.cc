@@ -179,6 +179,47 @@ void test_body_smart()
     });
 }
 
+void test_body_concurrent_1()
+{
+  auto log = make_cown<Body>();
+
+  when() << [=]() {
+    (when(log) <<
+     [=](auto b) {
+       for (int i = 0; i < 10; i++)
+       {
+         Logging::cout() << "Behaviour 1\n";
+         // sleep(1);
+       }
+     }) +
+      (when(read(log)) << [=](auto) {
+        for (int i = 0; i < 10; i++)
+        {
+          Logging::cout() << "Behaviour 2\n";
+          // sleep(1);
+        }
+      });
+  };
+
+  when() << [=]() {
+    (when(log) <<
+     [=](auto b) {
+       for (int i = 0; i < 10; i++)
+       {
+         Logging::cout() << "Behaviour 1\n";
+         // sleep(1);
+       }
+     }) +
+      (when(read(log)) << [=](auto) {
+        for (int i = 0; i < 10; i++)
+        {
+          Logging::cout() << "Behaviour 2\n";
+          // sleep(1);
+        }
+      });
+  };
+}
+
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
@@ -191,6 +232,8 @@ int main(int argc, char** argv)
   harness.run(test_body_read_only_same);
   harness.run(test_body_read_same1);
   harness.run(test_body_read_same2);
+
+  harness.run(test_body_concurrent_1);
 
   return 0;
 }
