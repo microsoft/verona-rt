@@ -939,7 +939,7 @@ namespace verona::rt
           Aal::pause();
         }
 
-        if (chain_last_slot->is_read_only())
+        if (chain_first_slot->is_read_only())
         {
           auto enqueue_res = handle_read_only_enqueue(
             prev_slot,
