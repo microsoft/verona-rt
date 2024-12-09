@@ -876,6 +876,9 @@ namespace verona::rt
           }
 
           curr_slot->set_ready();
+          if (curr_slot->is_read_only())
+            curr_slot->set_behaviour(body);
+
           body = body_next;
           curr_slot = slot_next;
         }
@@ -896,8 +899,6 @@ namespace verona::rt
         // Mark the slot as ready for scheduling
         curr_slot->reset_status();
         yield();
-        if (curr_slot->is_read_only())
-          curr_slot->set_behaviour(body);
       }
 
       // Second phase - Acquire phase
