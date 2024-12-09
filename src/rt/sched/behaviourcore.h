@@ -883,6 +883,10 @@ namespace verona::rt
           curr_slot = slot_next;
         }
 
+        // Set the behaviour for the last slot in the chain
+        if (curr_slot->is_read_only())
+          curr_slot->set_behaviour(body);
+
         // For each chain you need a bunch of data used for scheduling
         chain_info[chain_count++] = {
           cown,

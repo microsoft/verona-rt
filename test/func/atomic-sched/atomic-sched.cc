@@ -225,11 +225,11 @@ auto long_chain_helper(T obj)
 {
   if constexpr (r == true)
   {
-    return when(obj);
+    return when(read(obj));
   }
   else
   {
-    return when(read(obj));
+    return when(obj);
   }
 }
 
