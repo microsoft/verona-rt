@@ -220,6 +220,49 @@ void test_body_concurrent_1()
   };
 }
 
+template<bool r, typename T>
+auto long_chain_helper(T obj)
+{
+  if constexpr (r == true)
+  {
+    return when(obj);
+  }
+  else
+  {
+    return when(read(obj));
+  }
+}
+
+template<bool r1, bool r2, bool r3>
+void test_body_long_chain()
+{
+  auto log = make_cown<Body>();
+
+  (long_chain_helper<r1>(log) <<
+   [=](auto b) {
+     for (int i = 0; i < 10; i++)
+     {
+       Logging::cout() << "Behaviour 1\n";
+       // sleep(1);
+     }
+   }) +
+    (long_chain_helper<r2>(log) <<
+     [=](auto) {
+       for (int i = 0; i < 10; i++)
+       {
+         Logging::cout() << "Behaviour 2\n";
+         // sleep(1);
+       }
+     }) +
+    (long_chain_helper<r3>(log) << [=](auto b) {
+      for (int i = 0; i < 10; i++)
+      {
+        Logging::cout() << "Behaviour 1\n";
+        // sleep(1);
+      }
+    });
+}
+
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
@@ -234,6 +277,11 @@ int main(int argc, char** argv)
   harness.run(test_body_read_same2);
 
   harness.run(test_body_concurrent_1);
+
+  harness.run(test_body_long_chain<true, true, true>);
+  harness.run(test_body_long_chain<false, false, false>);
+  harness.run(test_body_long_chain<false, true, false>);
+  harness.run(test_body_long_chain<true, false, true>);
 
   return 0;
 }
