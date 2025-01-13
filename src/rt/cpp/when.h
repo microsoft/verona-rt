@@ -166,7 +166,10 @@ namespace verona::cpp
     friend class DynamicAtomicBatch;
 
   public:
-    Batch(BehaviourCore* b) {}
+    Batch(BehaviourCore* b)
+    {
+      barray[0] = b;
+    }
 
     Batch(const Batch&) = delete;
 
@@ -222,9 +225,9 @@ namespace verona::cpp
       {
         std::memcpy(new_array, barray, size * sizeof(BehaviourCore*));
         delete barray;
-        barray = new_array;
       }
 
+      barray = new_array;
       std::memcpy(&barray[size], b.barray, bs * sizeof(BehaviourCore*));
 
       size += bs;
@@ -512,14 +515,6 @@ namespace verona::cpp
    */
   template<typename T>
   Access(const cown_ptr<T>&) -> Access<T>;
-
-#if 0
-  /**
-   * Template deduction guide for Batch.
-   */
-  template<typename... Args>
-  Batch(std::tuple<Args...>) -> Batch<Args...>;
-#endif
 
   /**
    * Implements a Verona-like `when` statement.
