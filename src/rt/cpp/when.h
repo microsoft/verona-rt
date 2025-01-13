@@ -403,6 +403,43 @@ namespace verona::cpp
       }
     }
 
+    BehaviourCore *behaviour_body;
+    template<size_t index = 0>
+    void create_behaviour_new()
+    {
+      if constexpr (index >= sizeof...(Args))
+      {
+        return;
+      }
+      else
+      {
+        Request* r;
+        if (is_req_extended)
+          r = req_extended;
+        else
+          r = reinterpret_cast<Request*>(&requests);
+
+        size_t count = array_assign(r);
+
+        auto closure =
+          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
+            /// Effectively converts ActualCown<T>... to
+            /// acquired_cown... .
+            auto lift_f = [f = std::move(f)](Args... args) mutable {
+              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
+            };
+
+            std::apply(std::move(lift_f), std::move(cown_tuple));
+          };
+        behaviour_body = Behaviour::prepare_to_schedule<
+          typename std::remove_reference<decltype(closure)>::type>(
+          count,
+          r,
+          std::move(closure));
+      }
+    }
+
+
   public:
     When(F&& f_) : f(std::forward<F>(f_)) {}
 
@@ -418,16 +455,20 @@ namespace verona::cpp
         req_extended = reinterpret_cast<Request*>(
           heap::alloc(req_count * (sizeof(Request))));
       }
+
+      create_behaviour_new();
     }
 
     When(When&& o)
     : cown_tuple(std::move(o.cown_tuple)),
       f(std::forward<F>(o.f)),
       is_req_extended(o.is_req_extended),
-      req_extended(o.req_extended)
+      req_extended(o.req_extended),
+      behaviour_body(o.behaviour_body)
     {
       o.req_extended = nullptr;
       o.is_req_extended = false;
+      o.behaviour_body = nullptr;
     }
 
     When(const When&) = delete;
