@@ -150,6 +150,8 @@ namespace verona::cpp
     return AccessBatch<T>(c);
   }
 
+  class DynamicAtomicBatch;
+
   template<int bs>
   class Batch
   {
@@ -160,6 +162,8 @@ namespace verona::cpp
     bool part_of_larger_batch = false;
 
     BehaviourCore* barray[bs];
+
+    friend class DynamicAtomicBatch;
 
   public:
     Batch(BehaviourCore* b) {}
@@ -189,6 +193,43 @@ namespace verona::cpp
       wb.part_of_larger_batch = true;
       this->part_of_larger_batch = true;
       return Batch<bs + bs2>(barray, wb.barray, bs, bs2);
+    }
+  };
+
+  class DynamicAtomicBatch
+  {
+    BehaviourCore** barray;
+    size_t size;
+
+  public:
+    DynamicAtomicBatch() : barray(nullptr), size(0) {}
+    ~DynamicAtomicBatch()
+    {
+      if (size == 0)
+        return;
+
+      BehaviourCore::schedule_many(barray, size);
+    }
+
+    template<int bs>
+    auto operator+(Batch<bs>&& b)
+    {
+      b.part_of_larger_batch = true;
+
+      auto new_array = new BehaviourCore*[size + bs];
+
+      if (barray)
+      {
+        std::memcpy(new_array, barray, size * sizeof(BehaviourCore*));
+        delete barray;
+        barray = new_array;
+      }
+
+      std::memcpy(&barray[size], b.barray, bs * sizeof(BehaviourCore*));
+
+      size += bs;
+
+      return this;
     }
   };
 
