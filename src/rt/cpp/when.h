@@ -166,9 +166,14 @@ namespace verona::cpp
     friend class DynamicAtomicBatch;
 
   public:
+    Batch()
+    {
+      assert(0);
+    }
+
     Batch(BehaviourCore* b)
     {
-      barray[0] = b;
+      assert(0);
     }
 
     Batch(const Batch&) = delete;
@@ -235,6 +240,16 @@ namespace verona::cpp
       return this;
     }
   };
+
+  template<>
+  Batch<0>::Batch()
+  {}
+
+  template<>
+  Batch<1>::Batch(BehaviourCore* b)
+  {
+    barray[0] = b;
+  }
 
   /**
    * Represents a single when statement.
@@ -500,7 +515,7 @@ namespace verona::cpp
       {
         // Execute now atomic batch makes no sense.
         verona::rt::schedule_lambda(std::forward<F>(f));
-        return Batch<1>(nullptr);
+        return Batch<0>();
       }
       else
       {
