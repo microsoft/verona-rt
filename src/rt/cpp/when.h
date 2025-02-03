@@ -141,7 +141,7 @@ namespace verona::cpp
   template<typename T>
   auto convert_access(cown_ptr<T>&& c)
   {
-    return Access<T>(c);
+    return Access<T>(std::move(c));
   }
 
   template<typename T>
@@ -204,6 +204,10 @@ namespace verona::cpp
     }
   };
 
+  /**
+   * This class does not handle reference counting for cowns.
+   * Make sure the cown_ptrs will be available till scheduling happens
+   */
   class DynamicAtomicBatch
   {
     BehaviourCore** barray;
@@ -217,11 +221,14 @@ namespace verona::cpp
         return;
 
       BehaviourCore::schedule_many(barray, size);
+      delete barray;
     }
 
     template<int bs>
     auto operator+(Batch<bs>&& b)
     {
+      // Batch has a When, which holds a reference to a cown_ptr, need to keep
+      // this reference around!
       b.part_of_larger_batch = true;
 
       auto new_array = new BehaviourCore*[size + bs];
@@ -239,6 +246,9 @@ namespace verona::cpp
 
       return this;
     }
+
+    DynamicAtomicBatch(const DynamicAtomicBatch&) = delete;
+    DynamicAtomicBatch(DynamicAtomicBatch&&) = delete;
   };
 
   template<>
@@ -457,6 +467,7 @@ namespace verona::cpp
           heap::alloc(req_count * (sizeof(Request))));
       }
 
+      std::cout << "Will create behaviour\n";
       create_behaviour_new();
     }
 

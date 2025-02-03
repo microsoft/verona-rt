@@ -17,17 +17,16 @@ using namespace verona::cpp;
 
 void test_body()
 {
-  DynamicAtomicBatch dab;
   auto log = make_cown<Body>();
 
-  for (int i = 0; i < 2; i++)
   {
-    dab + (when(log) << [=](auto b) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 1" << Logging::endl;
-      }
-    });
+    DynamicAtomicBatch dab;
+    for (int i = 0; i < 2; i++)
+    {
+      dab + (when(log) << [=](auto b) {
+        std::cout << "Behaviour " << i << std::endl;
+      });
+    }
   }
 }
 
