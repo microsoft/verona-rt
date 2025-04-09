@@ -6,7 +6,7 @@ set(SNMALLOC_USE_CXX17 ON CACHE BOOL "Build snmalloc in legacy CXX17 mode as lon
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG        d8f174c717500a834229da5f1f6bfe888442e81a
+  GIT_TAG        e6bf8570d003c7f219f0a24704ad263b5a321c1a
 )
 
 FetchContent_MakeAvailable(snmalloc)
