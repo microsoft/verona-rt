@@ -165,7 +165,7 @@ namespace verona::rt
     }
 
     /// For all elements of the stack
-    template <typename F>
+    template<typename F>
     void forall(F&& apply)
     {
       T** curr = index;
@@ -310,9 +310,8 @@ namespace verona::rt
     }
 
     /// Apply function to every element of the stack.
-    template <typename F>
-    ALWAYSINLINE
-    void forall(F&& apply)
+    template<typename F>
+    ALWAYSINLINE void forall(F&& apply)
     {
       stack.forall(std::forward<F&&>(apply));
     }

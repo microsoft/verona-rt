@@ -107,8 +107,7 @@ namespace verona::rt
       Local(size_t id) : systematic_id(id) {}
     };
 
-    static inline function_ref<bool()> true_thunk{
-      []() { return true; }};
+    static inline function_ref<bool()> true_thunk{[]() { return true; }};
 
   private:
     /// Currently running thread.  Points to a cyclic list of all the threads.
