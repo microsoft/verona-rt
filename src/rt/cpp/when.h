@@ -140,7 +140,7 @@ namespace verona::cpp
   template<typename T>
   auto convert_access(cown_ptr<T>&& c)
   {
-    return Access<T>(c);
+    return Access<T>(std::move(c));
   }
 
   template<typename T>

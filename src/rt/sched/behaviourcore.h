@@ -824,12 +824,13 @@ namespace verona::rt
           // If the body is the same, then we have an overlap within a single
           // behaviour.
           auto body_next = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
+
+          // Check if the caller passed an RC and add to the total.
+          transfer_count +=
+            std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
+
           if (body_next == body)
           {
-            // Check if the caller passed an RC and add to the total.
-            transfer_count +=
-              std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
-
             Logging::cout() << "Duplicate " << cown << " for " << body
                             << " Index " << i << Logging::endl;
             // We need to reduce the execution count by one, as we can't wait
