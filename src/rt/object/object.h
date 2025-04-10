@@ -184,7 +184,7 @@ namespace verona::rt
     // snmalloc will ensure that Objects are properly aligned. However, in some
     // situations, e.g. allocating within a RegionArena, we still need to
     // ensure that pointers to objects are aligned.
-    static constexpr size_t ALIGNMENT = (1 << MIN_ALLOC_BITS);
+    static constexpr size_t ALIGNMENT = MIN_ALLOC_SIZE;
 
     /// This class represents the Verona object header.
     /// It is stored directly before a Verona object.

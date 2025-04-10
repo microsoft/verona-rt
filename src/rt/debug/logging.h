@@ -185,7 +185,7 @@ namespace Logging
     }
   };
 
-  using LocalLogPool = snmalloc::Pool<LocalLog, snmalloc::Alloc::Config>;
+  using LocalLogPool = snmalloc::Pool<LocalLog>;
 
   class ThreadLocalLog
   {

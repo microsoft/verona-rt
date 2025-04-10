@@ -13,6 +13,49 @@ namespace verona::rt
 {
   using namespace snmalloc;
 
+  /**
+   * Non-owning version of std::function. Wraps a reference to a callable object
+   * (eg. a lambda) and allows calling it through dynamic dispatch, with no
+   * allocation. This is useful in the allocator code paths, where we can't
+   * safely use std::function.
+   *
+   * Inspired by the C++ proposal:
+   * http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0792r2.html
+   */
+  template<typename Fn>
+  struct function_ref;
+
+  template<typename R, typename... Args>
+  struct function_ref<R(Args...)>
+  {
+    // The enable_if is used to stop this constructor from shadowing the default
+    // copy / move constructors.
+    template<
+      typename Fn,
+      typename =
+        std::enable_if_t<!std::is_same_v<std::decay_t<Fn>, function_ref>>>
+    function_ref(Fn&& fn)
+    {
+      data_ = static_cast<void*>(&fn);
+      fn_ = execute<Fn>;
+    }
+
+    R operator()(Args... args) const
+    {
+      return fn_(data_, args...);
+    }
+
+  private:
+    void* data_;
+    R (*fn_)(void*, Args...);
+
+    template<typename Fn>
+    static R execute(void* p, Args... args)
+    {
+      return (*static_cast<std::add_pointer_t<Fn>>(p))(args...);
+    };
+  };
+
   class Systematic
   {
     enum class SystematicState
@@ -40,7 +83,7 @@ namespace verona::rt
 
       /// Used to specify a condition when this thread should/could make
       /// progress.  It is used to implement condition variables.
-      snmalloc::function_ref<bool()> guard = true_thunk;
+      function_ref<bool()> guard = true_thunk;
 
       /// How many uninterrupted steps this threads has been selected to run
       /// for.
@@ -64,8 +107,7 @@ namespace verona::rt
       Local(size_t id) : systematic_id(id) {}
     };
 
-    static inline snmalloc::function_ref<bool()> true_thunk{
-      []() { return true; }};
+    static inline function_ref<bool()> true_thunk{[]() { return true; }};
 
   private:
     /// Currently running thread.  Points to a cyclic list of all the threads.
@@ -233,7 +275,7 @@ namespace verona::rt
      * Switches thread in systematic testing and only returns once
      * guard evaluates to true.
      */
-    static void yield_until(snmalloc::function_ref<bool()> guard)
+    static void yield_until(function_ref<bool()> guard)
     {
       if constexpr (enabled)
       {

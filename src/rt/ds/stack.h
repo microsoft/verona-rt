@@ -165,7 +165,8 @@ namespace verona::rt
     }
 
     /// For all elements of the stack
-    void forall(snmalloc::function_ref<void(T*)> apply)
+    template<typename F>
+    void forall(F&& apply)
     {
       T** curr = index;
 
@@ -309,10 +310,10 @@ namespace verona::rt
     }
 
     /// Apply function to every element of the stack.
-    ALWAYSINLINE
-    void forall(snmalloc::function_ref<void(T*)> apply)
+    template<typename F>
+    ALWAYSINLINE void forall(F&& apply)
     {
-      stack.forall(apply);
+      stack.forall(std::forward<F&&>(apply));
     }
 
     ~Stack()
