@@ -10,6 +10,8 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(cmake_utils)
 
+set(SNMALLOC_USE_CXX17 ON CACHE BOOL "Build snmalloc in legacy CXX17 mode as long as Verona stays on CXX17" FORCE)
+
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
