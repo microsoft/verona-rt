@@ -1,7 +1,12 @@
 include(FetchContent)
 
-set(SNMALLOC_HEADER_ONLY_LIBRARY ON)
-set(SNMALLOC_USE_CXX17 ON CACHE BOOL "Build snmalloc in legacy CXX17 mode as long as Verona stays on CXX17" FORCE)
+# Used to provide
+#  FetchContent_MakeAvailable_ExcludeFromAll
+FetchContent_Declare(
+  cmake_utils
+  GIT_REPOSITORY https://github.com/mjp41/cmake_utils
+  GIT_TAG 28490f85c91053dc501f96a7f8224e8191156ec9
+)
 
 FetchContent_Declare(
   snmalloc
@@ -9,6 +14,6 @@ FetchContent_Declare(
   GIT_TAG        b8e28be14b3fd98e27c2fe87c0296570f6d3990e
 )
 
-FetchContent_MakeAvailable(snmalloc)
+FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
 add_subdirectory(rt)
