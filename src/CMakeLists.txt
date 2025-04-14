@@ -8,6 +8,8 @@ FetchContent_Declare(
   GIT_TAG 28490f85c91053dc501f96a7f8224e8191156ec9
 )
 
+FetchContent_MakeAvailable(cmake_utils)
+
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
