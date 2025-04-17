@@ -61,6 +61,7 @@ namespace verona::rt
 
   struct Slot
   {
+    friend class BehaviourCore;
   private:
     /**
      * Cown required by this behaviour
@@ -121,35 +122,6 @@ namespace verona::rt
      * snmalloc is used otherwise use this pointer.
      */
     std::atomic<BehaviourCore*> behaviour;
-
-  public:
-    Slot(Cown* __cown)
-    {
-      // Check that the last two bits are zero
-      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
-      _cown.store((uintptr_t)__cown, std::memory_order_release);
-      status.store(0, std::memory_order_release);
-      behaviour.store(nullptr, std::memory_order_release);
-    }
-
-    /**
-     * Returns true if the slot is acquired in read mode
-     */
-    bool is_read_only()
-    {
-      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
-        COWN_READER_FLAG;
-    }
-
-    /**
-     * Mark the slot to be acquired in read mode
-     */
-    void set_read_only()
-    {
-      _cown.store(
-        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
-        std::memory_order_release);
-    }
 
     /**
      * Returns true if the next slot wants to acquire in read mode
@@ -304,14 +276,6 @@ namespace verona::rt
     }
 
     /**
-     * Returns the cown associated with the slot
-     */
-    Cown* cown()
-    {
-      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
-    }
-
-    /**
      * Set the cown pointer to NULL to indicate duplicate cowns within a
      * behaviour.
      */
@@ -324,7 +288,65 @@ namespace verona::rt
 
     void drop_read();
 
-    void release();
+    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
+    {
+      return os
+        << " Slot: " << &s << " Cown ptr: "
+        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
+        << " 2PL ready bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
+            0)
+        << " Is_reader bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
+        << " Is_read_available: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
+        << " Next pointer: "
+        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
+        << " Is_next_reader: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_NEXT_SLOT_READER_FLAG) != 0)
+        << "\n";
+    }
+
+  public:
+    Slot(Cown* __cown, bool ready = false)
+    {
+      // Check that the last two bits are zero
+      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
+      _cown.store((uintptr_t)__cown, std::memory_order_release);
+      status.store(0, std::memory_order_release);
+      behaviour.store(nullptr, std::memory_order_release);
+      if (ready)
+        set_ready();
+    }
+
+    /**
+     * Returns the cown associated with the slot
+     */
+    Cown* cown()
+    {
+      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
+    }
+
+    /**
+     * Returns true if the slot is acquired in read mode
+     */
+    bool is_read_only()
+    {
+      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
+        COWN_READER_FLAG;
+    }
+
+    /**
+     * Mark the slot to be acquired in read mode
+     */
+    void set_read_only()
+    {
+      _cown.store(
+        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
+        std::memory_order_release);
+    }
 
     /**
      * Returns true if the slot is acquired with std::move
@@ -363,26 +385,12 @@ namespace verona::rt
         std::memory_order_release);
     }
 
-    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
-    {
-      return os
-        << " Slot: " << &s << " Cown ptr: "
-        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
-        << " 2PL ready bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
-            0)
-        << " Is_reader bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
-        << " Is_read_available: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
-        << " Next pointer: "
-        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
-        << " Is_next_reader: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_NEXT_SLOT_READER_FLAG) != 0)
-        << "\n";
-    }
+    /**
+     * TODO This should not be part of the public API, but the C++ promise
+     * experiment needs it.  We should add sufficient API for promises into
+     * the core, and then remove this from the public API.
+     */
+    void release();
   };
 
   /**

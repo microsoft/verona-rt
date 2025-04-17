@@ -205,10 +205,9 @@ namespace verona::rt
      * be scheduled through an explicit call to schedule(). schedule() is
      * called when the promise is fulfilled.
      */
-    Promise() : slot(this), fulfilled(false)
+    Promise() : slot(this, true), fulfilled(false)
     {
       VCown<Promise<T>>::last_slot = &slot;
-      slot.set_ready();
     }
 
   public:
