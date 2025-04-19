@@ -12,55 +12,14 @@ namespace verona::rt
 {
   using namespace snmalloc;
 
-  class Request
-  {
-    Cown* _cown;
-
-    static constexpr uintptr_t READ_FLAG = 0x1;
-    static constexpr uintptr_t MOVE_FLAG = 0x2;
-
-    Request(Cown* cown) : _cown(cown) {}
-
-  public:
-    Request() : _cown(nullptr) {}
-
-    Cown* cown()
-    {
-      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
-    }
-
-    bool is_read()
-    {
-      return ((uintptr_t)_cown & READ_FLAG);
-    }
-
-    bool is_move()
-    {
-      return ((uintptr_t)_cown & MOVE_FLAG);
-    }
-
-    void mark_move()
-    {
-      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
-    }
-
-    static Request write(Cown* cown)
-    {
-      return Request(cown);
-    }
-
-    static Request read(Cown* cown)
-    {
-      return Request((Cown*)((uintptr_t)cown | READ_FLAG));
-    }
-  };
-
-  struct BehaviourCore;
+  class BehaviourCore;
 
   inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
 
-  struct Slot
+  class Slot
   {
+    friend BehaviourCore;
+
   private:
     /**
      * Cown required by this behaviour
@@ -121,35 +80,6 @@ namespace verona::rt
      * snmalloc is used otherwise use this pointer.
      */
     std::atomic<BehaviourCore*> behaviour;
-
-  public:
-    Slot(Cown* __cown)
-    {
-      // Check that the last two bits are zero
-      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
-      _cown.store((uintptr_t)__cown, std::memory_order_release);
-      status.store(0, std::memory_order_release);
-      behaviour.store(nullptr, std::memory_order_release);
-    }
-
-    /**
-     * Returns true if the slot is acquired in read mode
-     */
-    bool is_read_only()
-    {
-      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
-        COWN_READER_FLAG;
-    }
-
-    /**
-     * Mark the slot to be acquired in read mode
-     */
-    void set_read_only()
-    {
-      _cown.store(
-        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
-        std::memory_order_release);
-    }
 
     /**
      * Returns true if the next slot wants to acquire in read mode
@@ -304,14 +234,6 @@ namespace verona::rt
     }
 
     /**
-     * Returns the cown associated with the slot
-     */
-    Cown* cown()
-    {
-      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
-    }
-
-    /**
      * Set the cown pointer to NULL to indicate duplicate cowns within a
      * behaviour.
      */
@@ -320,11 +242,69 @@ namespace verona::rt
       _cown.store(0UL, std::memory_order_release);
     }
 
-    void wakeup_next_writer();
+    inline void wakeup_next_writer();
 
     void drop_read();
 
-    void release();
+    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
+    {
+      return os
+        << " Slot: " << &s << " Cown ptr: "
+        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
+        << " 2PL ready bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
+            0)
+        << " Is_reader bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
+        << " Is_read_available: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
+        << " Next pointer: "
+        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
+        << " Is_next_reader: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_NEXT_SLOT_READER_FLAG) != 0)
+        << "\n";
+    }
+
+  public:
+    Slot(Cown* __cown, bool ready = false)
+    {
+      // Check that the last two bits are zero
+      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
+      _cown.store((uintptr_t)__cown, std::memory_order_release);
+      status.store(0, std::memory_order_release);
+      behaviour.store(nullptr, std::memory_order_release);
+      if (ready)
+        set_ready();
+    }
+
+    /**
+     * Returns the cown associated with the slot
+     */
+    Cown* cown()
+    {
+      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
+    }
+
+    /**
+     * Returns true if the slot is acquired in read mode
+     */
+    bool is_read_only()
+    {
+      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
+        COWN_READER_FLAG;
+    }
+
+    /**
+     * Mark the slot to be acquired in read mode
+     */
+    void set_read_only()
+    {
+      _cown.store(
+        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
+        std::memory_order_release);
+    }
 
     /**
      * Returns true if the slot is acquired with std::move
@@ -363,26 +343,12 @@ namespace verona::rt
         std::memory_order_release);
     }
 
-    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
-    {
-      return os
-        << " Slot: " << &s << " Cown ptr: "
-        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
-        << " 2PL ready bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
-            0)
-        << " Is_reader bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
-        << " Is_read_available: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
-        << " Next pointer: "
-        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
-        << " Is_next_reader: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_NEXT_SLOT_READER_FLAG) != 0)
-        << "\n";
-    }
+    /**
+     * TODO This should not be part of the public API, but the C++ promise
+     * experiment needs it.  We should add sufficient API for promises into
+     * the core, and then remove this from the public API.
+     */
+    void release();
   };
 
   /**
@@ -406,8 +372,9 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
-  struct BehaviourCore
+  class BehaviourCore
   {
+    friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
 
@@ -432,24 +399,6 @@ namespace verona::rt
                 << b.exec_count_down.load(std::memory_order_acquire) << " ";
     }
 
-    Work* as_work()
-    {
-      return pointer_offset_signed<Work>(
-        this, -static_cast<ptrdiff_t>(sizeof(Work)));
-    }
-
-    /**
-     * @brief Given a pointer to a work object converts it to a
-     * BehaviourCore pointer.
-     *
-     * This is inherently unsafe, and should only be used when it is known the
-     * work object was constructed using `make`.
-     */
-    static BehaviourCore* from_work(Work* w)
-    {
-      return pointer_offset<BehaviourCore>(w, sizeof(Work));
-    }
-
     /**
      * Remove `n` from the exec_count_down.
      */
@@ -466,19 +415,6 @@ namespace verona::rt
         Logging::cout() << "Scheduling Behaviour " << *this << Logging::endl;
         Scheduler::schedule(as_work(), fifo);
       }
-    }
-
-    // TODO: When C++ 20 move to span.
-    Slot* get_slots()
-    {
-      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
-    }
-
-    template<typename T = void>
-    T* get_body()
-    {
-      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
     }
 
     /**
@@ -554,439 +490,6 @@ namespace verona::rt
     }
 
     /**
-     * @brief Constructs a behaviour.  Leaves space for the closure.
-     *
-     * @param count - Number of slots to allocate, i.e. how many cowns to wait
-     * for.
-     * @param f - The function to execute once all the behaviours dependencies
-     * are ready.
-     * @param payload - The size of the payload to allocate.
-     * @return BehaviourCore* - the pointer to the behaviour object.
-     */
-    static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
-    {
-      // Manual memory layout of the behaviour structure.
-      //   | Work | Behaviour | Slot ... Slot | Body |
-      size_t size =
-        sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
-      void* base = heap::alloc(size);
-
-      Work* work = new (base) Work(f);
-      void* base_behaviour = from_work(work);
-      BehaviourCore* behaviour = new (base_behaviour) BehaviourCore(count);
-
-      // These assertions are basically checking that we won't break any
-      // alignment assumptions on Be.  If we add some actual alignment, then
-      // this can be improved.
-      static_assert(
-        sizeof(Slot) % sizeof(void*) == 0,
-        "Slot size must be a multiple of pointer size");
-      static_assert(
-        sizeof(BehaviourCore) % sizeof(void*) == 0,
-        "Behaviour size must be a multiple of pointer size");
-      static_assert(
-        sizeof(Work) % sizeof(void*) == 0,
-        "Work size must be a multiple of pointer size");
-
-      return behaviour;
-    }
-
-    /**
-     * @brief Schedule a behaviour for execution.
-     *
-     * @param bodies  The behaviours to schedule.
-     *
-     * @param body_count The number of behaviours to schedule.
-     *
-     * @note
-     *
-     * *** Single behaviour scheduling ***
-     *
-     * To correctly implement the happens before order, we need to ensure that
-     * one when cannot overtake another:
-     *
-     *   when (a, b, d) { B1 } || when (a, c, d) { B2 }
-     *
-     * Where we assume the underlying acquisition order is alphabetical.
-     *
-     * Let us assume B1 exchanges on `a` first, then we need to ensure that
-     * B2 cannot acquire `d` before B1 as this would lead to a cycle.
-     *
-     * To achieve this we effectively do two phase locking.
-     *
-     * The first (acquire) phase performs exchange on each cown in same
-     * global assumed order.  It can only move onto the next cown once the
-     * previous behaviour on that cown specifies it has completed its scheduling
-     * by marking itself ready, `set_ready`.
-     *
-     * The second (release) phase is simply making each slot ready, so that
-     * subsequent behaviours can continue scheduling.
-     *
-     * Returning to our example earlier, if B1 exchanges on `a` first, then
-     * B2 will have to wait for B1 to perform all its exchanges, and mark the
-     * appropriate slot ready in phase two. Hence, it is not possible for any
-     * number of behaviours to form a cycle.
-     *
-     *
-     * Invariant: If the cown is part of a chain, then the scheduler holds an RC
-     * on the cown. This means the first behaviour to access a cown will need to
-     * perform an acquire. When the execution of a chain completes, then the
-     * scheduler will release the RC.
-     *
-     * *** Extension to Many ***
-     *
-     * This code additional can schedule a group of behaviours atomically.
-     *
-     *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
-     *
-     * This will cause the three behaviours to be scheduled in a single atomic
-     * step using the two phase commit.  This means that no other behaviours can
-     * access a between B1 and B3, and no other behaviours can access b between
-     * B2 and B3.
-     *
-     * This extension is implemented by building a mapping from each request
-     * to the sorted order of.  In this case that produces
-     *
-     *  0 -> 0, a
-     *  1 -> 1, b
-     *  2 -> 2, a
-     *  3 -> 2, b
-     *
-     * which gets sorted to
-     *
-     *  0 -> 0, a
-     *  1 -> 2, a
-     *  2 -> 1, b
-     *  3 -> 2, b
-     *
-     * We then link the (0,a) |-> (2,a), and enqueue the segment atomically onto
-     * cown a, and then link (1,b) |-> (2,b) and enqueue the segment atomically
-     * onto cown b.
-     *
-     * By enqueuing segments we ensure nothing can get in between the
-     * behaviours.
-     *
-     * *** Duplicate Cowns ***
-     *
-     * The final complication the code must deal with is duplicate cowns.
-     *
-     * when (a, a) { B1 }
-     *
-     * To handle this we need to detect the duplicate cowns, and mark the slot
-     * as not needing a successor.  This is done by setting the cown pointer to
-     * nullptr.
-     *
-     * Consider the following complex example
-     *
-     * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
-     *
-     * This will produce the following mapping
-     *
-     * 0 -> 0, a
-     * 1 -> 1, a (0)
-     * 2 -> 1, a (1)
-     * 3 -> 2, a
-     *
-     * This is sorted already, so we can just link the segments
-     *
-     * (0,a) |-> (1, a (0)) |-> (2, a)
-     *
-     * and mark (a (1)) as not having a successor.
-     */
-    static void schedule_many(BehaviourCore** bodies, size_t body_count)
-    {
-      Logging::cout() << "BehaviourCore::schedule_many" << body_count
-                      << Logging::endl;
-
-      // non-unique cowns count
-      size_t cown_count = 0;
-      for (size_t i = 0; i < body_count; i++)
-        cown_count += bodies[i]->count;
-
-      // Execution count - we will remove at least
-      // one from the execution count on finishing phase 2 of the
-      // 2PL. This ensures that the behaviour cannot be
-      // deallocated until we finish phase 2.
-      StackArray<size_t> ec(body_count);
-      for (size_t i = 0; i < body_count; i++)
-        ec[i] = 1;
-
-      // This array includes an entry for each of the requested cowns.
-      // The entry has an index into the bodies array and a Slot * for that
-      // cown inside the behaviour body
-      // Need to sort the cown requests across the co-scheduled collection of
-      // cowns We first construct an array that represents pairs of behaviour
-      // number and slot pointer. Note: Really want a dynamically sized stack
-      // allocation here.
-      StackArray<std::tuple<size_t, Slot*>> cown_to_behaviour_slot_map(
-        cown_count);
-      size_t idx = 0;
-      for (size_t i = 0; i < body_count; i++)
-      {
-        auto slots = bodies[i]->get_slots();
-        for (size_t j = 0; j < bodies[i]->count; j++)
-        {
-          cown_to_behaviour_slot_map[idx] = {i, &slots[j]};
-          idx++;
-        }
-      }
-
-      // First phase - Prepare phase
-      // For each unique cown, build a chain of behaviours that need to be
-      // scheduled.
-      // First order the cowns to find the unique ones and the prepare the
-      // chains
-
-      // Sort the indexing array so we make the requests in the correct order
-      // across the whole set of behaviours.  A consistent order is required to
-      // avoid deadlock.
-      // We sort first by cown, then by behaviour number and move writers before
-      // readers. This means overlaps will be in a sequence in the array in the
-      // correct order with respect to the order of the group of behaviours.
-      //
-      // The challenging case is given by the following example:
-      //
-      //   when (read(a)) { ... } +  when (read(a), a) { ... } + when(a) { ... }
-      //
-      // Here we have three slots (0,0), (1,0), (1,1), (2,0) and we need to
-      // ensure that the resulting order is
-      //    (0,0), (1,1), (1,0), (2,0)
-      // and then we can drop (1,0).
-      // This is because the second behaviour needs write access, so that has to
-      // be prioritised over the read, but between behaviours, we should keep
-      // the order the same. This means we can always ignore anything but the
-      // first slot for each behaviour when building the dependency chain.
-      auto compare = [](
-                       const std::tuple<size_t, Slot*> i,
-                       const std::tuple<size_t, Slot*> j) {
-#ifdef USE_SYSTEMATIC_TESTING
-        if (std::get<1>(i)->cown()->id() == std::get<1>(j)->cown()->id())
-          if (std::get<0>(i) == std::get<0>(j))
-            return (!std::get<1>(i)->is_read_only()) &&
-              std::get<1>(j)->is_read_only();
-          else
-            return std::get<0>(i) < std::get<0>(j);
-        else
-          return std::get<1>(i)->cown()->id() < std::get<1>(j)->cown()->id();
-#else
-        if (std::get<1>(i)->cown() == std::get<1>(j)->cown())
-          if (std::get<0>(i) == std::get<0>(j))
-            return (!std::get<1>(i)->is_read_only()) &&
-              std::get<1>(j)->is_read_only();
-          else
-            return std::get<0>(i) < std::get<0>(j);
-        else
-          return std::get<1>(i)->cown() < std::get<1>(j)->cown();
-#endif
-      };
-      if (cown_count > 1)
-        std::sort(
-          cown_to_behaviour_slot_map.get(),
-          cown_to_behaviour_slot_map.get() + cown_count,
-          compare);
-
-      // Helper struct to be used after building the chains in the next phases
-      struct ChainInfo
-      {
-        Cown* cown;
-        size_t first_body_index;
-        Slot* last_slot;
-        size_t transfer_count;
-        bool had_no_predecessor;
-        // The last two are only use for reads only chains
-        size_t ref_count;
-        size_t ex_count;
-      };
-      size_t i = 0;
-      size_t chain_count = 0;
-      StackArray<ChainInfo> chain_info(cown_count);
-
-      while (i < cown_count)
-      {
-        auto cown = std::get<1>(cown_to_behaviour_slot_map[i])->cown();
-        auto body = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
-        auto last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
-        size_t first_body_index = std::get<0>(cown_to_behaviour_slot_map[i]);
-
-        // The number of RCs provided for the current cown by the when.
-        // I.e. how many moves of cown_refs there were.
-        size_t transfer_count = last_slot->is_move();
-
-        Logging::cout() << "Processing " << cown << " " << body << " "
-                        << last_slot << " Index " << i << Logging::endl;
-
-        // Detect duplicates for this cown.
-        // This is required in two cases:
-        //  * overlaps within a single behaviour.
-        while (((++i) < cown_count) &&
-               (cown == std::get<1>(cown_to_behaviour_slot_map[i])->cown()))
-        {
-          // If the body is the same, then we have an overlap within a single
-          // behaviour.
-          auto body_next = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
-
-          // Check if the caller passed an RC and add to the total.
-          transfer_count +=
-            std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
-
-          if (body_next == body)
-          {
-            Logging::cout() << "Duplicate " << cown << " for " << body
-                            << " Index " << i << Logging::endl;
-            // We need to reduce the execution count by one, as we can't wait
-            // for ourselves.
-            ec[std::get<0>(cown_to_behaviour_slot_map[i])]++;
-
-            // We need to mark the slot as not having a cown associated to it.
-            std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_null();
-            continue;
-          }
-
-          // For writers, create a chain of behaviours
-          if (!std::get<1>(cown_to_behaviour_slot_map[i])->is_read_only())
-          {
-            body = body_next;
-
-            // Extend the chain of behaviours linking on this behaviour
-            last_slot->set_next_slot_writer(body);
-            last_slot->set_ready();
-
-            last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
-            continue;
-          }
-
-          // TODO: Chain with reads and writes is not implemented.
-          abort();
-        }
-
-        // For each chain you need the cown, the first and the last body of the
-        // chain
-        chain_info[chain_count++] = {
-          cown, first_body_index, last_slot, transfer_count, false, 0, 0};
-
-        // Mark the slot as ready for scheduling
-        last_slot->reset_status();
-        yield();
-        if (last_slot->is_read_only())
-          last_slot->set_behaviour(body);
-      }
-
-      // Second phase - Acquire phase
-      for (size_t i = 0; i < chain_count; i++)
-      {
-        auto* cown = chain_info[i].cown;
-        auto first_body_index = chain_info[i].first_body_index;
-        auto* first_body = bodies[first_body_index];
-        auto* new_slot = chain_info[i].last_slot;
-
-        auto prev_slot =
-          cown->last_slot.exchange(new_slot, std::memory_order_acq_rel);
-
-        yield();
-
-        if (prev_slot == nullptr)
-        {
-          chain_info[i].had_no_predecessor = true;
-          if (new_slot->is_read_only())
-          {
-            auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
-            chain_info[i].ref_count = std::get<0>(counts);
-            chain_info[i].ex_count = std::get<1>(counts);
-          }
-          continue;
-        }
-
-        while (prev_slot->is_wait_2pl())
-        {
-          Systematic::yield_until(
-            [prev_slot]() { return !prev_slot->is_wait_2pl(); });
-          Aal::pause();
-        }
-
-        if (new_slot->is_read_only())
-        {
-          auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
-          chain_info[i].ref_count = std::get<0>(counts);
-          chain_info[i].ex_count = std::get<1>(counts);
-          continue;
-        }
-
-        Logging::cout()
-          << " Writer waiting for cown. Set next of previous slot cown "
-          << *new_slot << " previous " << *prev_slot << Logging::endl;
-        prev_slot->set_next_slot_writer(first_body);
-        yield();
-      }
-
-      // Third phase - Release phase.
-      for (size_t i = 0; i < body_count; i++)
-      {
-        Logging::cout() << "Release phase for behaviour " << bodies[i]
-                        << Logging::endl;
-      }
-
-      for (size_t i = 0; i < chain_count; i++)
-      {
-        yield();
-        auto slot = chain_info[i].last_slot;
-        Logging::cout() << "Setting slot " << slot << " to ready"
-                        << Logging::endl;
-        slot->set_ready();
-
-        // TODO: We chould also set the READ_AVAILABLE here
-      }
-
-      // Fourth phase - Process & Resolve
-
-      for (size_t i = 0; i < chain_count; i++)
-      {
-        auto* cown = chain_info[i].cown;
-        auto first_body_index = chain_info[i].first_body_index;
-        auto* first_body = bodies[first_body_index];
-        auto* curr_slot = chain_info[i].last_slot;
-        auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
-        auto transfer_count = chain_info[i].transfer_count;
-        auto ref_count = chain_info[i].ref_count;
-        auto ex_count = chain_info[i].ex_count;
-
-        // Process reference count
-        if (chain_had_no_predecessor)
-        {
-          ref_count++;
-        }
-        acquire_with_transfer(cown, transfer_count, ref_count);
-
-        // Process writes without predecessor
-        if ((chain_had_no_predecessor) && (!curr_slot->is_read_only()))
-        {
-          if (cown->read_ref_count.try_write())
-          {
-            Logging::cout() << " Writer at head of queue and got the cown "
-                            << *curr_slot << Logging::endl;
-            ex_count++;
-            yield();
-          }
-          else
-          {
-            Logging::cout() << " Writer waiting for previous readers cown "
-                            << *curr_slot << Logging::endl;
-            yield();
-            cown->next_writer = first_body;
-          }
-        }
-
-        // Process execution count
-        ec[first_body_index] += ex_count;
-      }
-
-      for (size_t i = 0; i < body_count; i++)
-      {
-        yield();
-        bodies[i]->resolve(ec[i]);
-      }
-    }
-
-    /**
      * @brief Release all slots in the behaviour.
      *
      * This is should be called when the behaviour has executed.
@@ -1017,7 +520,556 @@ namespace verona::rt
 
       exec_count_down = count + 1;
     }
+
+    Work* as_work()
+    {
+      return pointer_offset_signed<Work>(
+        this, -static_cast<ptrdiff_t>(sizeof(Work)));
+    }
+
+    /**
+     * @brief Given a pointer to a work object converts it to a
+     * BehaviourCore pointer.
+     *
+     * This is inherently unsafe, and should only be used when it is known the
+     * work object was constructed using `make`.
+     */
+    static BehaviourCore* from_work(Work* w)
+    {
+      return pointer_offset<BehaviourCore>(w, sizeof(Work));
+    }
+
+  public:
+    // TODO: When C++ 20 move to span.
+    Slot* get_slots()
+    {
+      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
+    }
+
+    size_t get_count()
+    {
+      return count;
+    }
+
+    template<typename T = void>
+    T* get_body()
+    {
+      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
+      return pointer_offset<T>(slots, sizeof(Slot) * count);
+    }
+
+    /**
+     * @brief Gets the pointer to the closure body from the work object.
+     * This takes a template parameter as this almost always needs casting
+     * to the correct type.
+     */
+    template<typename T = void>
+    static T* body_from_work(Work* w)
+    {
+      return reinterpret_cast<T*>(from_work(w)->get_body());
+    }
+
+    /**
+     * @brief Called on completion of a behaviour.  This will release the slots
+     * so that subsequent behaviours can be scheduled.
+     * @param work - The work object that was used to schedule the behaviour.
+     * @param reuse - If true, then the behaviour will be reset and reused.
+     * Otherwise, it will be deallocated.
+     */
+    static void finished(Work* work, bool reuse = false)
+    {
+      auto behaviour = BehaviourCore::from_work(work);
+      Logging::cout() << "Finished Behaviour " << *behaviour << Logging::endl;
+      behaviour->release_all();
+      if (!reuse)
+        heap::dealloc(work);
+      else
+        behaviour->reset();
+    }
+
+    /**
+     * @brief Deallocate the behaviour.
+     *
+     * This will deallocate the work object, and the body of the behaviour.
+     * This only needs to be called for behaviours that called finished(...,
+     * true) as the finished function will not have deallocated the work object
+     * and behaviour.
+     */
+    void dealloc()
+    {
+      Logging::cout() << "Deallocating Behaviour " << *this << Logging::endl;
+      heap::dealloc(as_work());
+    }
+
+    /**
+     * @brief Constructs a behaviour.  Leaves space for the closure.
+     *
+     * @param count - Number of slots to allocate, i.e. how many cowns to wait
+     * for.
+     * @param f - The function to execute once all the behaviours dependencies
+     * are ready.  This should have a specific form as it will receive a pointer
+     * to work object rather than body itself.
+     * @param payload - The size of the payload to allocate.
+     * @return BehaviourCore* - the pointer to the behaviour object.
+     *
+     * @note
+     * The work function of f should be of the form:Aal
+     *
+     *   void invoke(Work*)
+     *   {
+     *     Body* body = BehaviourCore::body_from_work<Body>(work);
+     *
+     *     // Do the actual behaviours work
+     *     ...
+     *
+     *     BehaviourCore::finished(work);
+     *   }
+     *
+     *  Using this form allows the implementation to use a single indirect call
+     *  to this function, rather than having to do a second indirect call inside
+     *  the body of the behaviour for what to do.  (Note the underlying
+     * scheduler runs things other than behaviours, so it will alway need at
+     * least one indirect call).
+     *
+     * @note The behaviour does not fill in the slots for the cowns, and those
+     * should be filled in by the caller.
+     *
+     *    BehaviourCore b = make(2, invoke, sizeof(Body));
+     *    b.get_slots()[0] = Slot(cown1);
+     *    b.get_slots()[1] = Slot(cown2);
+     *
+     *    BehaviourCore::schedule_many(&b, 1);
+     *
+     * This fills in the two slots, and then schedules the behaviour.
+     */
+    static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
+    {
+      // Manual memory layout of the behaviour structure.
+      //   | Work | Behaviour | Slot ... Slot | Body |
+      size_t size =
+        sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
+      void* base = heap::alloc(size);
+
+      Work* work = new (base) Work(f);
+      void* base_behaviour = from_work(work);
+      BehaviourCore* behaviour = new (base_behaviour) BehaviourCore(count);
+
+      // These assertions are basically checking that we won't break any
+      // alignment assumptions on Be.  If we add some actual alignment, then
+      // this can be improved.
+      static_assert(
+        sizeof(Slot) % sizeof(void*) == 0,
+        "Slot size must be a multiple of pointer size");
+      static_assert(
+        sizeof(BehaviourCore) % sizeof(void*) == 0,
+        "Behaviour size must be a multiple of pointer size");
+      static_assert(
+        sizeof(Work) % sizeof(void*) == 0,
+        "Work size must be a multiple of pointer size");
+
+      return behaviour;
+    }
+
+    /**
+     * @brief Atomically schedule a collection of behaviours for
+     * execution.
+     *
+     * @param bodies An array of behaviours to schedule.
+     *
+     * @param body_count The number of behaviours to schedule.
+     *
+     * This adds the behaviours to the dependency graph, and handles all the
+     * process of waking up the work and adding to the underlying scheduler.
+     */
+    static void schedule_many(BehaviourCore** bodies, size_t body_count);
   };
+
+  /**
+   * IMPLEMENTATION COMMENT
+   * *** Single behaviour scheduling ***
+   *
+   * To correctly implement the happens before order, we need to ensure that
+   * one when cannot overtake another:
+   *
+   *   when (a, b, d) { B1 } || when (a, c, d) { B2 }
+   *
+   * Where we assume the underlying acquisition order is alphabetical.
+   *
+   * Let us assume B1 exchanges on `a` first, then we need to ensure that
+   * B2 cannot acquire `d` before B1 as this would lead to a cycle.
+   *
+   * To achieve this we effectively do two phase locking.
+   *
+   * The first (acquire) phase performs exchange on each cown in same
+   * global assumed order.  It can only move onto the next cown once the
+   * previous behaviour on that cown specifies it has completed its scheduling
+   * by marking itself ready, `set_ready`.
+   *
+   * The second (release) phase is simply making each slot ready, so that
+   * subsequent behaviours can continue scheduling.
+   *
+   * Returning to our example earlier, if B1 exchanges on `a` first, then
+   * B2 will have to wait for B1 to perform all its exchanges, and mark the
+   * appropriate slot ready in phase two. Hence, it is not possible for any
+   * number of behaviours to form a cycle.
+   *
+   *
+   * Invariant: If the cown is part of a chain, then the scheduler holds an RC
+   * on the cown. This means the first behaviour to access a cown will need to
+   * perform an acquire. When the execution of a chain completes, then the
+   * scheduler will release the RC.
+   *
+   * *** Extension to Many ***
+   *
+   * This code additional can schedule a group of behaviours atomically.
+   *
+   *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
+   *
+   * This will cause the three behaviours to be scheduled in a single atomic
+   * step using the two phase commit.  This means that no other behaviours can
+   * access a between B1 and B3, and no other behaviours can access b between
+   * B2 and B3.
+   *
+   * This extension is implemented by building a mapping from each request
+   * to the sorted order of.  In this case that produces
+   *
+   *  0 -> 0, a
+   *  1 -> 1, b
+   *  2 -> 2, a
+   *  3 -> 2, b
+   *
+   * which gets sorted to
+   *
+   *  0 -> 0, a
+   *  1 -> 2, a
+   *  2 -> 1, b
+   *  3 -> 2, b
+   *
+   * We then link the (0,a) |-> (2,a), and enqueue the segment atomically onto
+   * cown a, and then link (1,b) |-> (2,b) and enqueue the segment atomically
+   * onto cown b.
+   *
+   * By enqueuing segments we ensure nothing can get in between the
+   * behaviours.
+   *
+   * *** Duplicate Cowns ***
+   *
+   * The final complication the code must deal with is duplicate cowns.
+   *
+   * when (a, a) { B1 }
+   *
+   * To handle this we need to detect the duplicate cowns, and mark the slot
+   * as not needing a successor.  This is done by setting the cown pointer to
+   * nullptr.
+   *
+   * Consider the following complex example
+   *
+   * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
+   *
+   * This will produce the following mapping
+   *
+   * 0 -> 0, a
+   * 1 -> 1, a (0)
+   * 2 -> 1, a (1)
+   * 3 -> 2, a
+   *
+   * This is sorted already, so we can just link the segments
+   *
+   * (0,a) |-> (1, a (0)) |-> (2, a)
+   *
+   * and mark (a (1)) as not having a successor.
+   */
+  inline void
+  BehaviourCore::schedule_many(BehaviourCore** bodies, size_t body_count)
+  {
+    Logging::cout() << "BehaviourCore::schedule_many" << body_count
+                    << Logging::endl;
+
+    // non-unique cowns count
+    size_t cown_count = 0;
+    for (size_t i = 0; i < body_count; i++)
+      cown_count += bodies[i]->count;
+
+    // Execution count - we will remove at least
+    // one from the execution count on finishing phase 2 of the
+    // 2PL. This ensures that the behaviour cannot be
+    // deallocated until we finish phase 2.
+    StackArray<size_t> ec(body_count);
+    for (size_t i = 0; i < body_count; i++)
+      ec[i] = 1;
+
+    // This array includes an entry for each of the requested cowns.
+    // The entry has an index into the bodies array and a Slot * for that
+    // cown inside the behaviour body
+    // Need to sort the cown requests across the co-scheduled collection of
+    // cowns We first construct an array that represents pairs of behaviour
+    // number and slot pointer. Note: Really want a dynamically sized stack
+    // allocation here.
+    StackArray<std::tuple<size_t, Slot*>> cown_to_behaviour_slot_map(
+      cown_count);
+    size_t idx = 0;
+    for (size_t i = 0; i < body_count; i++)
+    {
+      auto slots = bodies[i]->get_slots();
+      for (size_t j = 0; j < bodies[i]->count; j++)
+      {
+        cown_to_behaviour_slot_map[idx] = {i, &slots[j]};
+        idx++;
+      }
+    }
+
+    // First phase - Prepare phase
+    // For each unique cown, build a chain of behaviours that need to be
+    // scheduled.
+    // First order the cowns to find the unique ones and the prepare the
+    // chains
+
+    // Sort the indexing array so we make the requests in the correct order
+    // across the whole set of behaviours.  A consistent order is required to
+    // avoid deadlock.
+    // We sort first by cown, then by behaviour number and move writers before
+    // readers. This means overlaps will be in a sequence in the array in the
+    // correct order with respect to the order of the group of behaviours.
+    //
+    // The challenging case is given by the following example:
+    //
+    //   when (read(a)) { ... } +  when (read(a), a) { ... } + when(a) { ... }
+    //
+    // Here we have three slots (0,0), (1,0), (1,1), (2,0) and we need to
+    // ensure that the resulting order is
+    //    (0,0), (1,1), (1,0), (2,0)
+    // and then we can drop (1,0).
+    // This is because the second behaviour needs write access, so that has to
+    // be prioritised over the read, but between behaviours, we should keep
+    // the order the same. This means we can always ignore anything but the
+    // first slot for each behaviour when building the dependency chain.
+    auto compare =
+      [](const std::tuple<size_t, Slot*> i, const std::tuple<size_t, Slot*> j) {
+#ifdef USE_SYSTEMATIC_TESTING
+        if (std::get<1>(i)->cown()->id() == std::get<1>(j)->cown()->id())
+          if (std::get<0>(i) == std::get<0>(j))
+            return (!std::get<1>(i)->is_read_only()) &&
+              std::get<1>(j)->is_read_only();
+          else
+            return std::get<0>(i) < std::get<0>(j);
+        else
+          return std::get<1>(i)->cown()->id() < std::get<1>(j)->cown()->id();
+#else
+        if (std::get<1>(i)->cown() == std::get<1>(j)->cown())
+          if (std::get<0>(i) == std::get<0>(j))
+            return (!std::get<1>(i)->is_read_only()) &&
+              std::get<1>(j)->is_read_only();
+          else
+            return std::get<0>(i) < std::get<0>(j);
+        else
+          return std::get<1>(i)->cown() < std::get<1>(j)->cown();
+#endif
+      };
+    if (cown_count > 1)
+      std::sort(
+        cown_to_behaviour_slot_map.get(),
+        cown_to_behaviour_slot_map.get() + cown_count,
+        compare);
+
+    // Helper struct to be used after building the chains in the next phases
+    struct ChainInfo
+    {
+      Cown* cown;
+      size_t first_body_index;
+      Slot* last_slot;
+      size_t transfer_count;
+      bool had_no_predecessor;
+      // The last two are only use for reads only chains
+      size_t ref_count;
+      size_t ex_count;
+    };
+    size_t i = 0;
+    size_t chain_count = 0;
+    StackArray<ChainInfo> chain_info(cown_count);
+
+    while (i < cown_count)
+    {
+      auto cown = std::get<1>(cown_to_behaviour_slot_map[i])->cown();
+      auto body = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
+      auto last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
+      size_t first_body_index = std::get<0>(cown_to_behaviour_slot_map[i]);
+
+      // The number of RCs provided for the current cown by the when.
+      // I.e. how many moves of cown_refs there were.
+      size_t transfer_count = last_slot->is_move();
+
+      Logging::cout() << "Processing " << cown << " " << body << " "
+                      << last_slot << " Index " << i << Logging::endl;
+
+      // Detect duplicates for this cown.
+      // This is required in two cases:
+      //  * overlaps within a single behaviour.
+      while (((++i) < cown_count) &&
+             (cown == std::get<1>(cown_to_behaviour_slot_map[i])->cown()))
+      {
+        // If the body is the same, then we have an overlap within a single
+        // behaviour.
+        auto body_next = bodies[std::get<0>(cown_to_behaviour_slot_map[i])];
+
+        // Check if the caller passed an RC and add to the total.
+        transfer_count += std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
+
+        if (body_next == body)
+        {
+          Logging::cout() << "Duplicate " << cown << " for " << body
+                          << " Index " << i << Logging::endl;
+          // We need to reduce the execution count by one, as we can't wait
+          // for ourselves.
+          ec[std::get<0>(cown_to_behaviour_slot_map[i])]++;
+
+          // We need to mark the slot as not having a cown associated to it.
+          std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_null();
+          continue;
+        }
+
+        // For writers, create a chain of behaviours
+        if (!std::get<1>(cown_to_behaviour_slot_map[i])->is_read_only())
+        {
+          body = body_next;
+
+          // Extend the chain of behaviours linking on this behaviour
+          last_slot->set_next_slot_writer(body);
+          last_slot->set_ready();
+
+          last_slot = std::get<1>(cown_to_behaviour_slot_map[i]);
+          continue;
+        }
+
+        // TODO: Chain with reads and writes is not implemented.
+        abort();
+      }
+
+      // For each chain you need the cown, the first and the last body of the
+      // chain
+      chain_info[chain_count++] = {
+        cown, first_body_index, last_slot, transfer_count, false, 0, 0};
+
+      // Mark the slot as ready for scheduling
+      last_slot->reset_status();
+      yield();
+      if (last_slot->is_read_only())
+        last_slot->set_behaviour(body);
+    }
+
+    // Second phase - Acquire phase
+    for (size_t i = 0; i < chain_count; i++)
+    {
+      auto* cown = chain_info[i].cown;
+      auto first_body_index = chain_info[i].first_body_index;
+      auto* first_body = bodies[first_body_index];
+      auto* new_slot = chain_info[i].last_slot;
+
+      auto prev_slot =
+        cown->last_slot.exchange(new_slot, std::memory_order_acq_rel);
+
+      yield();
+
+      if (prev_slot == nullptr)
+      {
+        chain_info[i].had_no_predecessor = true;
+        if (new_slot->is_read_only())
+        {
+          auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
+          chain_info[i].ref_count = std::get<0>(counts);
+          chain_info[i].ex_count = std::get<1>(counts);
+        }
+        continue;
+      }
+
+      while (prev_slot->is_wait_2pl())
+      {
+        Systematic::yield_until(
+          [prev_slot]() { return !prev_slot->is_wait_2pl(); });
+        Aal::pause();
+      }
+
+      if (new_slot->is_read_only())
+      {
+        auto counts = handle_read_only_enqueue(prev_slot, new_slot, cown);
+        chain_info[i].ref_count = std::get<0>(counts);
+        chain_info[i].ex_count = std::get<1>(counts);
+        continue;
+      }
+
+      Logging::cout()
+        << " Writer waiting for cown. Set next of previous slot cown "
+        << *new_slot << " previous " << *prev_slot << Logging::endl;
+      prev_slot->set_next_slot_writer(first_body);
+      yield();
+    }
+
+    // Third phase - Release phase.
+    for (size_t i = 0; i < body_count; i++)
+    {
+      Logging::cout() << "Release phase for behaviour " << bodies[i]
+                      << Logging::endl;
+    }
+
+    for (size_t i = 0; i < chain_count; i++)
+    {
+      yield();
+      auto slot = chain_info[i].last_slot;
+      Logging::cout() << "Setting slot " << slot << " to ready"
+                      << Logging::endl;
+      slot->set_ready();
+
+      // TODO: We chould also set the READ_AVAILABLE here
+    }
+
+    // Fourth phase - Process & Resolve
+
+    for (size_t i = 0; i < chain_count; i++)
+    {
+      auto* cown = chain_info[i].cown;
+      auto first_body_index = chain_info[i].first_body_index;
+      auto* first_body = bodies[first_body_index];
+      auto* curr_slot = chain_info[i].last_slot;
+      auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
+      auto transfer_count = chain_info[i].transfer_count;
+      auto ref_count = chain_info[i].ref_count;
+      auto ex_count = chain_info[i].ex_count;
+
+      // Process reference count
+      if (chain_had_no_predecessor)
+      {
+        ref_count++;
+      }
+      acquire_with_transfer(cown, transfer_count, ref_count);
+
+      // Process writes without predecessor
+      if ((chain_had_no_predecessor) && (!curr_slot->is_read_only()))
+      {
+        if (cown->read_ref_count.try_write())
+        {
+          Logging::cout() << " Writer at head of queue and got the cown "
+                          << *curr_slot << Logging::endl;
+          ex_count++;
+          yield();
+        }
+        else
+        {
+          Logging::cout() << " Writer waiting for previous readers cown "
+                          << *curr_slot << Logging::endl;
+          yield();
+          cown->next_writer = first_body;
+        }
+      }
+
+      // Process execution count
+      ec[first_body_index] += ex_count;
+    }
+
+    for (size_t i = 0; i < body_count; i++)
+    {
+      yield();
+      bodies[i]->resolve(ec[i]);
+    }
+  }
 
   inline void Slot::wakeup_next_writer()
   {

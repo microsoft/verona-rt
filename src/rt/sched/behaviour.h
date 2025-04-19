@@ -6,6 +6,49 @@
 
 namespace verona::rt
 {
+  class Request
+  {
+    Cown* _cown;
+
+    static constexpr uintptr_t READ_FLAG = 0x1;
+    static constexpr uintptr_t MOVE_FLAG = 0x2;
+
+    Request(Cown* cown) : _cown(cown) {}
+
+  public:
+    Request() : _cown(nullptr) {}
+
+    Cown* cown()
+    {
+      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
+    }
+
+    bool is_read()
+    {
+      return ((uintptr_t)_cown & READ_FLAG);
+    }
+
+    bool is_move()
+    {
+      return ((uintptr_t)_cown & MOVE_FLAG);
+    }
+
+    void mark_move()
+    {
+      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
+    }
+
+    static Request write(Cown* cown)
+    {
+      return Request(cown);
+    }
+
+    static Request read(Cown* cown)
+    {
+      return Request((Cown*)((uintptr_t)cown | READ_FLAG));
+    }
+  };
+
   /**
    * This class provides the full `when` functionality.  It
    * provides the closure and lifetime management for the class.
@@ -16,22 +59,19 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      BehaviourCore* behaviour = BehaviourCore::from_work(work);
-      Be* body = behaviour->get_body<Be>();
-      (*body)();
+      Be* body = BehaviourCore::body_from_work<Be>(work);
 
+      (*body)();
       if (behaviour_rerun())
       {
         behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
-
-      behaviour->release_all();
-
       // Dealloc behaviour
       body->~Be();
-      work->dealloc();
+
+      BehaviourCore::finished(work);
     }
 
   public:
