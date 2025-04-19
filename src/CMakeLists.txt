@@ -18,6 +18,9 @@ FetchContent_Declare(
   GIT_TAG        b8e28be14b3fd98e27c2fe87c0296570f6d3990e
 )
 
+# Don't add targets for snmalloc tests and clangformat.
+set(SNMALLOC_BUILD_TESTING OFF)
+# Don't add any of the targets to `all`.
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
 add_subdirectory(rt)
