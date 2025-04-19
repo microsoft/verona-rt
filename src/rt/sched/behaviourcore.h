@@ -55,13 +55,13 @@ namespace verona::rt
     }
   };
 
-  struct BehaviourCore;
+  class BehaviourCore;
 
   inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
 
-  struct Slot
+  class Slot
   {
-    friend class BehaviourCore;
+    friend BehaviourCore;
   private:
     /**
      * Cown required by this behaviour
@@ -284,7 +284,7 @@ namespace verona::rt
       _cown.store(0UL, std::memory_order_release);
     }
 
-    void wakeup_next_writer();
+    inline void wakeup_next_writer();
 
     void drop_read();
 
@@ -414,8 +414,9 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
-  struct BehaviourCore
+  class BehaviourCore
   {
+    friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
 
@@ -440,24 +441,6 @@ namespace verona::rt
                 << b.exec_count_down.load(std::memory_order_acquire) << " ";
     }
 
-    Work* as_work()
-    {
-      return pointer_offset_signed<Work>(
-        this, -static_cast<ptrdiff_t>(sizeof(Work)));
-    }
-
-    /**
-     * @brief Given a pointer to a work object converts it to a
-     * BehaviourCore pointer.
-     *
-     * This is inherently unsafe, and should only be used when it is known the
-     * work object was constructed using `make`.
-     */
-    static BehaviourCore* from_work(Work* w)
-    {
-      return pointer_offset<BehaviourCore>(w, sizeof(Work));
-    }
-
     /**
      * Remove `n` from the exec_count_down.
      */
@@ -474,19 +457,6 @@ namespace verona::rt
         Logging::cout() << "Scheduling Behaviour " << *this << Logging::endl;
         Scheduler::schedule(as_work(), fifo);
       }
-    }
-
-    // TODO: When C++ 20 move to span.
-    Slot* get_slots()
-    {
-      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
-    }
-
-    template<typename T = void>
-    T* get_body()
-    {
-      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
     }
 
     /**
@@ -559,6 +529,43 @@ namespace verona::rt
 
     fn_out:
       return {ref_count, ex_count};
+    }
+
+  public:
+    Work* as_work()
+    {
+      return pointer_offset_signed<Work>(
+        this, -static_cast<ptrdiff_t>(sizeof(Work)));
+    }
+
+    /**
+     * @brief Given a pointer to a work object converts it to a
+     * BehaviourCore pointer.
+     *
+     * This is inherently unsafe, and should only be used when it is known the
+     * work object was constructed using `make`.
+     */
+    static BehaviourCore* from_work(Work* w)
+    {
+      return pointer_offset<BehaviourCore>(w, sizeof(Work));
+    }
+
+    // TODO: When C++ 20 move to span.
+    Slot* get_slots()
+    {
+      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
+    }
+
+    size_t get_count()
+    {
+      return count;
+    }
+
+    template<typename T = void>
+    T* get_body()
+    {
+      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
+      return pointer_offset<T>(slots, sizeof(Slot) * count);
     }
 
     /**

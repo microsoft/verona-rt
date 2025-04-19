@@ -90,7 +90,7 @@ namespace verona::rt
         ->body.~Be();
 
       auto* slots = notification->behaviour->get_slots();
-      for (size_t i = 0; i < notification->behaviour->count; i++)
+      for (size_t i = 0; i < notification->behaviour->get_count(); i++)
       {
         Shared::release(slots[i].cown());
       }

@@ -120,8 +120,8 @@ namespace verona::rt
     }
   };
 
-  struct Slot;
-  struct BehaviourCore;
+  class Slot;
+  class BehaviourCore;
 
   class Cown : public Shared
   {
@@ -133,7 +133,7 @@ namespace verona::rt
     friend Slot;
     template<typename T>
     friend class Promise;
-    friend struct BehaviourCore;
+    friend class BehaviourCore;
 
     template<typename T>
     friend class Noticeboard;
