@@ -55,7 +55,8 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      BehaviourWrapper<Be>* wrapper = BehaviourCore::body_from_work<BehaviourWrapper<Be>>(work);
+      BehaviourWrapper<Be>* wrapper =
+        BehaviourCore::body_from_work<BehaviourWrapper<Be>>(work);
 
       Be& body = wrapper->body;
       auto notification = wrapper->notification;

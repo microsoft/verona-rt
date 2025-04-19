@@ -12,7 +12,6 @@ namespace verona::rt
 {
   using namespace snmalloc;
 
-
   class BehaviourCore;
 
   inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
@@ -570,7 +569,7 @@ namespace verona::rt
       return reinterpret_cast<T*>(from_work(w)->get_body());
     }
 
-    /** 
+    /**
      * @brief Called on completion of a behaviour.  This will release the slots
      * so that subsequent behaviours can be scheduled.
      * @param work - The work object that was used to schedule the behaviour.
@@ -592,8 +591,9 @@ namespace verona::rt
      * @brief Deallocate the behaviour.
      *
      * This will deallocate the work object, and the body of the behaviour.
-     * This only needs to be called for behaviours that called finished(..., true)
-     * as the finished function will not have deallocated the work object and behaviour.
+     * This only needs to be called for behaviours that called finished(...,
+     * true) as the finished function will not have deallocated the work object
+     * and behaviour.
      */
     void dealloc()
     {
@@ -607,18 +607,18 @@ namespace verona::rt
      * @param count - Number of slots to allocate, i.e. how many cowns to wait
      * for.
      * @param f - The function to execute once all the behaviours dependencies
-     * are ready.  This should have a specific form as it will receive a pointer to
-     * work object rather than body itself.
+     * are ready.  This should have a specific form as it will receive a pointer
+     * to work object rather than body itself.
      * @param payload - The size of the payload to allocate.
      * @return BehaviourCore* - the pointer to the behaviour object.
-     * 
+     *
      * @note
      * The work function of f should be of the form:Aal
-     * 
+     *
      *   void invoke(Work*)
      *   {
      *     Body* body = BehaviourCore::body_from_work<Body>(work);
-     *     
+     *
      *     // Do the actual behaviours work
      *     ...
      *
@@ -627,13 +627,13 @@ namespace verona::rt
      *
      *  Using this form allows the implementation to use a single indirect call
      *  to this function, rather than having to do a second indirect call inside
-     *  the body of the behaviour for what to do.  (Note the underlying scheduler
-     *  runs things other than behaviours, so it will alway need at least one
-     *  indirect call).
+     *  the body of the behaviour for what to do.  (Note the underlying
+     * scheduler runs things other than behaviours, so it will alway need at
+     * least one indirect call).
      *
-     * @note The behaviour does not fill in the slots for the cowns, and those should
-     * be filled in by the caller.
-     *    
+     * @note The behaviour does not fill in the slots for the cowns, and those
+     * should be filled in by the caller.
+     *
      *    BehaviourCore b = make(2, invoke, sizeof(Body));
      *    b.get_slots()[0] = Slot(cown1);
      *    b.get_slots()[1] = Slot(cown2);
@@ -678,8 +678,8 @@ namespace verona::rt
      *
      * @param body_count The number of behaviours to schedule.
      *
-     * This adds the behaviours to the dependency graph, and handles all the process
-     * of waking up the work and adding to the underlying scheduler.
+     * This adds the behaviours to the dependency graph, and handles all the
+     * process of waking up the work and adding to the underlying scheduler.
      */
     static void schedule_many(BehaviourCore** bodies, size_t body_count);
   };
