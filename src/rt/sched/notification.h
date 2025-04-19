@@ -55,21 +55,15 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      BehaviourCore* behaviour = BehaviourCore::from_work(work);
-      BehaviourWrapper<Be>* wrapper =
-        behaviour->template get_body<BehaviourWrapper<Be>>();
+      BehaviourWrapper<Be>* wrapper = BehaviourCore::body_from_work<BehaviourWrapper<Be>>(work);
+
       Be& body = wrapper->body;
       auto notification = wrapper->notification;
       Logging::cout() << "Notification: Invoked: " << notification << std::endl;
       notification->set_running();
-
       (body)();
 
-      behaviour->release_all();
-      Logging::cout() << "Notification: Released all: " << notification
-                      << std::endl;
-
-      behaviour->reset();
+      BehaviourCore::finished(work, true);
 
       notification->finished_running();
     }
@@ -95,8 +89,7 @@ namespace verona::rt
         Shared::release(slots[i].cown());
       }
 
-      // Need to dealloc using ABA protection for fields relating to work.
-      notification->behaviour->as_work()->dealloc();
+      notification->behaviour->dealloc();
     }
 
     /**
