@@ -37,6 +37,10 @@ if(USE_SYSTEMATIC_TESTING)
   target_compile_definitions(verona_rt INTERFACE USE_SYSTEMATIC_TESTING)
 endif()
 
+if(USE_REPLAY_ALLOCATOR)
+  target_compile_definitions(verona_rt INTERFACE USE_REPLAY_ALLOCATOR)
+endif()
+
 if(USE_CRASH_LOGGING)
   target_compile_definitions(verona_rt INTERFACE USE_FLIGHT_RECORDER)
 endif()
