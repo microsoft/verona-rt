@@ -1120,38 +1120,6 @@ namespace verona::rt
         bodies[i]->resolve(ec[i]);
       }
     }
-
-    /**
-     * @brief Release all slots in the behaviour.
-     *
-     * This is should be called when the behaviour has executed.
-     */
-    void release_all()
-    {
-      Logging::cout() << "Finished Behaviour " << *this << Logging::endl;
-      auto slots = get_slots();
-      // Behaviour is done, we can resolve successors.
-      for (size_t i = 0; i < count; i++)
-      {
-        slots[i].release();
-      }
-      Logging::cout() << "Finished Resolving successors " << *this
-                      << Logging::endl;
-    }
-
-    /**
-     * Reset the behaviour to look like it has never been scheduled.
-     */
-    void reset()
-    {
-      // Reset status on slots.
-      for (size_t i = 0; i < count; i++)
-      {
-        get_slots()[i].reset();
-      }
-
-      exec_count_down = count + 1;
-    }
   };
 
   inline void Slot::wakeup_next_writer()
