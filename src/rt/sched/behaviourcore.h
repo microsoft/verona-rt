@@ -12,13 +12,13 @@ namespace verona::rt
 {
   using namespace snmalloc;
 
-  struct BehaviourCore;
+  class BehaviourCore;
 
   inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
 
-  struct Slot
+  class Slot
   {
-    friend class BehaviourCore;
+    friend BehaviourCore;
   private:
     /**
      * Cown required by this behaviour
@@ -371,8 +371,9 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
-  struct BehaviourCore
+  class BehaviourCore
   {
+    friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
 
@@ -431,19 +432,6 @@ namespace verona::rt
         Logging::cout() << "Scheduling Behaviour " << *this << Logging::endl;
         Scheduler::schedule(as_work(), fifo);
       }
-    }
-
-    // TODO: When C++ 20 move to span.
-    Slot* get_slots()
-    {
-      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
-    }
-
-    template<typename T = void>
-    T* get_body()
-    {
-      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
     }
 
     /**
@@ -524,14 +512,139 @@ namespace verona::rt
     }
 
     /**
+     * @brief Release all slots in the behaviour.
+     *
+     * This is should be called when the behaviour has executed.
+     */
+    void release_all()
+    {
+      Logging::cout() << "Finished Behaviour " << *this << Logging::endl;
+      auto slots = get_slots();
+      // Behaviour is done, we can resolve successors.
+      for (size_t i = 0; i < count; i++)
+      {
+        slots[i].release();
+      }
+      Logging::cout() << "Finished Resolving successors " << *this
+                      << Logging::endl;
+    }
+
+    /**
+     * Reset the behaviour to look like it has never been scheduled.
+     */
+    void reset()
+    {
+      // Reset status on slots.
+      for (size_t i = 0; i < count; i++)
+      {
+        get_slots()[i].reset();
+      }
+
+      exec_count_down = count + 1;
+    }
+
+  public:
+    // TODO: When C++ 20 move to span.
+    Slot* get_slots()
+    {
+      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
+    }
+
+    size_t get_count()
+    {
+      return count;
+    }
+
+    template<typename T = void>
+    T* get_body()
+    {
+      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
+      return pointer_offset<T>(slots, sizeof(Slot) * count);
+    }
+
+    /**
+     * @brief Gets the pointer to the closure body from the work object.
+     * This takes a template parameter as this almost always needs casting
+     * to the correct type.
+     */
+    template<typename T = void>
+    static T* body_from_work(Work* w)
+    {
+      return reinterpret_cast<T*>(from_work(w)->get_body());
+    }
+
+    /**
+     * @brief Called on completion of a behaviour.  This will release the slots
+     * so that subsequent behaviours can be scheduled.
+     * @param work - The work object that was used to schedule the behaviour.
+     * @param reuse - If true, then the behaviour will be reset and reused.
+     * Otherwise, it will be deallocated.
+     */
+    static void finished(Work* work, bool reuse = false)
+    {
+      auto behaviour = BehaviourCore::from_work(work);
+      Logging::cout() << "Finished Behaviour " << *behaviour << Logging::endl;
+      behaviour->release_all();
+      if (!reuse)
+        heap::dealloc(work);
+      else
+        behaviour->reset();
+    }
+
+    /**
+     * @brief Deallocate the behaviour.
+     *
+     * This will deallocate the work object, and the body of the behaviour.
+     * This only needs to be called for behaviours that called finished(...,
+     * true) as the finished function will not have deallocated the work object
+     * and behaviour.
+     */
+    void dealloc()
+    {
+      Logging::cout() << "Deallocating Behaviour " << *this << Logging::endl;
+      heap::dealloc(as_work());
+    }
+
+    /**
      * @brief Constructs a behaviour.  Leaves space for the closure.
      *
      * @param count - Number of slots to allocate, i.e. how many cowns to wait
      * for.
      * @param f - The function to execute once all the behaviours dependencies
-     * are ready.
+     * are ready.  This should have a specific form as it will receive a pointer
+     * to work object rather than body itself.
      * @param payload - The size of the payload to allocate.
      * @return BehaviourCore* - the pointer to the behaviour object.
+     *
+     * @note
+     * The work function of f should be of the form:Aal
+     *
+     *   void invoke(Work*)
+     *   {
+     *     Body* body = BehaviourCore::body_from_work<Body>(work);
+     *
+     *     // Do the actual behaviours work
+     *     ...
+     *
+     *     BehaviourCore::finished(work);
+     *   }
+     *
+     *  Using this form allows the implementation to use a single indirect call
+     *  to this function, rather than having to do a second indirect call inside
+     *  the body of the behaviour for what to do.  (Note the underlying
+     * scheduler runs things other than behaviours, so it will alway need at
+     * least one indirect call).
+     *
+     * @note The behaviour does not fill in the slots for the cowns, and those
+     * should be filled in by the caller.
+     *
+     *    BehaviourCore b = make(2, invoke, sizeof(Body));
+     *    b.get_slots()[0] = Slot(cown1);
+     *    b.get_slots()[1] = Slot(cown2);
+     *
+     *    BehaviourCore::schedule_many(&b, 1);
+     *
+     * This fills in the two slots, and then schedules the behaviour.
      */
     static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
     {
@@ -562,14 +675,16 @@ namespace verona::rt
     }
 
     /**
-     * @brief Schedule a behaviour for execution.
-     *
-     * @param bodies  The behaviours to schedule.
+     *  @brief Atomically schedule a collection of behaviours for
+     * execution.
+     * @param bodies An array of behaviours to schedule
      *
      * @param body_count The number of behaviours to schedule.
      *
-     * @note
-     *
+     * @note This adds the behaviours to the dependency graph, and handles all the
+     * process of waking up the work and adding to the underlying scheduler.
+     */
+     /* IMPLEMENTATION NOTE
      * *** Single behaviour scheduling ***
      *
      * To correctly implement the happens before order, we need to ensure that

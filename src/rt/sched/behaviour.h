@@ -59,22 +59,19 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      BehaviourCore* behaviour = BehaviourCore::from_work(work);
-      Be* body = behaviour->get_body<Be>();
-      (*body)();
+      Be* body = BehaviourCore::body_from_work<Be>(work);
 
+      (*body)();
       if (behaviour_rerun())
       {
         behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
-
-      behaviour->release_all();
-
       // Dealloc behaviour
       body->~Be();
-      work->dealloc();
+
+      BehaviourCore::finished(work);
     }
 
   public:
