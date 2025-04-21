@@ -6,6 +6,49 @@
 
 namespace verona::rt
 {
+  class Request
+  {
+    Cown* _cown;
+
+    static constexpr uintptr_t READ_FLAG = 0x1;
+    static constexpr uintptr_t MOVE_FLAG = 0x2;
+
+    Request(Cown* cown) : _cown(cown) {}
+
+  public:
+    Request() : _cown(nullptr) {}
+
+    Cown* cown()
+    {
+      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
+    }
+
+    bool is_read()
+    {
+      return ((uintptr_t)_cown & READ_FLAG);
+    }
+
+    bool is_move()
+    {
+      return ((uintptr_t)_cown & MOVE_FLAG);
+    }
+
+    void mark_move()
+    {
+      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
+    }
+
+    static Request write(Cown* cown)
+    {
+      return Request(cown);
+    }
+
+    static Request read(Cown* cown)
+    {
+      return Request((Cown*)((uintptr_t)cown | READ_FLAG));
+    }
+  };
+
   /**
    * This class provides the full `when` functionality.  It
    * provides the closure and lifetime management for the class.
