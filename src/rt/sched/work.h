@@ -33,17 +33,6 @@ namespace verona::rt
     {
       f(this);
     }
-
-    /**
-     * Helper to perform deallocation.
-     *
-     * It assumes the work item is the start of an underlying allocation, and
-     * does not work if it is embedded not at the start of an allocation.
-     */
-    void dealloc()
-    {
-      heap::dealloc(this);
-    }
   };
 
   /**
@@ -66,7 +55,7 @@ namespace verona::rt
       if (dealloc)
       {
         t->~T();
-        w->dealloc();
+        heap::dealloc(w);
       }
     }
 

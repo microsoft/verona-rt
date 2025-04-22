@@ -12,55 +12,14 @@ namespace verona::rt
 {
   using namespace snmalloc;
 
-  class Request
-  {
-    Cown* _cown;
-
-    static constexpr uintptr_t READ_FLAG = 0x1;
-    static constexpr uintptr_t MOVE_FLAG = 0x2;
-
-    Request(Cown* cown) : _cown(cown) {}
-
-  public:
-    Request() : _cown(nullptr) {}
-
-    Cown* cown()
-    {
-      return (Cown*)((uintptr_t)_cown & ~(READ_FLAG | MOVE_FLAG));
-    }
-
-    bool is_read()
-    {
-      return ((uintptr_t)_cown & READ_FLAG);
-    }
-
-    bool is_move()
-    {
-      return ((uintptr_t)_cown & MOVE_FLAG);
-    }
-
-    void mark_move()
-    {
-      _cown = (Cown*)((uintptr_t)_cown | MOVE_FLAG);
-    }
-
-    static Request write(Cown* cown)
-    {
-      return Request(cown);
-    }
-
-    static Request read(Cown* cown)
-    {
-      return Request((Cown*)((uintptr_t)cown | READ_FLAG));
-    }
-  };
-
-  struct BehaviourCore;
+  class BehaviourCore;
 
   inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
 
-  struct Slot
+  class Slot
   {
+    friend BehaviourCore;
+
   private:
     /**
      * Cown required by this behaviour
@@ -121,35 +80,6 @@ namespace verona::rt
      * snmalloc is used otherwise use this pointer.
      */
     std::atomic<BehaviourCore*> behaviour;
-
-  public:
-    Slot(Cown* __cown)
-    {
-      // Check that the last two bits are zero
-      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
-      _cown.store((uintptr_t)__cown, std::memory_order_release);
-      status.store(0, std::memory_order_release);
-      behaviour.store(nullptr, std::memory_order_release);
-    }
-
-    /**
-     * Returns true if the slot is acquired in read mode
-     */
-    bool is_read_only()
-    {
-      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
-        COWN_READER_FLAG;
-    }
-
-    /**
-     * Mark the slot to be acquired in read mode
-     */
-    void set_read_only()
-    {
-      _cown.store(
-        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
-        std::memory_order_release);
-    }
 
     /**
      * Returns true if the next slot wants to acquire in read mode
@@ -304,14 +234,6 @@ namespace verona::rt
     }
 
     /**
-     * Returns the cown associated with the slot
-     */
-    Cown* cown()
-    {
-      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
-    }
-
-    /**
      * Set the cown pointer to NULL to indicate duplicate cowns within a
      * behaviour.
      */
@@ -324,7 +246,65 @@ namespace verona::rt
 
     void drop_read();
 
-    void release();
+    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
+    {
+      return os
+        << " Slot: " << &s << " Cown ptr: "
+        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
+        << " 2PL ready bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
+            0)
+        << " Is_reader bit: "
+        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
+        << " Is_read_available: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
+        << " Next pointer: "
+        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
+        << " Is_next_reader: "
+        << ((s.status.load(std::memory_order_relaxed) &
+             STATUS_NEXT_SLOT_READER_FLAG) != 0)
+        << "\n";
+    }
+
+  public:
+    Slot(Cown* __cown, bool ready = false)
+    {
+      // Check that the last two bits are zero
+      assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
+      _cown.store((uintptr_t)__cown, std::memory_order_release);
+      status.store(0, std::memory_order_release);
+      behaviour.store(nullptr, std::memory_order_release);
+      if (ready)
+        set_ready();
+    }
+
+    /**
+     * Returns the cown associated with the slot
+     */
+    Cown* cown()
+    {
+      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
+    }
+
+    /**
+     * Returns true if the slot is acquired in read mode
+     */
+    bool is_read_only()
+    {
+      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
+        COWN_READER_FLAG;
+    }
+
+    /**
+     * Mark the slot to be acquired in read mode
+     */
+    void set_read_only()
+    {
+      _cown.store(
+        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
+        std::memory_order_release);
+    }
 
     /**
      * Returns true if the slot is acquired with std::move
@@ -363,26 +343,12 @@ namespace verona::rt
         std::memory_order_release);
     }
 
-    inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
-    {
-      return os
-        << " Slot: " << &s << " Cown ptr: "
-        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
-        << " 2PL ready bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
-            0)
-        << " Is_reader bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
-        << " Is_read_available: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
-        << " Next pointer: "
-        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
-        << " Is_next_reader: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_NEXT_SLOT_READER_FLAG) != 0)
-        << "\n";
-    }
+    /**
+     * TODO This should not be part of the public API, but the C++ promise
+     * experiment needs it.  We should add sufficient API for promises into
+     * the core, and then remove this from the public API.
+     */
+    void release();
   };
 
   /**
@@ -406,8 +372,9 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
-  struct BehaviourCore
+  class BehaviourCore
   {
+    friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
 
@@ -466,19 +433,6 @@ namespace verona::rt
         Logging::cout() << "Scheduling Behaviour " << *this << Logging::endl;
         Scheduler::schedule(as_work(), fifo);
       }
-    }
-
-    // TODO: When C++ 20 move to span.
-    Slot* get_slots()
-    {
-      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
-    }
-
-    template<typename T = void>
-    T* get_body()
-    {
-      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
     }
 
     /**
@@ -559,14 +513,139 @@ namespace verona::rt
     }
 
     /**
+     * @brief Release all slots in the behaviour.
+     *
+     * This is should be called when the behaviour has executed.
+     */
+    void release_all()
+    {
+      Logging::cout() << "Finished Behaviour " << *this << Logging::endl;
+      auto slots = get_slots();
+      // Behaviour is done, we can resolve successors.
+      for (size_t i = 0; i < count; i++)
+      {
+        slots[i].release();
+      }
+      Logging::cout() << "Finished Resolving successors " << *this
+                      << Logging::endl;
+    }
+
+    /**
+     * Reset the behaviour to look like it has never been scheduled.
+     */
+    void reset()
+    {
+      // Reset status on slots.
+      for (size_t i = 0; i < count; i++)
+      {
+        get_slots()[i].reset();
+      }
+
+      exec_count_down = count + 1;
+    }
+
+  public:
+    // TODO: When C++ 20 move to span.
+    Slot* get_slots()
+    {
+      return pointer_offset<Slot>(this, sizeof(BehaviourCore));
+    }
+
+    size_t get_count()
+    {
+      return count;
+    }
+
+    template<typename T = void>
+    T* get_body()
+    {
+      Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
+      return pointer_offset<T>(slots, sizeof(Slot) * count);
+    }
+
+    /**
+     * @brief Gets the pointer to the closure body from the work object.
+     * This takes a template parameter as this almost always needs casting
+     * to the correct type.
+     */
+    template<typename T = void>
+    static T* body_from_work(Work* w)
+    {
+      return reinterpret_cast<T*>(from_work(w)->get_body());
+    }
+
+    /**
+     * @brief Called on completion of a behaviour.  This will release the slots
+     * so that subsequent behaviours can be scheduled.
+     * @param work - The work object that was used to schedule the behaviour.
+     * @param reuse - If true, then the behaviour will be reset and reused.
+     * Otherwise, it will be deallocated.
+     */
+    static void finished(Work* work, bool reuse = false)
+    {
+      auto behaviour = BehaviourCore::from_work(work);
+      Logging::cout() << "Finished Behaviour " << *behaviour << Logging::endl;
+      behaviour->release_all();
+      if (!reuse)
+        heap::dealloc(work);
+      else
+        behaviour->reset();
+    }
+
+    /**
+     * @brief Deallocate the behaviour.
+     *
+     * This will deallocate the work object, and the body of the behaviour.
+     * This only needs to be called for behaviours that called finished(...,
+     * true) as the finished function will not have deallocated the work object
+     * and behaviour.
+     */
+    void dealloc()
+    {
+      Logging::cout() << "Deallocating Behaviour " << *this << Logging::endl;
+      heap::dealloc(as_work());
+    }
+
+    /**
      * @brief Constructs a behaviour.  Leaves space for the closure.
      *
      * @param count - Number of slots to allocate, i.e. how many cowns to wait
      * for.
      * @param f - The function to execute once all the behaviours dependencies
-     * are ready.
+     * are ready.  This should have a specific form as it will receive a pointer
+     * to work object rather than body itself.
      * @param payload - The size of the payload to allocate.
      * @return BehaviourCore* - the pointer to the behaviour object.
+     *
+     * @note
+     * The work function of f should be of the form:Aal
+     *
+     *   void invoke(Work*)
+     *   {
+     *     Body* body = BehaviourCore::body_from_work<Body>(work);
+     *
+     *     // Do the actual behaviours work
+     *     ...
+     *
+     *     BehaviourCore::finished(work);
+     *   }
+     *
+     *  Using this form allows the implementation to use a single indirect call
+     *  to this function, rather than having to do a second indirect call inside
+     *  the body of the behaviour for what to do.  (Note the underlying
+     * scheduler runs things other than behaviours, so it will alway need at
+     * least one indirect call).
+     *
+     * @note The behaviour does not fill in the slots for the cowns, and those
+     * should be filled in by the caller.
+     *
+     *    BehaviourCore b = make(2, invoke, sizeof(Body));
+     *    b.get_slots()[0] = Slot(cown1);
+     *    b.get_slots()[1] = Slot(cown2);
+     *
+     *    BehaviourCore::schedule_many(&b, 1);
+     *
+     * This fills in the two slots, and then schedules the behaviour.
      */
     static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
     {
@@ -597,109 +676,111 @@ namespace verona::rt
     }
 
     /**
-     * @brief Schedule a behaviour for execution.
-     *
-     * @param bodies  The behaviours to schedule.
+     *  @brief Atomically schedule a collection of behaviours for
+     * execution.
+     * @param bodies An array of behaviours to schedule
      *
      * @param body_count The number of behaviours to schedule.
      *
-     * @note
-     *
-     * *** Single behaviour scheduling ***
-     *
-     * To correctly implement the happens before order, we need to ensure that
-     * one when cannot overtake another:
-     *
-     *   when (a, b, d) { B1 } || when (a, c, d) { B2 }
-     *
-     * Where we assume the underlying acquisition order is alphabetical.
-     *
-     * Let us assume B1 exchanges on `a` first, then we need to ensure that
-     * B2 cannot acquire `d` before B1 as this would lead to a cycle.
-     *
-     * To achieve this we effectively do two phase locking.
-     *
-     * The first (acquire) phase performs exchange on each cown in same
-     * global assumed order.  It can only move onto the next cown once the
-     * previous behaviour on that cown specifies it has completed its scheduling
-     * by marking itself ready, `set_ready`.
-     *
-     * The second (release) phase is simply making each slot ready, so that
-     * subsequent behaviours can continue scheduling.
-     *
-     * Returning to our example earlier, if B1 exchanges on `a` first, then
-     * B2 will have to wait for B1 to perform all its exchanges, and mark the
-     * appropriate slot ready in phase two. Hence, it is not possible for any
-     * number of behaviours to form a cycle.
-     *
-     *
-     * Invariant: If the cown is part of a chain, then the scheduler holds an RC
-     * on the cown. This means the first behaviour to access a cown will need to
-     * perform an acquire. When the execution of a chain completes, then the
-     * scheduler will release the RC.
-     *
-     * *** Extension to Many ***
-     *
-     * This code additional can schedule a group of behaviours atomically.
-     *
-     *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
-     *
-     * This will cause the three behaviours to be scheduled in a single atomic
-     * step using the two phase commit.  This means that no other behaviours can
-     * access a between B1 and B3, and no other behaviours can access b between
-     * B2 and B3.
-     *
-     * This extension is implemented by building a mapping from each request
-     * to the sorted order of.  In this case that produces
-     *
-     *  0 -> 0, a
-     *  1 -> 1, b
-     *  2 -> 2, a
-     *  3 -> 2, b
-     *
-     * which gets sorted to
-     *
-     *  0 -> 0, a
-     *  1 -> 2, a
-     *  2 -> 1, b
-     *  3 -> 2, b
-     *
-     * We then link the (0,a) |-> (2,a), and enqueue the segment atomically onto
-     * cown a, and then link (1,b) |-> (2,b) and enqueue the segment atomically
-     * onto cown b.
-     *
-     * By enqueuing segments we ensure nothing can get in between the
-     * behaviours.
-     *
-     * *** Duplicate Cowns ***
-     *
-     * The final complication the code must deal with is duplicate cowns.
-     *
-     * when (a, a) { B1 }
-     *
-     * To handle this we need to detect the duplicate cowns, and mark the slot
-     * as not needing a successor.  This is done by setting the cown pointer to
-     * nullptr.
-     *
-     * Consider the following complex example
-     *
-     * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
-     *
-     * This will produce the following mapping
-     *
-     * 0 -> 0, a
-     * 1 -> 1, a (0)
-     * 2 -> 1, a (1)
-     * 3 -> 2, a
-     *
-     * This is sorted already, so we can just link the segments
-     *
-     * (0,a) |-> (1, a (0)) |-> (2, a)
-     *
-     * and mark (a (1)) as not having a successor.
+     * @note This adds the behaviours to the dependency graph, and handles all
+     * the process of waking up the work and adding to the underlying scheduler.
      */
     static void schedule_many(BehaviourCore** bodies, size_t body_count)
     {
+      /* IMPLEMENTATION NOTE
+       * *** Single behaviour scheduling ***
+       *
+       * To correctly implement the happens before order, we need to ensure that
+       * one when cannot overtake another:
+       *
+       *   when (a, b, d) { B1 } || when (a, c, d) { B2 }
+       *
+       * Where we assume the underlying acquisition order is alphabetical.
+       *
+       * Let us assume B1 exchanges on `a` first, then we need to ensure that
+       * B2 cannot acquire `d` before B1 as this would lead to a cycle.
+       *
+       * To achieve this we effectively do two phase locking.
+       *
+       * The first (acquire) phase performs exchange on each cown in same
+       * global assumed order.  It can only move onto the next cown once the
+       * previous behaviour on that cown specifies it has completed its
+       * scheduling by marking itself ready, `set_ready`.
+       *
+       * The second (release) phase is simply making each slot ready, so that
+       * subsequent behaviours can continue scheduling.
+       *
+       * Returning to our example earlier, if B1 exchanges on `a` first, then
+       * B2 will have to wait for B1 to perform all its exchanges, and mark the
+       * appropriate slot ready in phase two. Hence, it is not possible for any
+       * number of behaviours to form a cycle.
+       *
+       *
+       * Invariant: If the cown is part of a chain, then the scheduler holds an
+       * RC on the cown. This means the first behaviour to access a cown will
+       * need to perform an acquire. When the execution of a chain completes,
+       * then the scheduler will release the RC.
+       *
+       * *** Extension to Many ***
+       *
+       * This code additional can schedule a group of behaviours atomically.
+       *
+       *   when (a) { B1 } + when (b) { B2 } + when (a, b) { B3 }
+       *
+       * This will cause the three behaviours to be scheduled in a single atomic
+       * step using the two phase commit.  This means that no other behaviours
+       * can access a between B1 and B3, and no other behaviours can access b
+       * between B2 and B3.
+       *
+       * This extension is implemented by building a mapping from each request
+       * to the sorted order of.  In this case that produces
+       *
+       *  0 -> 0, a
+       *  1 -> 1, b
+       *  2 -> 2, a
+       *  3 -> 2, b
+       *
+       * which gets sorted to
+       *
+       *  0 -> 0, a
+       *  1 -> 2, a
+       *  2 -> 1, b
+       *  3 -> 2, b
+       *
+       * We then link the (0,a) |-> (2,a), and enqueue the segment atomically
+       * onto cown a, and then link (1,b) |-> (2,b) and enqueue the segment
+       * atomically onto cown b.
+       *
+       * By enqueuing segments we ensure nothing can get in between the
+       * behaviours.
+       *
+       * *** Duplicate Cowns ***
+       *
+       * The final complication the code must deal with is duplicate cowns.
+       *
+       * when (a, a) { B1 }
+       *
+       * To handle this we need to detect the duplicate cowns, and mark the slot
+       * as not needing a successor.  This is done by setting the cown pointer
+       * to nullptr.
+       *
+       * Consider the following complex example
+       *
+       * when (a) { ... } + when (a,a) { ... } + when (a) { ... }
+       *
+       * This will produce the following mapping
+       *
+       * 0 -> 0, a
+       * 1 -> 1, a (0)
+       * 2 -> 1, a (1)
+       * 3 -> 2, a
+       *
+       * This is sorted already, so we can just link the segments
+       *
+       * (0,a) |-> (1, a (0)) |-> (2, a)
+       *
+       * and mark (a (1)) as not having a successor.
+       */
       Logging::cout() << "BehaviourCore::schedule_many" << body_count
                       << Logging::endl;
 
@@ -1038,38 +1119,6 @@ namespace verona::rt
         yield();
         bodies[i]->resolve(ec[i]);
       }
-    }
-
-    /**
-     * @brief Release all slots in the behaviour.
-     *
-     * This is should be called when the behaviour has executed.
-     */
-    void release_all()
-    {
-      Logging::cout() << "Finished Behaviour " << *this << Logging::endl;
-      auto slots = get_slots();
-      // Behaviour is done, we can resolve successors.
-      for (size_t i = 0; i < count; i++)
-      {
-        slots[i].release();
-      }
-      Logging::cout() << "Finished Resolving successors " << *this
-                      << Logging::endl;
-    }
-
-    /**
-     * Reset the behaviour to look like it has never been scheduled.
-     */
-    void reset()
-    {
-      // Reset status on slots.
-      for (size_t i = 0; i < count; i++)
-      {
-        get_slots()[i].reset();
-      }
-
-      exec_count_down = count + 1;
     }
   };
 
