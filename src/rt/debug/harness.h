@@ -4,8 +4,8 @@
 
 #include <cassert>
 #include <chrono>
-#include <list>
 #include <functional>
+#include <list>
 #include <test/opt.h>
 #include <verona.h>
 
@@ -195,7 +195,8 @@ public:
     }
   }
 
-  void run_many(std::vector<std::pair<std::function<void()>, std::string>> tests)
+  void
+  run_many(std::vector<std::pair<std::function<void()>, std::string>> tests)
   {
 #ifdef USE_SYSTEMATIC_TESTING
     for (seed = seed_lower; seed < seed_upper; seed++)

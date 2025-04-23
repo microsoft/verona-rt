@@ -301,7 +301,8 @@ namespace verona::rt
       // Requires that neither the READONLY or read-available bits are set.
       assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
 
-      // Read available is never set on a writer, so there is no contention here.
+      // Read available is never set on a writer, so there is no contention
+      // here.
       if (!is_read_only())
       {
         status = (uintptr_t)b;
