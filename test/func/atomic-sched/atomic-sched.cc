@@ -242,7 +242,7 @@ void test_body_long_chain()
    [=](auto b) {
      for (int i = 0; i < 10; i++)
      {
-       Logging::cout() << "Behaviour 1\n";
+       Logging::cout() << "Behaviour 1" << Logging::endl;
        // sleep(1);
      }
    }) +
@@ -250,14 +250,14 @@ void test_body_long_chain()
      [=](auto) {
        for (int i = 0; i < 10; i++)
        {
-         Logging::cout() << "Behaviour 2\n";
+         Logging::cout() << "Behaviour 2" << Logging::endl;
          // sleep(1);
        }
      }) +
     (long_chain_helper<r3>(log) << [=](auto b) {
       for (int i = 0; i < 10; i++)
       {
-        Logging::cout() << "Behaviour 1\n";
+        Logging::cout() << "Behaviour 3" << Logging::endl;
         // sleep(1);
       }
     });
@@ -267,21 +267,20 @@ int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
 
-  harness.run(test_body);
-  harness.run(test_body_same);
-  harness.run(test_body_smart);
-
-  harness.run(test_body_read_mixed);
-  harness.run(test_body_read_only_same);
-  harness.run(test_body_read_same1);
-  harness.run(test_body_read_same2);
-
-  harness.run(test_body_concurrent_1);
-
-  harness.run(test_body_long_chain<true, true, true>);
-  harness.run(test_body_long_chain<false, false, false>);
-  harness.run(test_body_long_chain<false, true, false>);
-  harness.run(test_body_long_chain<true, false, true>);
+  harness.run_many(
+    {
+     {test_body, "test_body"},
+     {test_body_same, "test_body_same"},
+     {test_body_smart, "test_body_smart"},
+     {test_body_read_mixed, "test_body_read_mixed"},
+     {test_body_read_only_same, "test_body_read_only_same"},
+     {test_body_read_same1, "test_body_read_same1"},
+     {test_body_read_same2, "test_body_read_same2"},
+     {test_body_concurrent_1, "test_body_concurrent_1"},
+     {test_body_long_chain<true, true, true>, "test_body_long_chain<true, true, true>"},
+     {test_body_long_chain<false, false, false>, "test_body_long_chain<false, false, false>"},
+     {test_body_long_chain<false, true, false>, "test_body_long_chain<false, true, false>"},
+     {test_body_long_chain<true, false, true>, "test_body_long_chain<true, false, true>"}});
 
   return 0;
 }
