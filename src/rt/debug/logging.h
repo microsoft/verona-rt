@@ -358,6 +358,14 @@ namespace Logging
       return inner_cons(value);
     }
 
+    inline SysLog& operator<<(bool value)
+    {
+      if (value)
+        return inner_cons("true");
+      else
+        return inner_cons("false");
+    }
+
     template<typename T>
     inline SysLog& operator<<(const T& value)
     {
