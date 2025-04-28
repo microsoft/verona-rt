@@ -24,9 +24,7 @@ namespace verona::rt
     /**
      * Cown required by this behaviour
      *
-     * Bit 0 - Possible values:
-     *          0 - Wait (2PL in acquire phase going on)
-     *          1 - Ready (2PL in acquire phase done)
+     * Bit 0 - Set means this carries an RC. I.e. came from a move.
      *
      * Bit 1 - Possible values:
      *          0 - Current slot Writer
@@ -37,41 +35,64 @@ namespace verona::rt
      * Assumption - Cowns are allocated at 4 byte boundary. Last 2 bits are
      * zero.
      */
-    std::atomic<uintptr_t> _cown;
+    uintptr_t _cown;
 
-    static constexpr uintptr_t COWN_2PL_READY_FLAG = 0x1;
+    static constexpr uintptr_t COWN_MOVE_FLAG = 0x1;
     static constexpr uintptr_t COWN_READER_FLAG = 0x2;
     static constexpr uintptr_t COWN_POINTER_MASK =
-      ~(COWN_2PL_READY_FLAG | COWN_READER_FLAG);
+      ~(COWN_READER_FLAG | COWN_MOVE_FLAG);
 
     /**
      * Next slot in the MCS Queue
      *
-     * Bit 0 - Possible values:
-     *          1 - Current slot read available
-     *          0 - Current slot read not available
+     * This encodes the following possible values:
+     *   - Wait - 2PL means that successor should spin on this
+     *   - Ready - 2PL completed and a successor can be added
+     *   - ReadAvailable - 2PL completed and the cown is read-only mode
+     *        with no writing waiters.
+     *   - ChainClosed - The successor has taken over the chain, and when the
+     *        behaviour that contains this slot completes it can drop the chain.
+     *   - Read(Slot*) - A pointer to the next slot in the read chain
+     *   - Write(BehaviourCore*) - A pointer to the next behaviour that is
+     *        waiting in Write mode.
      *
-     * Bit 1 - Possible values:
-     *          0 - Next slot Writer
-     *          1 - Next slot Reader
+     * The ReadAvailable status means that subsequent readers can start
+     * immediately without waiting for the current reader to finish.  A
+     * subsequent Writer must add itself to the cowns next_writer property to be
+     * scheduled, when the readers complete.
      *
-     * Remaining bits  - Next slot pointer
+     * To distinguish Read and Write we use the bottom bit.
      *
-     * Before scheduling: Bit 0 => Whether move or not
-     *
-     * Assumption - Slots are allocated at 4 byte boundary. Last 2 bits are
-     * zero.
-     *
-     * The read available status allows that a newly added reader can
-     * immediately be scheduled if the slot it is following has this
-     * status.
+     * The state transitions are as follows.
+     * For the scheduler of the behaviour for this slot:
+     *  - Wait          -> Ready          (Uncontended)
+     *  - Wait          -> ReadAvailable  (Uncontended)
+     *  - Ready         -> ReadAvailable
+     * From the successor behaviour:
+     *  - Ready         -> Read(Slot*)
+     *  - Ready         -> Write(BehaviourCore*)
+     *  - ReadAvailable -> ChainClosed    (Uncontended)
+     * The only contended state is Ready, where there can be a race between
+     * the successor trying to add a Read/Write and the current behaviour
+     * trying to set the ReadAvailable status.
      */
     std::atomic<uintptr_t> status;
 
-    static constexpr uintptr_t STATUS_SLOT_READ_AVAILABLE_FLAG = 0x1;
-    static constexpr uintptr_t STATUS_NEXT_SLOT_READER_FLAG = 0x2;
-    static constexpr uintptr_t STATUS_NEXT_SLOT_MASK =
-      ~(STATUS_SLOT_READ_AVAILABLE_FLAG | STATUS_NEXT_SLOT_READER_FLAG);
+    // Current slot initial status
+    static constexpr uintptr_t STATUS_WAIT = 0x0;
+    // Completed 2PL
+    static constexpr uintptr_t STATUS_READY = 0x1;
+    // Completed 2PL, and end of a executing read chain
+    static constexpr uintptr_t STATUS_READAVAILABLE = 0x2;
+    // This is set by the successor to acknowledge that it has taken over the
+    // chain, and the current slot does not need to notify the next slot.
+    // Importantly this is larger than the other statuses, so that the check
+    // for a successor response can be it is set to 0x3 or larger.
+    static constexpr uintptr_t STATUS_CHAIN_CLOSED = 0x3;
+    // Use the bottom bit of a pointer to indicate that the pointer is to a
+    // reader slot, rather than a writer behaviour.
+    static constexpr uintptr_t STATUS_READ_FLAG = 0x1;
+    static constexpr uintptr_t STATUS_NEXT_SLOT_MASK = ~(0x3);
 
     /**
      * Points to the behaviour associated with this slot.
@@ -79,16 +100,28 @@ namespace verona::rt
      * TODO: Change this to get behaviour address from start of allocation if
      * snmalloc is used otherwise use this pointer.
      */
-    std::atomic<BehaviourCore*> behaviour;
+    BehaviourCore* behaviour;
+
+    /**
+     * Returns 1 if the slot is acquired with std::move. It clears the flag.
+     * Returns 0 otherwise.
+     */
+    size_t take_move()
+    {
+      assert(status.load(std::memory_order_relaxed) <= 1);
+      if ((_cown & COWN_MOVE_FLAG) == 0)
+        return 0;
+      _cown &= ~COWN_MOVE_FLAG;
+      return 1;
+    }
 
     /**
      * Returns true if the next slot wants to acquire in read mode
      */
     bool is_next_slot_read_only()
     {
-      return (
-        (status.load(std::memory_order_acquire) &
-         STATUS_NEXT_SLOT_READER_FLAG) != 0);
+      assert(status > STATUS_CHAIN_CLOSED);
+      return ((status.load(std::memory_order_acquire) & STATUS_READ_FLAG) != 0);
     }
 
     /**
@@ -97,7 +130,7 @@ namespace verona::rt
      */
     bool is_wait_2pl()
     {
-      return (_cown.load(std::memory_order_acquire) & COWN_2PL_READY_FLAG) == 0;
+      return (status.load(std::memory_order_acquire)) == STATUS_WAIT;
     }
 
     /**
@@ -105,36 +138,40 @@ namespace verona::rt
      */
     void set_ready()
     {
-      _cown.store(
-        _cown.load(std::memory_order_acquire) | COWN_2PL_READY_FLAG,
-        std::memory_order_release);
+      Logging::cout() << "set_ready " << *this << Logging::endl;
+      status.store(STATUS_READY, std::memory_order_release);
     }
 
     /**
      * Mark the reader slot as read available i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
-     * Returns true if the next is set before read available, and contains a
-     * reader
+     * Returns false, if there is a successor already, and the setting failed.
      */
-    bool set_read_available_is_next_reader()
+    [[nodiscard]] bool set_read_available_contended()
     {
-      assert(is_read_only());
       yield();
-      uintptr_t next = status.fetch_add(
-        STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_acq_rel);
-      return ((next & STATUS_NEXT_SLOT_READER_FLAG) != 0);
+      Logging::cout() << "set_read_available_contended " << *this
+                      << Logging::endl;
+      assert(is_read_only());
+      assert(status != STATUS_WAIT);
+      assert(status != STATUS_READAVAILABLE);
+      uintptr_t old_status = STATUS_READY;
+      return (status.load(std::memory_order_acquire) == old_status) &&
+        status.compare_exchange_strong(old_status, STATUS_READAVAILABLE);
     }
 
     /**
      * Mark the reader slot as read available i.e. the behaviour is scheduled.
      * Next reader in the queue can also be scheduled.
      */
-    void set_read_available()
+    void set_read_available_uncontended()
     {
-      assert(is_read_only());
-      assert(status == 0);
       yield();
-      status.store(STATUS_SLOT_READ_AVAILABLE_FLAG, std::memory_order_release);
+      Logging::cout() << "set_read_available " << this << " status "
+                      << (void*)status.load() << Logging::endl;
+      assert(is_read_only());
+      assert(status == STATUS_WAIT);
+      status.store(STATUS_READAVAILABLE, std::memory_order_release);
     }
 
     /**
@@ -143,8 +180,8 @@ namespace verona::rt
     BehaviourCore* get_behaviour()
     {
       assert(is_read_only());
-      assert(behaviour.load(std::memory_order_acquire) != nullptr);
-      return behaviour.load(std::memory_order_acquire);
+      assert(behaviour != nullptr);
+      return behaviour;
     }
 
     /**
@@ -153,7 +190,7 @@ namespace verona::rt
     void set_behaviour(BehaviourCore* b)
     {
       assert(is_read_only());
-      behaviour.store(b, std::memory_order_release);
+      behaviour = b;
     }
 
     /**
@@ -161,52 +198,68 @@ namespace verona::rt
      */
     Slot* next_slot()
     {
+      assert(is_next_slot_read_only());
       return (
         Slot*)(status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK);
     }
 
     /**
-     * Returns true if this slot does not have a sucessor.
+     * Returns true if this slot has not been updated by the sucessor.
      */
-    bool no_successor()
+    bool no_successor_response()
     {
-      return (status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK) ==
-        0;
+      return (status.load(std::memory_order_acquire)) < STATUS_CHAIN_CLOSED;
     }
 
     /**
-     * Returns true if current slot is a writer or a blocked reader,
-     * otherwise returns false
+     * Returns true if successful.
+     * Return false if failed due to READ_AVAILBLE being set.
      */
-    bool set_next_slot_reader(Slot* n)
+    void set_next_slot_reader_uncontended(Slot* n)
     {
+      Logging::cout() << "set_next_slot_reader_uncontended " << this
+                      << " status " << (void*)status.load() << Logging::endl;
+      // Should only be called when neither the read-available nor reader bit
+      // have been set.
+      assert(status == STATUS_WAIT);
+
+      status = ((uintptr_t)n) | (STATUS_READ_FLAG);
+    }
+
+    /**
+     * Returns true if successful.
+     * Return false if failed due to READ_AVAILABLE being set.
+     */
+    [[nodiscard]] bool set_next_slot_reader_contended(Slot* n)
+    {
+      Logging::cout() << "set_next_slot_reader_contended " << this << " status "
+                      << (void*)status.load() << Logging::endl;
       // Should only be called when neither the read-available nor reader bit
       // have been set.
       assert(((uintptr_t)n & ~STATUS_NEXT_SLOT_MASK) == 0);
-      assert(no_successor());
+      assert(no_successor_response());
+      assert(!is_wait_2pl());
 
-      uintptr_t new_status_val =
-        ((uintptr_t)n) | (STATUS_NEXT_SLOT_READER_FLAG);
+      uintptr_t new_status = ((uintptr_t)n) | (STATUS_READ_FLAG);
+      uintptr_t old_status = STATUS_READY;
 
-      if (!is_read_only())
+      bool success = (status.load() == old_status) &&
+        status.compare_exchange_strong(
+          old_status, new_status, std::memory_order_acq_rel);
+
+      Logging::cout() << *this << Logging::endl;
+
+      if (success)
       {
-        status.store(new_status_val, std::memory_order_seq_cst);
-        return true;
+        Logging::cout() << "set_next_slot_reader success" << Logging::endl;
+      }
+      else
+      {
+        Logging::cout() << "set_next_slot_reader failed" << Logging::endl;
+        status = STATUS_CHAIN_CLOSED;
       }
 
-      // This is effectively a fetch_or, but as there is only a single thread
-      // that can set the bits. This means we can use fetch_add instead, which
-      // is supported on more architectures.
-      uintptr_t old_status_val =
-        status.fetch_add(new_status_val, std::memory_order_seq_cst);
-      Logging::cout() << "prev slot is_reader" << is_read_only()
-                      << " curr reader " << this
-                      << "old_status_val: " << old_status_val
-                      << " new_status_val: " << new_status_val << Logging::endl;
-
-      return (
-        (old_status_val & STATUS_SLOT_READ_AVAILABLE_FLAG) !=
-        STATUS_SLOT_READ_AVAILABLE_FLAG);
+      return success;
     }
 
     /**
@@ -222,15 +275,55 @@ namespace verona::rt
     }
 
     /**
-     * Set the next behaviour
+     * Set the next behaviour to be a writer during prepare phase.
      */
-    void set_next_slot_writer(BehaviourCore* b)
+    void set_next_slot_writer_uncontended(BehaviourCore* b)
     {
+      Logging::cout() << "set_next_slot_writer_uncontended " << this
+                      << " status " << (void*)status.load() << Logging::endl;
       // Requires that neither the READONLY or read-available bits are set.
       assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
-      status.store(
-        status.load(std::memory_order_acquire) | ((uintptr_t)b),
-        std::memory_order_release);
+      assert(status == STATUS_WAIT);
+
+      status = (uintptr_t)b;
+    }
+
+    /**
+     * Set the next behaviour to be a writer.
+     *
+     * Returns true if successful.
+     * Returns false if it failed as the ReadAvailable was set.
+     */
+    [[nodiscard]] bool set_next_slot_writer_contended(BehaviourCore* b)
+    {
+      Logging::cout() << "set_next_slot_writer_contended " << this << " status "
+                      << (void*)status.load() << Logging::endl;
+      // Requires that neither the READONLY or read-available bits are set.
+      assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
+
+      // Read available is never set on a writer, so there is no contention
+      // here.
+      if (!is_read_only())
+      {
+        status = (uintptr_t)b;
+        return true;
+      }
+
+      uintptr_t old_value = STATUS_READY;
+      auto success = (status.load(std::memory_order_acquire) == old_value) &&
+        status.compare_exchange_strong(
+          old_value, (uintptr_t)b, std::memory_order_acq_rel);
+
+      if (success)
+      {
+        Logging::cout() << "set_next_slot_writer success" << Logging::endl;
+      }
+      else
+      {
+        Logging::cout() << "set_next_slot_writer failed" << Logging::endl;
+        status = STATUS_CHAIN_CLOSED;
+      }
+      return success;
     }
 
     /**
@@ -239,7 +332,7 @@ namespace verona::rt
      */
     void set_cown_null()
     {
-      _cown.store(0UL, std::memory_order_release);
+      _cown = 0;
     }
 
     void wakeup_next_writer();
@@ -248,23 +341,20 @@ namespace verona::rt
 
     inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Slot& s)
     {
-      return os
-        << " Slot: " << &s << " Cown ptr: "
-        << (s._cown.load(std::memory_order_relaxed) & COWN_POINTER_MASK)
-        << " 2PL ready bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_2PL_READY_FLAG) !=
-            0)
-        << " Is_reader bit: "
-        << ((s._cown.load(std::memory_order_relaxed) & COWN_READER_FLAG) != 0)
-        << " Is_read_available: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_SLOT_READ_AVAILABLE_FLAG) != 0)
-        << " Next pointer: "
-        << (s.status.load(std::memory_order_relaxed) & STATUS_NEXT_SLOT_MASK)
-        << " Is_next_reader: "
-        << ((s.status.load(std::memory_order_relaxed) &
-             STATUS_NEXT_SLOT_READER_FLAG) != 0)
-        << "\n";
+      os << "Slot: " << &s << Logging::endl;
+
+      os << "-  Cown ptr: " << (Cown*)(s._cown & COWN_POINTER_MASK)
+         << Logging::endl;
+
+      os << "-  Is Move bit: " << ((s._cown & COWN_MOVE_FLAG) != 0)
+         << Logging::endl;
+
+      os << "-  Is_reader bit: " << ((s._cown & COWN_READER_FLAG) != 0)
+         << Logging::endl;
+
+      os << "-  status: " << (void*)(s.status.load()) << Logging::endl;
+
+      return os;
     }
 
   public:
@@ -272,11 +362,12 @@ namespace verona::rt
     {
       // Check that the last two bits are zero
       assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
-      _cown.store((uintptr_t)__cown, std::memory_order_release);
-      status.store(0, std::memory_order_release);
-      behaviour.store(nullptr, std::memory_order_release);
-      if (ready)
-        set_ready();
+      _cown = (uintptr_t)__cown;
+      status.store(
+        ready ? STATUS_READY : STATUS_WAIT, std::memory_order_release);
+      behaviour = nullptr;
+
+      Logging::cout() << "Slot created " << *this << Logging::endl;
     }
 
     /**
@@ -284,7 +375,7 @@ namespace verona::rt
      */
     Cown* cown()
     {
-      return (Cown*)(_cown.load(std::memory_order_acquire) & COWN_POINTER_MASK);
+      return (Cown*)(_cown & COWN_POINTER_MASK);
     }
 
     /**
@@ -292,8 +383,7 @@ namespace verona::rt
      */
     bool is_read_only()
     {
-      return (_cown.load(std::memory_order_acquire) & COWN_READER_FLAG) ==
-        COWN_READER_FLAG;
+      return (_cown & COWN_READER_FLAG) == COWN_READER_FLAG;
     }
 
     /**
@@ -301,18 +391,11 @@ namespace verona::rt
      */
     void set_read_only()
     {
-      _cown.store(
-        _cown.load(std::memory_order_acquire) | COWN_READER_FLAG,
-        std::memory_order_release);
-    }
+      Logging::cout() << "set_read_only " << *this << Logging::endl;
 
-    /**
-     * Returns true if the slot is acquired with std::move
-     */
-    bool is_move()
-    {
-      assert(status.load(std::memory_order_relaxed) <= 1);
-      return status.load(std::memory_order_acquire) == 1;
+      _cown |= COWN_READER_FLAG;
+
+      Logging::cout() << "set_read_only finished: " << *this << Logging::endl;
     }
 
     /**
@@ -320,7 +403,7 @@ namespace verona::rt
      */
     void set_move()
     {
-      status.store(1, std::memory_order_release);
+      _cown |= COWN_MOVE_FLAG;
     }
 
     /**
@@ -328,7 +411,7 @@ namespace verona::rt
      */
     void reset_status()
     {
-      status.store(0, std::memory_order_release);
+      status.store(STATUS_WAIT, std::memory_order_release);
     }
 
     /**
@@ -336,11 +419,7 @@ namespace verona::rt
      */
     void reset()
     {
-      status.store(0, std::memory_order_release);
-      // Make Bit 0 = 0, Mark the cown as blocked on 2PL.
-      _cown.store(
-        ((_cown.load(std::memory_order_acquire) >> 1) << 1),
-        std::memory_order_release);
+      status.store(STATUS_WAIT, std::memory_order_release);
     }
 
     /**
@@ -477,15 +556,15 @@ namespace verona::rt
       Slot* prev_slot,
       Slot* chain_first_slot,
       Slot* chain_last_slot,
-      bool all_reads,
       size_t first_consecutive_readers_count,
       Cown* cown)
     {
       size_t ref_count = 0;
-      bool read_only_can_run = false;
       bool first_reader;
 
-      if (prev_slot && (prev_slot->set_next_slot_reader(chain_first_slot)))
+      if (
+        prev_slot &&
+        (prev_slot->set_next_slot_reader_contended(chain_first_slot)))
       {
         Logging::cout() << " Previous slot is a writer or blocked reader cown "
                         << *chain_first_slot << Logging::endl;
@@ -500,16 +579,12 @@ namespace verona::rt
                       << Logging::endl;
       yield();
 
-      if (all_reads)
-        chain_last_slot->set_read_available();
-
-      read_only_can_run = true;
       if (first_reader)
       {
         ref_count = 1;
       }
 
-      return {ref_count, read_only_can_run};
+      return {ref_count, true};
     }
 
     /**
@@ -882,7 +957,7 @@ namespace verona::rt
         bool had_no_predecessor;
         size_t ref_count;
         bool read_only_can_run;
-        bool all_reads;
+        BehaviourCore* first_writer;
         size_t first_consecutive_readers_count;
       };
       size_t i = 0;
@@ -899,16 +974,18 @@ namespace verona::rt
 
         // The number of RCs provided for the current cown by the when.
         // I.e. how many moves of cown_refs there were.
-        size_t transfer_count = first_slot->is_move();
+        size_t transfer_count = first_slot->take_move();
 
-        auto all_reads = first_slot->is_read_only();
+        BehaviourCore* first_writer =
+          first_slot->is_read_only() ? nullptr : body;
 
-        Logging::cout() << "Processing " << cown << " " << body << " "
+        Logging::cout() << "Processing " << (Cown*)cown << " " << body << " "
                         << first_slot << " Index " << i << Logging::endl;
 
         auto curr_slot = first_slot;
 
-        size_t first_consecutive_readers_count = all_reads ? 1 : 0;
+        size_t first_consecutive_readers_count =
+          first_writer == nullptr ? 1 : 0;
 
         // Detect duplicates for this cown.
         // This is required in two cases:
@@ -922,13 +999,13 @@ namespace verona::rt
 
           // Check if the caller passed an RC and add to the total.
           transfer_count +=
-            std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
+            std::get<1>(cown_to_behaviour_slot_map[i])->take_move();
           auto slot_next = std::get<1>(cown_to_behaviour_slot_map[i]);
           if (body_next == body)
           {
             // Check if the caller passed an RC and add to the total.
             transfer_count +=
-              std::get<1>(cown_to_behaviour_slot_map[i])->is_move();
+              std::get<1>(cown_to_behaviour_slot_map[i])->take_move();
 
             Logging::cout() << "Duplicate " << cown << " for " << body
                             << " Index " << i << Logging::endl;
@@ -944,19 +1021,20 @@ namespace verona::rt
           if (slot_next->is_read_only())
           {
             // Extend the chain of behaviours linking on this behaviour
-            curr_slot->set_next_slot_reader(slot_next);
-            if (all_reads)
+            curr_slot->set_next_slot_reader_uncontended(slot_next);
+
+            if (first_writer == nullptr)
               first_consecutive_readers_count++;
           }
           else
           {
-            all_reads = false;
+            if (first_writer == nullptr)
+              first_writer = body_next;
 
             // Extend the chain of behaviours linking on this behaviour
-            curr_slot->set_next_slot_writer(body_next);
+            curr_slot->set_next_slot_writer_uncontended(body_next);
           }
 
-          curr_slot->set_ready();
           if (curr_slot->is_read_only())
             curr_slot->set_behaviour(body);
 
@@ -978,7 +1056,7 @@ namespace verona::rt
           false,
           0,
           false,
-          all_reads,
+          first_writer,
           first_consecutive_readers_count};
 
         // Mark the slot as ready for scheduling
@@ -1009,7 +1087,6 @@ namespace verona::rt
               prev_slot,
               chain_first_slot,
               chain_last_slot,
-              chain_info[i].all_reads,
               chain_info[i].first_consecutive_readers_count,
               cown);
             chain_info[i].ref_count = std::get<0>(enqueue_res);
@@ -1031,7 +1108,6 @@ namespace verona::rt
             prev_slot,
             chain_first_slot,
             chain_last_slot,
-            chain_info[i].all_reads,
             chain_info[i].first_consecutive_readers_count,
             cown);
           chain_info[i].ref_count = std::get<0>(enqueue_res);
@@ -1042,7 +1118,13 @@ namespace verona::rt
         Logging::cout()
           << " Writer waiting for cown. Set next of previous slot cown "
           << *chain_last_slot << " previous " << *prev_slot << Logging::endl;
-        prev_slot->set_next_slot_writer(first_body);
+        if (!prev_slot->set_next_slot_writer_contended(first_body))
+        {
+          yield();
+          // The previous slot had read available, we need to add ourselves as
+          // the next_writer to the cown, etc.
+          chain_info[i].read_only_can_run = true;
+        }
         yield();
       }
 
@@ -1057,6 +1139,16 @@ namespace verona::rt
       {
         yield();
         auto slot = chain_info[i].last_slot;
+        if (chain_info[i].had_no_predecessor || chain_info[i].read_only_can_run)
+        {
+          if (chain_info[i].first_writer == nullptr)
+          {
+            Logging::cout() << "Setting slot " << slot << " to read available."
+                            << Logging::endl;
+            slot->set_read_available_uncontended();
+            continue;
+          }
+        }
         Logging::cout() << "Setting slot " << slot << " to ready"
                         << Logging::endl;
         slot->set_ready();
@@ -1076,6 +1168,7 @@ namespace verona::rt
         auto read_only_can_run = chain_info[i].read_only_can_run;
         auto first_consecutive_readers_count =
           chain_info[i].first_consecutive_readers_count;
+        auto first_writer = chain_info[i].first_writer;
 
         // Process reference count
         if (chain_had_no_predecessor)
@@ -1085,25 +1178,37 @@ namespace verona::rt
         acquire_with_transfer(cown, transfer_count, ref_count);
 
         // Process writes without predecessor
-        if ((chain_had_no_predecessor) && (!chain_first_slot->is_read_only()))
+        if ((chain_had_no_predecessor || read_only_can_run))
         {
-          if (cown->read_ref_count.try_write())
+          if (!chain_first_slot->is_read_only())
           {
-            Logging::cout() << " Writer at head of queue and got the cown "
-                            << *chain_first_slot << Logging::endl;
-            // Process execution count
-            ec[first_body_index] += 1;
-            yield();
-          }
-          else
-          {
-            Logging::cout() << " Writer waiting for previous readers cown "
-                            << *chain_first_slot << Logging::endl;
-            yield();
-            cown->next_writer = first_body;
+            if (cown->read_ref_count.try_write())
+            {
+              Logging::cout() << " Writer at head of queue and got the cown "
+                              << *chain_first_slot << Logging::endl;
+              // Process execution count
+              ec[first_body_index] += 1;
+              yield();
+            }
+            else
+            {
+              Logging::cout() << " Writer waiting for previous readers cown "
+                              << *chain_first_slot << Logging::endl;
+              yield();
+              cown->next_writer = first_body;
+            }
+
+            continue;
           }
 
-          continue;
+          if (first_writer != nullptr)
+          {
+            auto result = cown->read_ref_count.try_write();
+            // There should definitely be at least one reader in the chain.
+            assert(!result);
+            snmalloc::UNUSED(result);
+            cown->next_writer = first_writer;
+          }
         }
 
         // This part is only for chains that start with a read-only behaviour
@@ -1180,14 +1285,15 @@ namespace verona::rt
     // This slot represents a duplicate cown, so we can ignore releasing it.
     if (cown() == nullptr)
     {
-      Logging::cout() << "Duplicate cown slot " << *this << Logging::endl;
+      Logging::cout() << "Duplicate cown slot " << Logging::endl;
       return;
     }
 
     assert(!is_wait_2pl());
 
-    if (no_successor())
+    if (no_successor_response())
     {
+      Logging::cout() << "No successor, so releasing the cown" << Logging::endl;
       auto slot_addr = this;
       if (cown()->last_slot.compare_exchange_strong(
             slot_addr, nullptr, std::memory_order_acq_rel))
@@ -1202,95 +1308,102 @@ namespace verona::rt
         yield();
         // Release cown as this will be set by the new thread joining the
         // queue.
-        Logging::cout() << *this << " CAS Success No more work for cown "
+        Logging::cout() << "CAS Success No more work for cown "
                         << Logging::endl;
         shared::release(cown());
         return;
       }
 
       // If we failed, then the another thread is extending the chain
-      while (no_successor())
+      while (no_successor_response())
       {
-        Systematic::yield_until([this]() { return !no_successor(); });
+        Systematic::yield_until([this]() { return !no_successor_response(); });
         Aal::pause();
       }
     }
 
     if (is_read_only())
     {
-      yield();
-
-      if (!is_next_slot_read_only())
-      {
-        yield();
-
-        Logging::cout() << *this << "Reader setting next writer variable "
-                        << next_behaviour() << Logging::endl;
-        /*
-        For a chain of readers, only the last reader in the chain
-        will find the next slot as the writer and will set the next_writer
-        variable. Hence, this store is not atomic.
-        */
-        if (cown()->read_ref_count.try_write())
-        {
-          next_behaviour()->resolve();
-        }
-        else
-        {
-          cown()->next_writer = next_behaviour();
-        }
-
-        yield();
-      }
-
-      Logging::cout() << *this << " Reader releasing the cown "
-                      << Logging::endl;
-
+      Logging::cout() << "Completing read " << *this << Logging::endl;
       drop_read();
       return;
     }
 
     if (!is_next_slot_read_only())
     {
-      Logging::cout() << *this
-                      << " Writer waking up next writer cown next slot "
+      Logging::cout() << "Writer waking up next writer cown next slot "
                       << *next_behaviour() << Logging::endl;
       next_behaviour()->resolve();
       return;
     }
 
-    std::vector<Slot*> reader_queue;
+    // Final case, we are a writer and waking up at least one reader.
+
     bool first_reader = cown()->read_ref_count.add_read();
+    assert(first_reader);
+    snmalloc::UNUSED(first_reader);
 
     yield();
 
-    Logging::cout() << *this
-                    << " Writer waking up next reader and acquiring "
-                       "reference count for first reader. next slot "
-                    << *next_slot() << Logging::endl;
-    assert(first_reader);
+    Logging::cout() << "Writer waking up next reader and acquiring "
+                       "reference count for first reader."
+                    << *this << "next slot " << *next_slot() << Logging::endl;
+
     Cown::acquire(cown());
     yield();
 
+    bool writer_at_end = false;
+
     Slot* curr_slot = next_slot();
+    // First reader is already added in with add_read above, so start at 0.
+    size_t count = 0;
     while (true)
     {
-      reader_queue.push_back(curr_slot);
-      if (!curr_slot->set_read_available_is_next_reader())
+      auto status = curr_slot->set_read_available_contended();
+      if (status)
+      {
+        // We marked successfully read-available, so we can stop.
         break;
+      }
+
+      if (!curr_slot->is_next_slot_read_only())
+      {
+        Logging::cout() << "Writer waking up chain with next writer at end "
+                        << *curr_slot << Logging::endl;
+        // Found a writer, so we can stop.
+        writer_at_end = true;
+        break;
+      }
+
       yield();
       curr_slot = curr_slot->next_slot();
+      count++;
     }
 
-    // Add read count for readers. First reader is already added in rcount
-    cown()->read_ref_count.add_read(reader_queue.size() - 1);
+    // Add read count for readers.
+    cown()->read_ref_count.add_read(count);
 
     yield();
 
-    for (auto reader : reader_queue)
+    if (writer_at_end)
     {
-      reader->get_behaviour()->resolve(1, false);
+      auto result = cown()->read_ref_count.try_write();
+      // There should definitely be at least one reader in the chain.
+      assert(!result);
+      snmalloc::UNUSED(result);
+      yield();
+      cown()->next_writer = curr_slot->next_behaviour();
       yield();
     }
+
+    auto last_slot = curr_slot;
+    curr_slot = next_slot();
+    while (curr_slot != last_slot)
+    {
+      auto next = curr_slot->next_slot();
+      curr_slot->get_behaviour()->resolve(1, false);
+      curr_slot = next;
+    }
+    last_slot->get_behaviour()->resolve(1, false);
   }
 } // namespace verona::rt

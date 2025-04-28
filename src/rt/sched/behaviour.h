@@ -135,14 +135,18 @@ namespace verona::rt
       auto body = Behaviour::make<Be>(count, std::forward<Be>(f));
 
       auto* slots = body->get_slots();
+      Logging::cout() << "Created behaviour " << body << " with ";
       for (size_t i = 0; i < count; i++)
       {
+        Logging::cout() << requests[i].cown()
+                        << (requests[i].is_read() ? "-R, " : "-RW, ");
         auto* s = new (&slots[i]) Slot(requests[i].cown());
         if (requests[i].is_move())
           s->set_move();
         if (requests[i].is_read())
           s->set_read_only();
       }
+      Logging::cout() << Logging::endl;
 
       return body;
     }

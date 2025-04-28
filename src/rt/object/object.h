@@ -217,7 +217,7 @@ namespace verona::rt
 
 #ifdef USE_SYSTEMATIC_TESTING
     // Used to give objects unique identifiers for systematic testing.
-    inline static std::atomic<size_t> id_source = 0;
+    inline static std::atomic<size_t> id_source = 1;
 #endif
 
     Header& get_header() const
@@ -294,7 +294,7 @@ namespace verona::rt
 #ifdef USE_SYSTEMATIC_TESTING
     inline static void reset_ids()
     {
-      id_source = 0;
+      id_source = 1;
     }
 #endif
 

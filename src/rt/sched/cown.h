@@ -101,6 +101,8 @@ namespace verona::rt
       if (count.load(std::memory_order_acquire) == 0)
         return true;
 
+      assert(count.load() % 2 == 0);
+
       // Mark a pending write
       if (count.fetch_add(1) != 0)
         return false;

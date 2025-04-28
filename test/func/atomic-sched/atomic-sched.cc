@@ -15,6 +15,47 @@ public:
 
 using namespace verona::cpp;
 
+template<bool r, typename T>
+auto long_chain_helper(T obj)
+{
+  if constexpr (r == true)
+  {
+    return when(read(obj));
+  }
+  else
+  {
+    return when(obj);
+  }
+}
+
+template<bool r1>
+auto make_var_chain(cown_ptr<Body> log, size_t n = 1)
+{
+  return (long_chain_helper<r1>(log) << [=](auto b) {
+    for (int i = 0; i < 10; i++)
+    {
+      Logging::cout() << "Behaviour " << n << Logging::endl;
+      Systematic::yield();
+      // sleep(1);
+    }
+  });
+}
+
+template<bool r1, bool r2, bool... rs>
+auto make_var_chain(cown_ptr<Body> log, size_t n = 1)
+{
+  return (long_chain_helper<r1>(log) <<
+          [=](auto b) {
+            for (int i = 0; i < 10; i++)
+            {
+              Logging::cout() << "Behaviour " << n << Logging::endl;
+              Systematic::yield();
+              // sleep(1);
+            }
+          }) +
+    (make_var_chain<r2, rs...>(log, n + 1));
+}
+
 void test_body()
 {
   Logging::cout() << "test_body()" << Logging::endl;
@@ -63,96 +104,6 @@ void test_body_read_mixed()
     });
 }
 
-void test_body_read_same1()
-{
-  Logging::cout() << "test_body()" << Logging::endl;
-
-  auto log = make_cown<Body>();
-
-  (when(read(log)) <<
-   [=](acquired_cown<const Body> b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(log) << [=](auto) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 2\n";
-        // sleep(1);
-      }
-    });
-}
-
-void test_body_read_same2()
-{
-  Logging::cout() << "test_body()" << Logging::endl;
-
-  auto log = make_cown<Body>();
-
-  (when(log) <<
-   [=](auto b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(read(log)) << [=](auto) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 2\n";
-        // sleep(1);
-      }
-    });
-}
-
-void test_body_read_only_same()
-{
-  Logging::cout() << "test_body()" << Logging::endl;
-
-  auto log = make_cown<Body>();
-
-  (when(read(log)) <<
-   [=](acquired_cown<const Body> b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(read(log)) << [=](auto) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 2\n";
-        // sleep(1);
-      }
-    });
-}
-
-void test_body_same()
-{
-  Logging::cout() << "test_body_same()" << Logging::endl;
-
-  auto log = make_cown<Body>();
-
-  (when(log) <<
-   [=](auto b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1" << Logging::endl;
-     }
-   }) +
-    (when(log) << [=](auto) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 2" << Logging::endl;
-      }
-    });
-}
-
 void test_body_smart()
 {
   Logging::cout() << "test_body_smart()" << Logging::endl;
@@ -183,105 +134,144 @@ void test_body_concurrent_1()
 {
   auto log = make_cown<Body>();
 
-  when() << [=]() {
-    (when(log) <<
-     [=](auto b) {
-       for (int i = 0; i < 10; i++)
-       {
-         Logging::cout() << "Behaviour 1\n";
-         // sleep(1);
-       }
-     }) +
-      (when(read(log)) << [=](auto) {
-        for (int i = 0; i < 10; i++)
-        {
-          Logging::cout() << "Behaviour 2\n";
-          // sleep(1);
-        }
-      });
-  };
+  when() << [=]() { make_var_chain<false, true>(log); };
 
-  when() << [=]() {
-    (when(log) <<
-     [=](auto b) {
-       for (int i = 0; i < 10; i++)
-       {
-         Logging::cout() << "Behaviour 1\n";
-         // sleep(1);
-       }
-     }) +
-      (when(read(log)) << [=](auto) {
-        for (int i = 0; i < 10; i++)
-        {
-          Logging::cout() << "Behaviour 2\n";
-          // sleep(1);
-        }
-      });
-  };
+  when() << [=]() { make_var_chain<true, false>(log); };
 }
 
-template<bool r, typename T>
-auto long_chain_helper(T obj)
-{
-  if constexpr (r == true)
-  {
-    return when(read(obj));
-  }
-  else
-  {
-    return when(obj);
-  }
-}
-
-template<bool r1, bool r2, bool r3>
-void test_body_long_chain()
+void test_body_concurrent_2()
 {
   auto log = make_cown<Body>();
 
-  (long_chain_helper<r1>(log) <<
-   [=](auto b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (long_chain_helper<r2>(log) <<
-     [=](auto) {
-       for (int i = 0; i < 10; i++)
-       {
-         Logging::cout() << "Behaviour 2\n";
-         // sleep(1);
-       }
-     }) +
-    (long_chain_helper<r3>(log) << [=](auto b) {
-      for (int i = 0; i < 10; i++)
-      {
-        Logging::cout() << "Behaviour 1\n";
-        // sleep(1);
-      }
-    });
+  when() << [=]() { make_var_chain<false, true, false>(log); };
+
+  when() << [=]() { make_var_chain<true, false, true>(log); };
+}
+
+template<bool r1, bool... rs>
+void test_body_long_chain_var()
+{
+  auto log = make_cown<Body>();
+
+  make_var_chain<r1, rs...>(log);
+}
+
+auto repeat_shape = [](auto c1, auto c2, auto c3) {
+  return (when(c1, c2) <<
+          [=](auto b1, auto b2) {
+            for (int i = 0; i < 10; i++)
+            {
+              Logging::cout() << "Behaviour 1\n";
+              // sleep(1);
+            }
+          }) +
+    (when(c3) << [=](auto b) {
+           for (int i = 0; i < 10; i++)
+           {
+             Logging::cout() << "Behaviour 2\n";
+             // sleep(1);
+           }
+         });
+};
+
+void test_body_repeat1()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(log, log, log);
+}
+
+void test_body_repeat2()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(log, log, read(log));
+}
+
+void test_body_repeat3()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(log, read(log), log);
+}
+
+void test_body_repeat4()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(log, read(log), read(log));
+}
+
+void test_body_repeat5()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(read(log), log, log);
+}
+
+void test_body_repeat6()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(read(log), log, read(log));
+}
+
+void test_body_repeat7()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(read(log), read(log), log);
+}
+
+void test_body_repeat8()
+{
+  auto log = make_cown<Body>();
+  repeat_shape(read(log), read(log), read(log));
 }
 
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
 
-  harness.run(test_body);
-  harness.run(test_body_same);
-  harness.run(test_body_smart);
-
-  harness.run(test_body_read_mixed);
-  harness.run(test_body_read_only_same);
-  harness.run(test_body_read_same1);
-  harness.run(test_body_read_same2);
-
-  harness.run(test_body_concurrent_1);
-
-  harness.run(test_body_long_chain<true, true, true>);
-  harness.run(test_body_long_chain<false, false, false>);
-  harness.run(test_body_long_chain<false, true, false>);
-  harness.run(test_body_long_chain<true, false, true>);
+  harness.run_many(
+    {{test_body, "test_body"},
+     {test_body_smart, "test_body_smart"},
+     {test_body_read_mixed, "test_body_read_mixed"},
+     {test_body_concurrent_1, "test_body_concurrent_1"},
+     {test_body_concurrent_2, "test_body_concurrent_2"},
+     // Two long chains
+     {test_body_long_chain_var<true, false>,
+      "test_body_long_chain_var<true, false>"},
+     {test_body_long_chain_var<false, true>,
+      "test_body_long_chain_var<false, true>"},
+     {test_body_long_chain_var<false, false>,
+      "test_body_long_chain_var<false, false>"},
+     {test_body_long_chain_var<true, true>,
+      "test_body_long_chain_var<true, true>"},
+     // Three long chains
+     {test_body_long_chain_var<true, true, true>,
+      "test_body_long_chain_var<true, true, true>"},
+     {test_body_long_chain_var<true, true, false>,
+      "test_body_long_chain_var<true, true, false>"},
+     {test_body_long_chain_var<true, false, true>,
+      "test_body_long_chain_var<true, false, true>"},
+     {test_body_long_chain_var<true, false, false>,
+      "test_body_long_chain_var<true, false, false>"},
+     {test_body_long_chain_var<false, true, true>,
+      "test_body_long_chain_var<false, true, true>"},
+     {test_body_long_chain_var<false, true, false>,
+      "test_body_long_chain_var<false, true, false>"},
+     {test_body_long_chain_var<false, false, true>,
+      "test_body_long_chain_var<false, false, true>"},
+     {test_body_long_chain_var<false, false, false>,
+      "test_body_long_chain_var<true, false, true>"},
+     // Four long chains
+     {test_body_long_chain_var<false, true, false, true>,
+      "test_body_long_chain_var<false, true, false, true>"},
+     {test_body_long_chain_var<true, false, true, false>,
+      "test_body_long_chain_var<true, false, true, false>"},
+     // Repeat shapes.
+     {test_body_repeat1, "test_body_repeat1"},
+     {test_body_repeat2, "test_body_repeat2"},
+     {test_body_repeat3, "test_body_repeat3"},
+     {test_body_repeat4, "test_body_repeat4"},
+     {test_body_repeat5, "test_body_repeat5"},
+     {test_body_repeat6, "test_body_repeat6"},
+     {test_body_repeat7, "test_body_repeat7"},
+     {test_body_repeat8, "test_body_repeat8"}});
 
   return 0;
 }
