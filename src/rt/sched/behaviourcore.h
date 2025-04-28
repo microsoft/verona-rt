@@ -30,17 +30,20 @@ namespace verona::rt
      *          0 - Current slot Writer
      *          1 - Current slot Reader
      *
+     * Bit 2 - Set means this is a duplicate cown within a behaviour.
+     *
      * Remaining bits - Cown pointer
      *
-     * Assumption - Cowns are allocated at 4 byte boundary. Last 2 bits are
+     * Assumption - Cowns are allocated at 8 byte boundary. Last 3 bits are
      * zero.
      */
     uintptr_t _cown;
 
     static constexpr uintptr_t COWN_MOVE_FLAG = 0x1;
     static constexpr uintptr_t COWN_READER_FLAG = 0x2;
+    static constexpr uintptr_t COWN_DUPLICATE_FLAG = 0x4;
     static constexpr uintptr_t COWN_POINTER_MASK =
-      ~(COWN_READER_FLAG | COWN_MOVE_FLAG);
+      ~(COWN_READER_FLAG | COWN_MOVE_FLAG | COWN_DUPLICATE_FLAG);
 
     /**
      * Next slot in the MCS Queue
@@ -330,9 +333,14 @@ namespace verona::rt
      * Set the cown pointer to NULL to indicate duplicate cowns within a
      * behaviour.
      */
-    void set_cown_null()
+    void set_cown_duplicate()
     {
-      _cown = 0;
+      _cown |= COWN_DUPLICATE_FLAG;
+    }
+
+    bool is_cown_duplicate()
+    {
+      return (_cown & COWN_DUPLICATE_FLAG) == COWN_DUPLICATE_FLAG;
     }
 
     void wakeup_next_writer();
@@ -1014,7 +1022,7 @@ namespace verona::rt
             ec[std::get<0>(cown_to_behaviour_slot_map[i])]++;
 
             // We need to mark the slot as not having a cown associated to it.
-            std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_null();
+            std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_duplicate();
             continue;
           }
 
@@ -1283,7 +1291,7 @@ namespace verona::rt
     Logging::cout() << "Release slot " << *this << Logging::endl;
 
     // This slot represents a duplicate cown, so we can ignore releasing it.
-    if (cown() == nullptr)
+    if (is_cown_duplicate())
     {
       Logging::cout() << "Duplicate cown slot " << Logging::endl;
       return;
