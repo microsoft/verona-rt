@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "behaviourcore.h"
+#include "../sched/behaviourcore.h"
 
 namespace verona::rt
 {
@@ -59,7 +59,8 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      Be* body = BehaviourCore::body_from_work<Be>(work);
+      BehaviourCore* b = BehaviourCore::from_work(work);
+      Be* body = b->get_body<Be>();
 
       (*body)();
       if (behaviour_rerun())

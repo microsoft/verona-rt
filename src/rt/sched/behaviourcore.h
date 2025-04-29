@@ -493,18 +493,6 @@ namespace verona::rt
     }
 
     /**
-     * @brief Given a pointer to a work object converts it to a
-     * BehaviourCore pointer.
-     *
-     * This is inherently unsafe, and should only be used when it is known the
-     * work object was constructed using `make`.
-     */
-    static BehaviourCore* from_work(Work* w)
-    {
-      return pointer_offset<BehaviourCore>(w, sizeof(Work));
-    }
-
-    /**
      * Remove `n` from the exec_count_down.
      */
     void resolve(size_t n = 1, bool fifo = true)
@@ -647,14 +635,15 @@ namespace verona::rt
     }
 
     /**
-     * @brief Gets the pointer to the closure body from the work object.
-     * This takes a template parameter as this almost always needs casting
-     * to the correct type.
+     * @brief Given a pointer to a work object converts it to a
+     * BehaviourCore pointer.
+     *
+     * This is inherently unsafe, and should only be used when it is known the
+     * work object was constructed using `BehaviourCore::make`.
      */
-    template<typename T = void>
-    static T* body_from_work(Work* w)
+    static BehaviourCore* from_work(Work* w)
     {
-      return reinterpret_cast<T*>(from_work(w)->get_body());
+      return pointer_offset<BehaviourCore>(w, sizeof(Work));
     }
 
     /**
@@ -705,7 +694,13 @@ namespace verona::rt
      *
      *   void invoke(Work*)
      *   {
-     *     Body* body = BehaviourCore::body_from_work<Body>(work);
+     *     BehaviourCore* behaviour = BehaviourCore::from_work(work);
+     *     Body* body = behaviour->get_body<Body>();
+     *
+     *     // Load the cown pointers from the behaviour.
+     *     Cown* cown1 = behaviour->get_slots()[0].cown();
+     *     Cown* cown2 = behaviour->get_slots()[1].cown();
+     *     ...
      *
      *     // Do the actual behaviours work
      *     ...
@@ -713,9 +708,9 @@ namespace verona::rt
      *     BehaviourCore::finished(work);
      *   }
      *
-     *  Using this form allows the implementation to use a single indirect call
-     *  to this function, rather than having to do a second indirect call inside
-     *  the body of the behaviour for what to do.  (Note the underlying
+     * Using this form allows the implementation to use a single indirect call
+     * to this function, rather than having to do a second indirect call inside
+     * the body of the behaviour for what to do.  (Note the underlying
      * scheduler runs things other than behaviours, so it will alway need at
      * least one indirect call).
      *
@@ -723,12 +718,17 @@ namespace verona::rt
      * should be filled in by the caller.
      *
      *    BehaviourCore b = make(2, invoke, sizeof(Body));
-     *    b.get_slots()[0] = Slot(cown1);
-     *    b.get_slots()[1] = Slot(cown2);
+     *    auto slots = b.get_slots();
+     *    new (&slots[0])) Slot(cown1);
+     *    new (&slots[1])) Slot(cown2);
      *
      *    BehaviourCore::schedule_many(&b, 1);
      *
-     * This fills in the two slots, and then schedules the behaviour.
+     * This fills in the two slots, and then schedules the behaviour.  The
+     * function set_read_only should be called on a slot if it only requires
+     * read access to the cown, and set_move should be called if the cown is
+     * being moved into the behaviour, i.e. the context is transferring an RC
+     * to the cown.
      */
     static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
     {
