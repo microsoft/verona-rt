@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../sched/behaviour.h"
+#include "behaviour.h"
 #include "cown.h"
 #include "cown_array.h"
 

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "behaviourcore.h"
-#include "shared.h"
+#include "../sched/shared.h"
+#include "behaviour.h"
 
 namespace verona::rt
 {
@@ -55,8 +55,8 @@ namespace verona::rt
     static void invoke(Work* work)
     {
       // Dispatch to the body of the behaviour.
-      BehaviourWrapper<Be>* wrapper =
-        BehaviourCore::body_from_work<BehaviourWrapper<Be>>(work);
+      BehaviourCore* b = BehaviourCore::from_work(work);
+      BehaviourWrapper<Be>* wrapper = b->get_body<BehaviourWrapper<Be>>();
 
       Be& body = wrapper->body;
       auto notification = wrapper->notification;

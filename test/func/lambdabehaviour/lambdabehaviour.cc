@@ -28,7 +28,7 @@ void lambda_smart()
 {
   auto a = make_unique<A>(42);
   schedule_lambda(
-    [a = move(a)]() { std::cout << "Hello " << a->v << std::endl; });
+    [a = std::move(a)]() { std::cout << "Hello " << a->v << std::endl; });
 }
 
 void lambda_args()

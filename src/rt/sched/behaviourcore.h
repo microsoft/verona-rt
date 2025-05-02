@@ -30,17 +30,20 @@ namespace verona::rt
      *          0 - Current slot Writer
      *          1 - Current slot Reader
      *
+     * Bit 2 - Set means this is a duplicate cown within a behaviour.
+     *
      * Remaining bits - Cown pointer
      *
-     * Assumption - Cowns are allocated at 4 byte boundary. Last 2 bits are
+     * Assumption - Cowns are allocated at 8 byte boundary. Last 3 bits are
      * zero.
      */
     uintptr_t _cown;
 
     static constexpr uintptr_t COWN_MOVE_FLAG = 0x1;
     static constexpr uintptr_t COWN_READER_FLAG = 0x2;
+    static constexpr uintptr_t COWN_DUPLICATE_FLAG = 0x4;
     static constexpr uintptr_t COWN_POINTER_MASK =
-      ~(COWN_READER_FLAG | COWN_MOVE_FLAG);
+      ~(COWN_READER_FLAG | COWN_MOVE_FLAG | COWN_DUPLICATE_FLAG);
 
     /**
      * Next slot in the MCS Queue
@@ -330,9 +333,14 @@ namespace verona::rt
      * Set the cown pointer to NULL to indicate duplicate cowns within a
      * behaviour.
      */
-    void set_cown_null()
+    void set_cown_duplicate()
     {
-      _cown = 0;
+      _cown |= COWN_DUPLICATE_FLAG;
+    }
+
+    bool is_cown_duplicate()
+    {
+      return (_cown & COWN_DUPLICATE_FLAG) == COWN_DUPLICATE_FLAG;
     }
 
     void wakeup_next_writer();
@@ -485,18 +493,6 @@ namespace verona::rt
     }
 
     /**
-     * @brief Given a pointer to a work object converts it to a
-     * BehaviourCore pointer.
-     *
-     * This is inherently unsafe, and should only be used when it is known the
-     * work object was constructed using `make`.
-     */
-    static BehaviourCore* from_work(Work* w)
-    {
-      return pointer_offset<BehaviourCore>(w, sizeof(Work));
-    }
-
-    /**
      * Remove `n` from the exec_count_down.
      */
     void resolve(size_t n = 1, bool fifo = true)
@@ -639,14 +635,15 @@ namespace verona::rt
     }
 
     /**
-     * @brief Gets the pointer to the closure body from the work object.
-     * This takes a template parameter as this almost always needs casting
-     * to the correct type.
+     * @brief Given a pointer to a work object converts it to a
+     * BehaviourCore pointer.
+     *
+     * This is inherently unsafe, and should only be used when it is known the
+     * work object was constructed using `BehaviourCore::make`.
      */
-    template<typename T = void>
-    static T* body_from_work(Work* w)
+    static BehaviourCore* from_work(Work* w)
     {
-      return reinterpret_cast<T*>(from_work(w)->get_body());
+      return pointer_offset<BehaviourCore>(w, sizeof(Work));
     }
 
     /**
@@ -697,7 +694,13 @@ namespace verona::rt
      *
      *   void invoke(Work*)
      *   {
-     *     Body* body = BehaviourCore::body_from_work<Body>(work);
+     *     BehaviourCore* behaviour = BehaviourCore::from_work(work);
+     *     Body* body = behaviour->get_body<Body>();
+     *
+     *     // Load the cown pointers from the behaviour.
+     *     Cown* cown1 = behaviour->get_slots()[0].cown();
+     *     Cown* cown2 = behaviour->get_slots()[1].cown();
+     *     ...
      *
      *     // Do the actual behaviours work
      *     ...
@@ -705,9 +708,9 @@ namespace verona::rt
      *     BehaviourCore::finished(work);
      *   }
      *
-     *  Using this form allows the implementation to use a single indirect call
-     *  to this function, rather than having to do a second indirect call inside
-     *  the body of the behaviour for what to do.  (Note the underlying
+     * Using this form allows the implementation to use a single indirect call
+     * to this function, rather than having to do a second indirect call inside
+     * the body of the behaviour for what to do.  (Note the underlying
      * scheduler runs things other than behaviours, so it will alway need at
      * least one indirect call).
      *
@@ -715,12 +718,17 @@ namespace verona::rt
      * should be filled in by the caller.
      *
      *    BehaviourCore b = make(2, invoke, sizeof(Body));
-     *    b.get_slots()[0] = Slot(cown1);
-     *    b.get_slots()[1] = Slot(cown2);
+     *    auto slots = b.get_slots();
+     *    new (&slots[0])) Slot(cown1);
+     *    new (&slots[1])) Slot(cown2);
      *
      *    BehaviourCore::schedule_many(&b, 1);
      *
-     * This fills in the two slots, and then schedules the behaviour.
+     * This fills in the two slots, and then schedules the behaviour.  The
+     * function set_read_only should be called on a slot if it only requires
+     * read access to the cown, and set_move should be called if the cown is
+     * being moved into the behaviour, i.e. the context is transferring an RC
+     * to the cown.
      */
     static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
     {
@@ -1014,7 +1022,7 @@ namespace verona::rt
             ec[std::get<0>(cown_to_behaviour_slot_map[i])]++;
 
             // We need to mark the slot as not having a cown associated to it.
-            std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_null();
+            std::get<1>(cown_to_behaviour_slot_map[i])->set_cown_duplicate();
             continue;
           }
 
@@ -1283,7 +1291,7 @@ namespace verona::rt
     Logging::cout() << "Release slot " << *this << Logging::endl;
 
     // This slot represents a duplicate cown, so we can ignore releasing it.
-    if (cown() == nullptr)
+    if (is_cown_duplicate())
     {
       Logging::cout() << "Duplicate cown slot " << Logging::endl;
       return;
