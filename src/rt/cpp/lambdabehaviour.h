@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "notification.h"
 #include "behaviour.h"
+#include "notification.h"
 #include "vobject.h"
 
 namespace verona::rt
