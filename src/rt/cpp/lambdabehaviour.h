@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../sched/notification.h"
+#include "notification.h"
 #include "behaviour.h"
 #include "vobject.h"
 
