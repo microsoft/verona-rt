@@ -21,29 +21,33 @@ void test_read_only()
     accounts.push_back(make_cown<Account>(0));
 
   cown_ptr<Account> common_account = make_cown<Account>(100);
-  when(common_account) <<
-    [](acquired_cown<Account> account) { account->balance -= 10; };
+  when(common_account, [](acquired_cown<Account> account) {
+    account->balance -= 10;
+  });
 
   for (size_t i = 0; i < num_accounts; i++)
   {
-    when(accounts[i], read(common_account))
-      << [](
-           acquired_cown<Account> write_account,
-           acquired_cown<const Account> ro_account) {
-           write_account->balance = ro_account->balance;
-         };
+    when(
+      accounts[i],
+      read(common_account),
+      [](
+        acquired_cown<Account> write_account,
+        acquired_cown<const Account> ro_account) {
+        write_account->balance = ro_account->balance;
+      });
 
-    when(read(accounts[i])) << [](acquired_cown<const Account> account) {
+    when(read(accounts[i]), [](acquired_cown<const Account> account) {
       check(account->balance == 90);
-    };
+    });
   }
 
-  when(common_account) <<
-    [](acquired_cown<Account> account) { account->balance += 10; };
+  when(common_account, [](acquired_cown<Account> account) {
+    account->balance += 10;
+  });
 
-  when(read(common_account)) << [](acquired_cown<const Account> account) {
+  when(read(common_account), [](acquired_cown<const Account> account) {
     check(account->balance == 100);
-  };
+  });
 }
 
 void test_read_only_fast_send()
@@ -52,24 +56,30 @@ void test_read_only_fast_send()
   cown_ptr<Account> account_one = make_cown<Account>(100);
   cown_ptr<Account> account_two = make_cown<Account>(100);
 
-  when(read(account_one), read(account_two))
-    << [](
-         acquired_cown<const Account> account_one,
-         acquired_cown<const Account> account_two) {
-         check(account_one->balance == account_two->balance);
-       };
+  when(
+    read(account_one),
+    read(account_two),
+    [](
+      acquired_cown<const Account> account_one,
+      acquired_cown<const Account> account_two) {
+      check(account_one->balance == account_two->balance);
+    });
 
-  when(read(account_one), read(account_two))
-    << [](
-         acquired_cown<const Account> account_one,
-         acquired_cown<const Account> account_two) {
-         check(account_one->balance == account_two->balance);
-       };
+  when(
+    read(account_one),
+    read(account_two),
+    [](
+      acquired_cown<const Account> account_one,
+      acquired_cown<const Account> account_two) {
+      check(account_one->balance == account_two->balance);
+    });
 
-  when(account_one, account_two) <<
+  when(
+    account_one,
+    account_two,
     [](acquired_cown<Account> account_one, acquired_cown<Account> account_two) {
       check(account_one->balance == account_two->balance);
-    };
+    });
 }
 
 int main(int argc, char** argv)

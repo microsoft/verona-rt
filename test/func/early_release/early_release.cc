@@ -51,12 +51,14 @@
  *     3      Early release: finish
  * ---------------------------
  */
+#include <cpp/when.h>
 #include <debug/harness.h>
+using namespace verona::cpp;
 
-struct A : public VCown<A>
+struct A
 {};
 
-struct B : public VCown<B>
+struct B
 {};
 
 std::atomic<bool> flag = false;
@@ -85,15 +87,11 @@ void interleave()
 
 void early_release_test(bool first, bool second)
 {
-  Cown* cowns[2];
   Logging::cout() << "Early release: begin" << Logging::endl;
-  auto* a = new A;
-  auto* b = new B;
+  auto a = make_cown<A>();
+  auto b = make_cown<B>();
 
-  cowns[0] = a;
-  cowns[1] = b;
-
-  schedule_lambda(2, cowns, [=]() {
+  when(a, b, [=](auto, auto) {
     start();
 
     // TODO readd early release
@@ -108,17 +106,13 @@ void early_release_test(bool first, bool second)
 
   if (first)
   {
-    schedule_lambda<YesTransfer>(a, []() { interleave(); });
+    when(std::move(a), [](auto) { interleave(); });
   }
-  else
-    Cown::release(a);
 
   if (second)
   {
-    schedule_lambda<YesTransfer>(b, []() { interleave(); });
+    when(std::move(b), [](auto) { interleave(); });
   }
-  else
-    Cown::release(b);
 }
 
 int main(int argc, char** argv)

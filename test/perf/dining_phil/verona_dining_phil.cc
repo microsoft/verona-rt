@@ -47,15 +47,19 @@ struct Philosopher
   {
     if (phil->hunger > 0)
     {
-      when(phil->left, phil->right)
-        << [phil = std::move(phil)](
-             acquired_cown<Fork> f1, acquired_cown<Fork> f2) mutable {
-             f1->use();
-             f2->use();
-             busy_loop(WORK_USEC);
-             phil->hunger--;
-             eat(std::move(phil));
-           };
+      auto l = phil->left;
+      auto r = phil->right;
+      when(
+        l,
+        r,
+        [phil = std::move(phil)](
+          acquired_cown<Fork> f1, acquired_cown<Fork> f2) mutable {
+          f1->use();
+          f2->use();
+          busy_loop(WORK_USEC);
+          phil->hunger--;
+          eat(std::move(phil));
+        });
     }
   }
 };
@@ -94,7 +98,7 @@ void test_body()
 
 void test1()
 {
-  when() << []() { test_body(); };
+  when([]() { test_body(); });
 }
 
 int verona_main(SystematicTestHarness& harness)

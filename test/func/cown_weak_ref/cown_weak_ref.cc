@@ -1,5 +1,6 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 
 /**
@@ -17,126 +18,82 @@
  * messages to be received.
  **/
 
-struct MyCown : VCown<MyCown>
-{
-  MyCown* parent; // Weak
+using namespace verona::cpp;
 
-  MyCown* left; // Strong
-  MyCown* right; // Strong
+struct MyCown
+{
+  cown_ptr<MyCown>::weak parent;
+
+  cown_ptr<MyCown> left;
+  cown_ptr<MyCown> right;
 
   size_t up_count = 0;
 
-  void trace(ObjectStack& os) const
+  MyCown(cown_ptr<MyCown>::weak&& parent) : parent(parent)
   {
-    if (left != nullptr)
-      os.push(left);
-    if (right != nullptr)
-      os.push(right);
-
-    // Do not push parent, as this is a weak reference.
+    Logging::cout() << "Creating " << this << std::endl;
   }
+
+  MyCown(const MyCown&) = default;
+  MyCown(MyCown&&) = default;
 
   ~MyCown()
   {
-    if (parent != nullptr)
-      parent->weak_release();
-
     Logging::cout() << "Destroying " << this << " up_count " << up_count
                     << std::endl;
   }
 };
 
-const char* spaces[] = {
-  "               ",
-  "              ",
-  "             ",
-  "            ",
-  "           ",
-  "          ",
-  "         ",
-  "        ",
-  "       ",
-  "      ",
-  "     ",
-  "    ",
-  "   ",
-  "  ",
-  " ",
-  "",
-};
-
-MyCown* make_tree(int n, MyCown* p)
+cown_ptr<MyCown> make_tree(int n, cown_ptr<MyCown>::weak&& p)
 {
   if (n == 0)
-    return nullptr;
+    return {};
 
-  auto c = new MyCown;
+  auto c = make_cown<MyCown>(std::move(p));
 
-  Logging::cout() << "Cown " << spaces[n] << c << std::endl;
+  when(c, [n](acquired_cown<MyCown> c) {
+    c->left = make_tree(n - 1, c.cown());
+    c->right = make_tree(n - 1, c.cown());
+    Logging::cout() << "Creating " << c << " with n = " << n << std::endl;
+  });
 
-  c->left = make_tree(n - 1, c);
-  c->right = make_tree(n - 1, c);
-  if (p != nullptr)
-    p->weak_acquire();
-  c->parent = p;
   return c;
 }
 
-struct Up
+void up(acquired_cown<MyCown>& c)
 {
-  MyCown* m;
-  Up(MyCown* m) : m(m) {}
+  auto parent = c->parent.promote();
+  if (parent == nullptr)
+    return;
 
-  static void weak_send(MyCown* m)
-  {
-    if (m->parent != nullptr)
-    {
-      if (m->parent->acquire_strong_from_weak())
-      {
-        schedule_lambda<YesTransfer>(m->parent, Up(m->parent));
-      }
-    }
-  }
+  Logging::cout() << "Parent is alive" << std::endl;
+  when(std::move(parent), [](acquired_cown<MyCown> c) {
+    c->up_count++;
+    Logging::cout() << "Up on " << c << std::endl;
+    up(c);
+  });
+}
 
-  void operator()()
-  {
-    Logging::cout() << "Up on " << m << std::endl;
-
-    m->up_count++;
-
-    Up::weak_send(m);
-  }
-};
-
-struct Down
+void down(cown_ptr<MyCown>& c)
 {
-  MyCown* m;
-  Down(MyCown* m) : m(m) {}
+  if (c == nullptr)
+    return;
 
-  void operator()()
-  {
-    Logging::cout() << "Down on " << m << std::endl;
+  when(c, [](acquired_cown<MyCown> c) {
+    Logging::cout() << "Down on " << c << std::endl;
 
-    Up::weak_send(m);
-
-    if (m->left != nullptr)
-    {
-      schedule_lambda(m->left, Down(m->left));
-    }
-
-    if (m->right != nullptr)
-    {
-      schedule_lambda(m->right, Down(m->right));
-    }
-  }
-};
+    up(c);
+    down(c->left);
+    down(c->right);
+  });
+}
 
 void run_test()
 {
-  auto t = make_tree(9, nullptr);
+  auto t = make_tree(9, {});
 
-  schedule_lambda(t, Down(t));
-  schedule_lambda<YesTransfer>(t, Down(t));
+  down(t);
+  down(t);
 }
 
 int main(int argc, char** argv)

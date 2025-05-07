@@ -57,7 +57,7 @@ struct Log
 
 void log(cown_ptr<std::unique_ptr<Log>> log, std::string)
 {
-  when(log) << [=](auto) { /*std::cout << msg << std::endl;*/ };
+  when(log, [=](auto) { /*std::cout << msg << std::endl;*/ });
 }
 
 void bank_job(
@@ -76,32 +76,35 @@ void bank_job(
   // Schedule a transfer
   int64_t amount = 100;
   Accounts& accounts = *worker->accounts;
-  when(accounts[from_idx], accounts[to_idx])
-    << [=](acquired_cown<Account> from, acquired_cown<Account> to) {
-         // Note that we could do
-         //  (auto from, auto to) {
-         // We give explicit types for clarity.
-         busy_loop(WORK_USEC);
+  when(
+    accounts[from_idx],
+    accounts[to_idx],
+    [=](acquired_cown<Account> from, acquired_cown<Account> to) {
+      // Note that we could do
+      //  (auto from, auto to) {
+      // We give explicit types for clarity.
+      busy_loop(WORK_USEC);
 
-         if ((from->balance + from->overdraft) < amount)
-         {
-           log(l, "Insufficient funds");
-           return;
-         }
-         else
-         {
-           from->balance -= amount;
-           to->balance += amount;
-           log(l, "Success");
-         }
-       };
+      if ((from->balance + from->overdraft) < amount)
+      {
+        log(l, "Insufficient funds");
+        return;
+      }
+      else
+      {
+        from->balance -= amount;
+        to->balance += amount;
+        log(l, "Success");
+      }
+    });
 
   if (repeats > 0)
   {
     // Reschedule bank_job
     // bank_job(worker, l, repeats - 1);
-    when(worker.cown()) <<
-      [=](acquired_cown<Worker> worker) { bank_job(worker, l, repeats - 1); };
+    when(worker.cown(), [=](acquired_cown<Worker> worker) {
+      bank_job(worker, l, repeats - 1);
+    });
   }
 }
 
@@ -125,9 +128,9 @@ void test_body()
   for (size_t j = 0; j < NUM_WORKERS; j++)
   {
     Logging::cout() << "Worker " << j << Logging::endl;
-    when(make_cown<Worker>(accounts, j + 1)) << [=](acquired_cown<Worker> w) {
+    when(make_cown<Worker>(accounts, j + 1), [=](acquired_cown<Worker> w) {
       bank_job(w, log, TRANSACTIONS / NUM_WORKERS);
-    };
+    });
   }
 }
 

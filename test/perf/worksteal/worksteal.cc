@@ -53,7 +53,7 @@ void test()
 {
   auto sync = verona::cpp::make_cown<Sync>();
 
-  when(sync) << [](auto sync) {
+  when(sync, [](auto sync) {
     sync->start = high_resolution_clock::now();
 
     sync->remaining_count = 1'000'000;
@@ -61,13 +61,13 @@ void test()
     for (size_t i = 0; i < sync->remaining_count; i++)
     {
       // Schedule some work to be done
-      when() << []() {};
-      when() << []() {};
-      when() << []() {};
-      when() << []() {};
+      when([]() {});
+      when([]() {});
+      when([]() {});
+      when([]() {});
       // Every 5th work item will be counted back in for timing purposes
-      when() << [sync = sync.cown()]() {
-        when(sync) << [](auto sync) {
+      when([sync = sync.cown()]() {
+        when(sync, [](auto sync) {
           // Check if this is the last work item
           if (--sync->remaining_count == 0)
           {
@@ -77,14 +77,14 @@ void test()
               duration_cast<milliseconds>(sync->end - sync->start).count());
             return;
           }
-        };
-      };
+        });
+      });
     }
     printf(
       "Scheduled all work took:\n\t%zu ms\n",
       duration_cast<milliseconds>(high_resolution_clock::now() - sync->start)
         .count());
-  };
+  });
 }
 
 int main(int argc, char** argv)

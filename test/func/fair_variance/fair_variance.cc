@@ -25,37 +25,37 @@ double elapsed_secs[n_cowns];
 
 void loop(cown_ptr<A> c)
 {
-  when(c) << [c = std::move(c)](auto a) {
-    auto& count = a->count;
-    auto id = a->id;
+  when(c, [](auto c) {
+    auto& count = c->count;
+    auto id = c->id;
 
     if (count == start_count)
     {
-      a->begin = clock();
+      c->begin = clock();
     }
 
     if (count == 0)
     {
       clock_t end = clock();
-      double elapsed_second = double(end - a->begin) / CLOCKS_PER_SEC;
+      double elapsed_second = double(end - c->begin) / CLOCKS_PER_SEC;
       elapsed_secs[id] = elapsed_second;
       // printf("%d: %f\n", a->id, elapsed_second);
       return;
     }
 
     count--;
-    loop(std::move(c));
-  };
+    loop(c.cown());
+  });
 }
 
 void spawn()
 {
-  when() << []() {
+  when([]() {
     for (int i = 0; i < n_cowns; ++i)
     {
       loop(make_cown<A>(i));
     }
-  };
+  });
 }
 
 void assert_variance()

@@ -1,20 +1,22 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <random>
 #include <test/opt.h>
 #include <verona.h>
 
 using namespace snmalloc;
+using namespace verona::cpp;
 using namespace verona::rt;
 
-struct A : public VCown<A>
+struct A
 {};
 
 void test_runtime_pause(SystematicTestHarness* harness, size_t pauses)
 {
-  schedule_lambda([harness, pauses]() {
-    auto a = new A;
+  when([harness, pauses]() {
+    auto a = make_cown<A>();
     Scheduler::add_external_event_source();
     auto pauses_ = pauses;
     harness->external_thread([pauses_, a]() mutable {
@@ -27,13 +29,16 @@ void test_runtime_pause(SystematicTestHarness* harness, size_t pauses)
         auto pause_time = std::chrono::milliseconds(dist(rng));
         std::this_thread::sleep_for(pause_time);
         Logging::cout() << "Scheduling Message" << Logging::endl;
-        schedule_lambda(a, [i]() {
+        when(a, [i](auto) {
           Logging::cout() << "running message " << i << std::endl;
         });
       }
-      schedule_lambda(a, [a]() { Cown::release(a); });
 
-      schedule_lambda([]() {
+      // We need to clear out reference count, before we
+      // `remove_external_event_source`s.
+      a.clear();
+
+      when([]() {
         Logging::cout() << "Remove external event source" << std::endl;
         Scheduler::remove_external_event_source();
       });

@@ -17,7 +17,7 @@ void schedule_run(size_t decay)
     return;
 
   auto runner = make_cown<Runner>();
-  when(runner) << [decay](auto) { schedule_run(decay - 1); };
+  when(runner, [decay](auto) { schedule_run(decay - 1); });
 }
 
 void basic_test(size_t cores)

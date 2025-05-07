@@ -20,8 +20,8 @@ struct A
 
 void loop(cown_ptr<A> c)
 {
-  when(c) << [c = std::move(c)](auto a) {
-    auto& count = a->count;
+  when(std::move(c), [](auto c) {
+    auto& count = c->count;
 
     if (count == 0)
     {
@@ -29,18 +29,18 @@ void loop(cown_ptr<A> c)
     }
 
     count--;
-    loop(std::move(c));
-  };
+    loop(c.cown());
+  });
 }
 
 void basic_test()
 {
-  when() << []() {
+  when([]() {
     for (int i = 0; i < 6; ++i)
     {
       loop(make_cown<A>(i));
     }
-  };
+  });
 }
 
 int main(int argc, char** argv)

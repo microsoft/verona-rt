@@ -47,26 +47,26 @@ using namespace verona::cpp;
 
 void create_writer(cown_ptr<Body> c, size_t i)
 {
-  when() << [i, c]() {
-    when(c) << [=](auto) {
+  when([i, c]() {
+    when(c, [=](auto) {
       add_writer();
       Logging::cout() << "write " << i << Logging::endl;
       Systematic::yield();
       remove_writer();
-    };
-  };
+    });
+  });
 }
 
 void create_reader(cown_ptr<Body> c, size_t i)
 {
-  when() << [i, c]() {
-    when(read(c)) << [=](auto) {
+  when([i, c]() {
+    when(read(c), [=](auto) {
       add_reader();
       Logging::cout() << "read " << i << Logging::endl;
       Systematic::yield();
       remove_reader();
-    };
-  };
+    });
+  });
 }
 
 void test_body(size_t n)

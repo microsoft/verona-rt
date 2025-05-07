@@ -21,8 +21,8 @@ void test_body_move()
 
   auto log = make_cown<Body>();
 
-  when(std::move(log)) <<
-    [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(
+    std::move(log), [=](auto) { Logging::cout() << "log" << Logging::endl; });
 }
 
 void test_body_move_busy()
@@ -31,9 +31,9 @@ void test_body_move_busy()
 
   auto log = make_cown<Body>();
 
-  when(log) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  when(std::move(log)) <<
-    [=](auto) { Logging::cout() << "log" << Logging::endl; };
+  when(log, [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  when(
+    std::move(log), [=](auto) { Logging::cout() << "log" << Logging::endl; });
 }
 
 void test_sched_many_no_move()
@@ -43,8 +43,8 @@ void test_sched_many_no_move()
   auto log1 = make_cown<Body>();
   auto log2 = cown_ptr<Body>(log1);
 
-  (when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(log2) << [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(log2, [=](auto) { Logging::cout() << "log" << Logging::endl; }));
 }
 
 void test_sched_many_no_move_busy()
@@ -54,9 +54,9 @@ void test_sched_many_no_move_busy()
   auto log1 = make_cown<Body>();
   auto log2 = cown_ptr<Body>(log1);
 
-  when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  (when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(log2) << [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(log2, [=](auto) { Logging::cout() << "log" << Logging::endl; }));
 }
 
 void test_sched_many_move()
@@ -66,10 +66,12 @@ void test_sched_many_move()
   auto log1 = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  (when(std::move(log1)) <<
-   [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(std::move(log2)) <<
-     [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(
+    std::move(log1),
+    [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(std::move(log2), [=](auto) {
+      Logging::cout() << "log" << Logging::endl;
+    }));
 }
 
 void test_sched_many_move_busy()
@@ -79,11 +81,13 @@ void test_sched_many_move_busy()
   auto log1 = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  (when(std::move(log1)) <<
-   [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(std::move(log2)) <<
-     [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(
+    std::move(log1),
+    [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(std::move(log2), [=](auto) {
+      Logging::cout() << "log" << Logging::endl;
+    }));
 }
 
 void test_sched_many_mixed()
@@ -93,9 +97,10 @@ void test_sched_many_mixed()
   auto log1 = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  (when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(std::move(log2)) <<
-     [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(std::move(log2), [=](auto) {
+      Logging::cout() << "log" << Logging::endl;
+    }));
 }
 
 void test_sched_many_mixed_busy()
@@ -105,10 +110,11 @@ void test_sched_many_mixed_busy()
   auto log1 = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; };
-  (when(log1) << [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(std::move(log2)) <<
-     [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(log1, [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(std::move(log2), [=](auto) {
+      Logging::cout() << "log" << Logging::endl;
+    }));
 }
 
 void test_sched_many_move_same()
@@ -118,10 +124,12 @@ void test_sched_many_move_same()
   auto log1 = make_cown<Body>();
   auto log2 = cown_ptr<Body>(log1);
 
-  (when(std::move(log1)) <<
-   [=](auto) { Logging::cout() << "log" << Logging::endl; }) +
-    (when(std::move(log2)) <<
-     [=](auto) { Logging::cout() << "log" << Logging::endl; });
+  (when(
+    std::move(log1),
+    [=](auto) { Logging::cout() << "log" << Logging::endl; })) +
+    (when(std::move(log2), [=](auto) {
+      Logging::cout() << "log" << Logging::endl;
+    }));
 }
 
 int main(int argc, char** argv)

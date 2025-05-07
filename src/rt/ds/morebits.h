@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstdint>
+#include <limits>
 #include <snmalloc/ds_core/ds_core.h>
 
 namespace verona::rt
