@@ -47,9 +47,11 @@ struct Philosopher
   {
     if (phil->hunger > 0)
     {
+      auto l = phil->left;
+      auto r = phil->right;
       when(
-        phil->left,
-        phil->right,
+        l,
+        r,
         [phil = std::move(phil)](
           acquired_cown<Fork> f1, acquired_cown<Fork> f2) mutable {
           f1->use();
