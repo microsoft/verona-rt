@@ -71,8 +71,10 @@ namespace verona::cpp
     }
 
   public:
-    Batch(BehaviourCore* b) : when_batch({b}) {
-      Logging::cout() << "Batch created " << this << " contents " << b << Logging::endl;
+    Batch(BehaviourCore* b) : when_batch({b})
+    {
+      Logging::cout() << "Batch created " << this << " contents " << b
+                      << Logging::endl;
       if ((uintptr_t)b < 4096)
         abort();
     }
@@ -392,8 +394,7 @@ namespace verona::cpp
     When::initialise_slots(
       behaviour_core->get_slots(), lengths, std::forward<Args>(args)...);
 
-    new (body)
-      Be(std::forward<Be>(When::last(std::forward<Args>(args)...)));
+    new (body) Be(std::forward<Be>(When::last(std::forward<Args>(args)...)));
 
     return {behaviour_core};
   }

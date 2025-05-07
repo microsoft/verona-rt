@@ -1,9 +1,8 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
+#include <cpp/when.h>
 #include <debug/harness.h>
 #include <ds/scramble.h>
-
-#include <cpp/when.h>
 
 using namespace verona::cpp;
 struct Fork
@@ -20,7 +19,6 @@ struct Fork
   }
 };
 
-
 void eat(size_t id, std::vector<cown_ptr<Fork>> forks, size_t to_eat)
 {
   if (to_eat == 0)
@@ -34,19 +32,19 @@ void eat(size_t id, std::vector<cown_ptr<Fork>> forks, size_t to_eat)
   // UB.
   cown_array<Fork, false> forkspan(forks.data(), forks.size());
   when(forkspan, [id, forks = std::move(forks), to_eat](auto f) {
-      Logging::cout() << "Philosopher " << id << " eating "
-                      << to_eat << std::endl;
-      for (size_t i = 0; i < f.length(); i++)
-      {
-        Logging::cout() << "Fork " << f[i].cown() << " " << f[i]->id << std::endl;
-        f[i]->uses++;
-      }
+    Logging::cout() << "Philosopher " << id << " eating " << to_eat
+                    << std::endl;
+    for (size_t i = 0; i < f.length(); i++)
+    {
+      Logging::cout() << "Fork " << f[i].cown() << " " << f[i]->id << std::endl;
+      f[i]->uses++;
+    }
 
-      eat(id, forks, to_eat - 1);
+    eat(id, forks, to_eat - 1);
 
-      // KeepAlive
-      when(forks[0], [](auto) {});
-    });
+    // KeepAlive
+    when(forks[0], [](auto) {});
+  });
 }
 
 void test_dining(
@@ -72,11 +70,9 @@ void test_dining(
     {
       size_t fork_idx = rand.next64() % philosophers;
       my_forks.push_back(forks[fork_idx]);
-      when (forks[fork_idx], [=](auto f) {
-        f->uses_expected += hunger;
-      });
+      when(forks[fork_idx], [=](auto f) { f->uses_expected += hunger; });
     }
-    
+
     eat(i, std::move(my_forks), hunger);
   }
 }

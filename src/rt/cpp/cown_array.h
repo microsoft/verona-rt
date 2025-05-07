@@ -95,11 +95,12 @@ namespace verona::cpp
   class cown_array<const T, owning> : public cown_array<T, owning>
   {
   public:
-    cown_array(const cown_array<T, owning>& other) : cown_array<T, owning>(other){};
+    cown_array(const cown_array<T, owning>& other)
+    : cown_array<T, owning>(other){};
   };
 
   template<typename T, bool owning>
-  cown_array<const T, owning> read(cown_array<T,owning> cown)
+  cown_array<const T, owning> read(cown_array<T, owning> cown)
   {
     Logging::cout() << "Read returning const array ptr" << Logging::endl;
     return cown;
