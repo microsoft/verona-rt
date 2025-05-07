@@ -48,14 +48,14 @@ namespace backpressure_unblock
 
   void overload(cown_ptr<Body> sender, cown_ptr<Body> receiver)
   {
-    when() << [sender, receiver]() {
+    when([sender, receiver]() {
       size_t i = 100;
       while (i > 0)
       {
         i--;
-        when(sender) << [receiver](auto) { when(receiver) << [](auto) {}; };
+        when(sender, [receiver](auto) { when(receiver, [](auto) {}); });
       }
-    };
+    });
   }
 
   void test()
@@ -67,6 +67,6 @@ namespace backpressure_unblock
 
     overload(sender1, receiver1);
     overload(sender2, receiver2);
-    when(sender1, receiver2) << [](auto, auto) {};
+    when(sender1, receiver2, [](auto, auto) {});
   }
 }

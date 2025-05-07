@@ -129,54 +129,58 @@ void test_hash_table()
       write_buckets.size() > 0 ? write_buckets.data() : nullptr,
       write_buckets.size()};
 
-    when(read(readers), writers) << [reader_idx, writer_idx](
-                                      acquired_cown_span<const Bucket> readers,
-                                      acquired_cown_span<Bucket> writers) {
-      Logging::cout() << "Num readers: " << readers.length
-                      << " Num writers: " << writers.length << Logging::endl;
+    when(
+      read(readers),
+      writers,
+      [reader_idx, writer_idx](
+        acquired_cown_span<const Bucket> readers,
+        acquired_cown_span<Bucket> writers) {
+        Logging::cout() << "Num readers: " << readers.length()
+                        << " Num writers: " << writers.length()
+                        << Logging::endl;
 #ifdef DEBUG_RW
-      for (auto reader : reader_idx)
-      {
-        auto val = (*concurrency)[reader].fetch_add(2);
-        Logging::cout() << "Reader_idx " << reader << " rcount " << val
-                        << Logging::endl;
-        check(val % 2 == 0);
-      }
-      for (auto writer : writer_idx)
-      {
-        auto val = (*concurrency)[writer].fetch_add(1);
-        Logging::cout() << "Writer_idx " << writer << " rcount " << val
-                        << Logging::endl;
-        check(val == 0);
-      }
+        for (auto reader : reader_idx)
+        {
+          auto val = (*concurrency)[reader].fetch_add(2);
+          Logging::cout() << "Reader_idx " << reader << " rcount " << val
+                          << Logging::endl;
+          check(val % 2 == 0);
+        }
+        for (auto writer : writer_idx)
+        {
+          auto val = (*concurrency)[writer].fetch_add(1);
+          Logging::cout() << "Writer_idx " << writer << " rcount " << val
+                          << Logging::endl;
+          check(val == 0);
+        }
 #endif
 
-      found_read_ops += readers.length;
-      found_write_ops += writers.length;
-      mixed_ops++;
+        found_read_ops += readers.length();
+        found_write_ops += writers.length();
+        mixed_ops++;
 
-      for (volatile int i = 0; i < read_loop_count * readers.length; i++)
-        Aal::pause();
-      for (volatile int i = 0; i < write_loop_count * writers.length; i++)
-        Aal::pause();
+        for (volatile int i = 0; i < read_loop_count * readers.length(); i++)
+          Aal::pause();
+        for (volatile int i = 0; i < write_loop_count * writers.length(); i++)
+          Aal::pause();
 
 #ifdef DEBUG_RW
-      for (auto reader : reader_idx)
-      {
-        auto val = (*concurrency)[reader].fetch_add(-2);
-        Logging::cout() << "Reader_idx " << reader << " rcount " << val
-                        << Logging::endl;
-        check((val >= 2) && (val % 2 == 0));
-      }
-      for (auto writer : writer_idx)
-      {
-        auto val = (*concurrency)[writer].fetch_add(-1);
-        Logging::cout() << "Writer_idx " << writer << " rcount " << val
-                        << Logging::endl;
-        check(val == 1);
-      }
+        for (auto reader : reader_idx)
+        {
+          auto val = (*concurrency)[reader].fetch_add(-2);
+          Logging::cout() << "Reader_idx " << reader << " rcount " << val
+                          << Logging::endl;
+          check((val >= 2) && (val % 2 == 0));
+        }
+        for (auto writer : writer_idx)
+        {
+          auto val = (*concurrency)[writer].fetch_add(-1);
+          Logging::cout() << "Writer_idx " << writer << " rcount " << val
+                          << Logging::endl;
+          check(val == 1);
+        }
 #endif
-    };
+      });
   }
 
   auto t2 = high_resolution_clock::now();

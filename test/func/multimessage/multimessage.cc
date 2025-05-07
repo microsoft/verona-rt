@@ -30,16 +30,16 @@ void test_multimessage(size_t cores)
 
   {
     auto a1 = make_cown<CCown>(3);
-    when(a1) << [](auto a) {
+    when(a1, [](auto a) {
       Logging::cout() << "got message on " << a.cown() << Logging::endl;
-    };
+    });
 
     auto a2 = make_cown<CCown>(5);
 
     // We are transfering our cown references to the message here.
-    when(a1, a2) << [](auto a, auto b) {
+    when(a1, a2, [](auto a, auto b) {
       Logging::cout() << "result = " << (a->i + b->i) << Logging::endl;
-    };
+    });
   }
   sched.run();
   heap::debug_check_empty();

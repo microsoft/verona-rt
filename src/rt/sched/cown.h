@@ -64,7 +64,7 @@ namespace verona::rt
 
   public:
     // true means first reader is added, false otherwise
-    bool add_read(int readers = 1)
+    bool add_read(size_t readers = 1)
     {
       // Once a writer is waiting, no new readers can be added.
       assert(count % 2 == 0);

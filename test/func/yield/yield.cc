@@ -6,7 +6,7 @@
 
 #define BEHAVIOUR_YIELD(X) \
   { \
-    verona::rt::Behaviour::behaviour_rerun() = true; \
+    verona::cpp::When::rerun() = true; \
     return X; \
   }
 
@@ -39,7 +39,7 @@ void test_state_machine()
   Logging::cout() << "Yield state machine test" << Logging::endl;
   auto state_cown = make_cown<ObjectWithState>();
 
-  when(state_cown) << [](auto state) {
+  when(state_cown, [](auto state) {
     switch (state->s)
     {
       case ObjectWithState::StateA:
@@ -56,7 +56,7 @@ void test_state_machine()
         Logging::cout() << "In state C" << Logging::endl;
         break;
     }
-  };
+  });
 }
 
 void test_counter()
@@ -65,7 +65,7 @@ void test_counter()
 
   auto counter_cown = make_cown<Counter>();
 
-  when(counter_cown) << [](auto counter) {
+  when(counter_cown, [](auto counter) {
     // Ensure that the next behaviour does not run
     assert(counter->c % 2 == 0);
     while (counter->c < 10)
@@ -75,13 +75,13 @@ void test_counter()
                       << Logging::endl;
       BEHAVIOUR_YIELD();
     }
-  };
+  });
 
-  when(counter_cown) << [](auto counter) {
+  when(counter_cown, [](auto counter) {
     assert(counter->c == 10);
     Logging::cout() << "Incrementing counter by 1" << Logging::endl;
     counter->c++;
-  };
+  });
 }
 
 int main(int argc, char** argv)

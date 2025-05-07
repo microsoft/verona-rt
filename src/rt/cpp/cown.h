@@ -189,11 +189,7 @@ namespace verona::cpp
     };
 
   private:
-    template<typename TT>
-    friend class Access;
-
-    template<typename TT>
-    friend class AccessBatch;
+    friend class When;
 
     /**
      * Internal Verona runtime cown for this type.
@@ -203,7 +199,7 @@ namespace verona::cpp
     /**
      * Accesses the internal Verona runtime cown for this handle.
      */
-    Cown* underlying_cown()
+    Cown* underlying_cown() const
     {
       return allocated_cown;
     }
@@ -294,6 +290,11 @@ namespace verona::cpp
       return allocated_cown == nullptr;
     }
 
+    bool operator!=(std::nullptr_t)
+    {
+      return allocated_cown != nullptr;
+    }
+
     /**
      * Sets the cown_ptr to nullptr, and decrements the reference count
      * if it was not already nullptr.
@@ -331,7 +332,6 @@ namespace verona::cpp
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&...);
 
-    template<typename F, typename... Args2>
     friend class When;
   };
 
@@ -404,36 +404,39 @@ namespace verona::cpp
   class acquired_cown
   {
     /// Needed to build one from inside a `When`
-    template<typename F, typename... Args2>
     friend class When;
 
-    template<typename T2>
-    friend class AccessBatch;
+    template<typename TT>
+    friend struct acquired_cown_span;
 
   private:
     /// Underlying cown that has been acquired.
     /// Runtime is actually holding this reference count.
-    ActualCown<std::remove_const_t<T>>& origin_cown;
+    Slot* wrapped_slot;
 
-    /// Constructor is private, as only `When` can construct one.
-    acquired_cown(ActualCown<std::remove_const_t<T>>& origin)
-    : origin_cown(origin)
-    {}
+    ActualCown<std::remove_const_t<T>>* raw_cown() const
+    {
+      return static_cast<ActualCown<std::remove_const_t<T>>*>(
+        wrapped_slot->cown());
+    }
 
   public:
+    /// Constructor is private, as only `When` can construct one.
+    acquired_cown(Slot* slot) : wrapped_slot(slot) {}
+
     /// Get a handle on the underlying cown.
     cown_ptr<std::remove_const_t<T>> cown() const
     {
-      verona::rt::Cown::acquire(&origin_cown);
-      return cown_ptr<T>(&origin_cown);
+      verona::rt::Cown::acquire(raw_cown());
+      return cown_ptr<std::remove_const_t<T>>(raw_cown());
     }
 
     T& get_ref() const
     {
       if constexpr (std::is_const<T>())
-        return const_cast<T&>(origin_cown.value);
+        return const_cast<T&>(raw_cown()->value);
       else
-        return origin_cown.value;
+        return raw_cown()->value;
     }
 
     T& operator*()
@@ -463,4 +466,12 @@ namespace verona::cpp
     acquired_cown& operator=(const acquired_cown&) = delete;
     /// @}
   };
+
+  template<typename T>
+  Logging::SysLog&
+  operator<<(Logging::SysLog& log, const verona::cpp::acquired_cown<T>& cown)
+  {
+    log << &cown.get_ref();
+    return log;
+  }
 } // namespace verona::rt

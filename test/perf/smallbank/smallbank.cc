@@ -48,12 +48,14 @@ void balance(
   // Return a promise
   auto pp = Promise<int64_t>::create_promise();
 
-  when(account->second.checking, account->second.savings) <<
+  when(
+    account->second.checking,
+    account->second.savings,
     [wp = std::move(pp.second)](
       acquired_cown<Checking> ch_acq, acquired_cown<Savings> sa_acq) mutable {
       Promise<int64_t>::fulfill(
         std::move(wp), ch_acq->balance + sa_acq->balance);
-    };
+    });
 
   pp.first.then([](std::variant<int64_t, Promise<int64_t>::PromiseErr> val) {
     if (!std::holds_alternative<int64_t>(val))
@@ -74,11 +76,11 @@ void deposit_checking(
   if (account == accounts.end())
     return;
 
-  when(account->second.checking) << [=](acquired_cown<Checking> ch_acq) {
+  when(account->second.checking, [=](acquired_cown<Checking> ch_acq) {
     ch_acq->balance += amount;
 
     Logging::cout() << "Deposited " << amount << std::endl;
-  };
+  });
 }
 
 // TransactSavings: Add or remove from the savings account
@@ -91,14 +93,14 @@ void transact_savings(
   if (account == accounts.end())
     return;
 
-  when(account->second.savings) << [=](acquired_cown<Savings> sa_acq) {
+  when(account->second.savings, [=](acquired_cown<Savings> sa_acq) {
     if ((amount < 0) && (sa_acq->balance < (-1 * amount)))
       return;
     sa_acq->balance += amount;
 
     Logging::cout() << "TransactSavings: " << amount << " " << sa_acq->balance
                     << std::endl;
-  };
+  });
 }
 
 // WriteCheck
@@ -111,15 +113,17 @@ void write_check(
   if (account == accounts.end())
     return;
 
-  when(account->second.savings, account->second.checking)
-    << [=](acquired_cown<Savings> sa_acq, acquired_cown<Checking> ch_acq) {
-         if (amount < (ch_acq->balance + sa_acq->balance))
-           ch_acq->balance -= (amount + 1);
-         else
-           ch_acq->balance -= amount;
+  when(
+    account->second.savings,
+    account->second.checking,
+    [=](acquired_cown<Savings> sa_acq, acquired_cown<Checking> ch_acq) {
+      if (amount < (ch_acq->balance + sa_acq->balance))
+        ch_acq->balance -= (amount + 1);
+      else
+        ch_acq->balance -= amount;
 
-         Logging::cout() << "Write check: " << amount << std::endl;
-       };
+      Logging::cout() << "Write check: " << amount << std::endl;
+    });
 }
 
 // Amalgamate: Move all funds from account 1 to the checking account 2
@@ -136,16 +140,16 @@ void amalgamate(
   when(
     account1->second.savings,
     account1->second.checking,
-    account2->second.checking)
-    << [=](
-         acquired_cown<Savings> sa_acq1,
-         acquired_cown<Checking> ch_acq1,
-         acquired_cown<Checking> ch_acq2) {
-         ch_acq2->balance += (sa_acq1->balance + ch_acq1->balance);
-         sa_acq1->balance = 0;
-         ch_acq1->balance = 0;
-         Logging::cout() << "Amalgamate" << std::endl;
-       };
+    account2->second.checking,
+    [=](
+      acquired_cown<Savings> sa_acq1,
+      acquired_cown<Checking> ch_acq1,
+      acquired_cown<Checking> ch_acq2) {
+      ch_acq2->balance += (sa_acq1->balance + ch_acq1->balance);
+      sa_acq1->balance = 0;
+      ch_acq1->balance = 0;
+      Logging::cout() << "Amalgamate" << std::endl;
+    });
 }
 
 struct Generator
@@ -207,8 +211,9 @@ public:
 
     // Reschedule
     if (g_acq->tx_count < PER_GEN_TX_COUNT)
-      when(g_acq.cown()) <<
-        [](acquired_cown<Generator> g_acq_new) { generate_tx(g_acq_new); };
+      when(g_acq.cown(), [](acquired_cown<Generator> g_acq_new) {
+        generate_tx(g_acq_new);
+      });
     else
       g_acq->print_stats();
   }
@@ -231,9 +236,9 @@ void experiment_init()
   for (uint32_t i = 0; i < GENERATOR_COUNT; i++)
   {
     auto g = make_cown<Generator>(accounts);
-    when(g) << [](acquired_cown<Generator> g_acq_new) {
+    when(g, [](acquired_cown<Generator> g_acq_new) {
       Generator::generate_tx(g_acq_new);
-    };
+    });
   }
 }
 

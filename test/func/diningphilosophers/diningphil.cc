@@ -3,7 +3,10 @@
 #include <debug/harness.h>
 #include <ds/scramble.h>
 
-struct Fork : public VCown<Fork>
+#include <cpp/when.h>
+
+using namespace verona::cpp;
+struct Fork
 {
   size_t id;
   size_t uses_expected;
@@ -17,117 +20,33 @@ struct Fork : public VCown<Fork>
   }
 };
 
-struct Ping
+
+void eat(size_t id, std::vector<cown_ptr<Fork>> forks, size_t to_eat)
 {
-  void operator()() {}
-};
-
-/**
- * This Message holds on to the only reference to a Cown, that it
- * will "Ping" once it is delivered.  This is used to find missing
- * scans of messages.  If a message is not scanned, the Cown c
- * will be reclaimable, once this message is delivered it will be
- * deallocated.
- **/
-struct KeepAlive
-{
-  Cown* c;
-
-  KeepAlive()
+  if (to_eat == 0)
   {
-    c = new Fork(999);
-    schedule_lambda(c, Ping());
-  }
-
-  void trace(ObjectStack& fields) const
-  {
-    fields.push(c);
-  }
-
-  void operator()()
-  {
-    schedule_lambda<YesTransfer>(c, Ping());
-  }
-};
-
-struct Philosopher : public VCown<Philosopher>
-{
-  size_t id;
-  std::vector<Cown*> forks;
-  size_t to_eat;
-
-  Philosopher(size_t id_, std::vector<Cown*> forks_, size_t to_eat_)
-  : id(id_), forks(forks_), to_eat(to_eat_)
-  {}
-
-  void trace(ObjectStack& fields) const
-  {
-    for (auto f : forks)
-    {
-      fields.push(f);
-    }
-  }
-};
-
-void eat_send(Philosopher* p);
-
-struct Ponder
-{
-  Philosopher* p;
-
-  Ponder(Philosopher* p) : p(p) {}
-
-  void operator()()
-  {
-    Logging::cout() << "Philosopher " << p->id << " " << p << " pondering "
-                    << p->to_eat << std::endl;
-    eat_send(p);
-  }
-};
-
-struct Eat
-{
-  Philosopher* eater;
-
-  void operator()()
-  {
-    Logging::cout() << "Philosopher " << eater->id << " " << eater
-                    << " eating (" << this << ")" << std::endl;
-    for (auto f : eater->forks)
-    {
-      ((Fork*)f)->uses++;
-    }
-
-    schedule_lambda(eater, Ponder(eater));
-  }
-
-  Eat(Philosopher* p_) : eater(p_)
-  {
-    Logging::cout() << "Eat Message " << this << " for Philosopher " << p_->id
-                    << " " << p_ << std::endl;
-  }
-
-  void trace(ObjectStack& fields) const
-  {
-    Logging::cout() << "Calling custom trace" << std::endl;
-    fields.push(eater);
-  }
-};
-
-void eat_send(Philosopher* p)
-{
-  if (p->to_eat == 0)
-  {
-    Logging::cout() << "Releasing Philosopher " << p->id << " " << p
-                    << std::endl;
-    Cown::release(p);
+    Logging::cout() << "Releasing Philosopher " << id << std::endl;
     return;
   }
+  // Subtle lifetime management here.  `forks.data()` is used after
+  // the std::move in the when.  This is safe as the vector won't reallocate
+  // the underlying array inside the when, but it is almost certainly
+  // UB.
+  cown_array<Fork, false> forkspan(forks.data(), forks.size());
+  when(forkspan, [id, forks = std::move(forks), to_eat](auto f) {
+      Logging::cout() << "Philosopher " << id << " eating "
+                      << to_eat << std::endl;
+      for (size_t i = 0; i < f.length(); i++)
+      {
+        Logging::cout() << "Fork " << f[i].cown() << " " << f[i]->id << std::endl;
+        f[i]->uses++;
+      }
 
-  p->to_eat--;
-  schedule_lambda(p->forks.size(), p->forks.data(), Eat(p));
+      eat(id, forks, to_eat - 1);
 
-  schedule_lambda(p->forks[0], KeepAlive());
+      // KeepAlive
+      when(forks[0], [](auto) {});
+    });
 }
 
 void test_dining(
@@ -136,48 +55,29 @@ void test_dining(
   size_t fork_count,
   SystematicTestHarness* h)
 {
-  std::vector<Fork*> forks;
+  std::vector<cown_ptr<Fork>> forks;
   for (size_t i = 0; i < philosophers; i++)
   {
-    auto f = new Fork(i);
-    forks.push_back(f);
-    Logging::cout() << "Fork " << i << " " << f << std::endl;
+    forks.push_back(make_cown<Fork>(i));
+    Logging::cout() << "Fork " << i << " " << forks[i] << std::endl;
   }
 
-  verona::rt::Scramble scrambler;
   verona::rt::PRNG<> rand{h->current_seed()};
 
   for (size_t i = 0; i < philosophers; i++)
   {
-    scrambler.setup(rand);
-
-    std::vector<Cown*> my_forks;
-
-    std::sort(forks.begin(), forks.end(), [&scrambler](Fork*& a, Fork*& b) {
-      return scrambler.perm(((Cown*)a)->id()) <
-        scrambler.perm(((Cown*)b)->id());
-    });
+    std::vector<cown_ptr<Fork>> my_forks;
 
     for (size_t j = 0; j < fork_count; j++)
     {
-      forks[j]->uses_expected += hunger;
-      Cown::acquire(forks[j]);
-      my_forks.push_back(forks[j]);
+      size_t fork_idx = rand.next64() % philosophers;
+      my_forks.push_back(forks[fork_idx]);
+      when (forks[fork_idx], [=](auto f) {
+        f->uses_expected += hunger;
+      });
     }
-
-    auto p = new Philosopher(i, my_forks, hunger);
-    schedule_lambda(p, Ponder(p));
-    Logging::cout() << "Philosopher " << i << " " << p << std::endl;
-    for (size_t j = 0; j < fork_count; j++)
-    {
-      Logging::cout() << "   Fork " << ((Fork*)my_forks[j])->id << " "
-                      << my_forks[j] << std::endl;
-    }
-  }
-
-  for (size_t i = 0; i < philosophers; i++)
-  {
-    Cown::release(forks[i]);
+    
+    eat(i, std::move(my_forks), hunger);
   }
 }
 
