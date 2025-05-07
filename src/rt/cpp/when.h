@@ -6,6 +6,7 @@
 #include "cown.h"
 #include "cown_array.h"
 
+#include <cstring>
 #include <functional>
 #include <tuple>
 #include <utility>
@@ -149,73 +150,116 @@ namespace verona::cpp
     return AccessBatch<T>(c);
   }
 
-  template<typename... Args>
+  class DynamicAtomicBatch;
+
+  template<int bs>
   class Batch
   {
-    /// This is a tuple of
-    ///    (exists Ts. When<Ts>)
-    /// As existential types are not supported this is using inferred template
-    /// parameters.
-    std::tuple<Args...> when_batch;
-
     /// This is used to prevent the destructor from scheduling the behaviour
     /// more than once.
     /// If this batch is combined with another batch, then the destructor of
     /// the uncombined batches should not run.
     bool part_of_larger_batch = false;
 
-    template<typename... Args2>
-    friend class Batch;
+    BehaviourCore* barray[bs];
 
-    template<size_t index = 0>
-    void create_behaviour(BehaviourCore** barray)
-    {
-      if constexpr (index >= sizeof...(Args))
-      {
-        return;
-      }
-      else
-      {
-        auto&& w = std::get<index>(when_batch);
-        // Add the behaviour here
-        auto t = w.to_tuple();
-        barray[index] = Behaviour::prepare_to_schedule<
-          typename std::remove_reference<decltype(std::get<2>(t))>::type>(
-          std::move(std::get<0>(t)),
-          std::move(std::get<1>(t)),
-          std::move(std::get<2>(t)));
-        create_behaviour<index + 1>(barray);
-      }
-    }
+    friend class DynamicAtomicBatch;
 
   public:
-    Batch(std::tuple<Args...> args) : when_batch(std::move(args)) {}
+    Batch()
+    {
+      assert(0);
+    }
+
+    Batch(BehaviourCore* b)
+    {
+      assert(0);
+    }
 
     Batch(const Batch&) = delete;
 
+    Batch(BehaviourCore** b1, BehaviourCore** b2, size_t s1, size_t s2)
+    {
+      std::memcpy(barray, b1, s1 * sizeof(BehaviourCore*));
+      std::memcpy(&barray[s1], b2, s2 * sizeof(BehaviourCore*));
+    }
+
     ~Batch()
     {
-      if constexpr (sizeof...(Args) > 0)
+      if constexpr (bs > 0)
       {
         if (part_of_larger_batch)
           return;
 
-        BehaviourCore* barray[sizeof...(Args)];
-        create_behaviour(barray);
-
-        BehaviourCore::schedule_many(barray, sizeof...(Args));
+        BehaviourCore::schedule_many(barray, bs);
       }
     }
 
-    template<typename... Args2>
-    auto operator+(Batch<Args2...>&& wb)
+    template<int bs2>
+    auto operator+(Batch<bs2>&& wb)
     {
       wb.part_of_larger_batch = true;
       this->part_of_larger_batch = true;
-      return Batch<Args..., Args2...>(
-        std::tuple_cat(std::move(this->when_batch), std::move(wb.when_batch)));
+      return Batch<bs + bs2>(barray, wb.barray, bs, bs2);
     }
   };
+
+  /**
+   * This class does not handle reference counting for cowns.
+   * Make sure the cown_ptrs will be available till scheduling happens
+   */
+  class DynamicAtomicBatch
+  {
+    BehaviourCore** barray;
+    size_t size;
+
+  public:
+    DynamicAtomicBatch() : barray(nullptr), size(0) {}
+    ~DynamicAtomicBatch()
+    {
+      if (size == 0)
+        return;
+
+      BehaviourCore::schedule_many(barray, size);
+      delete barray;
+    }
+
+    template<int bs>
+    auto operator+(Batch<bs>&& b)
+    {
+      // Batch has a When, which holds a reference to a cown_ptr, need to keep
+      // this reference around!
+      b.part_of_larger_batch = true;
+
+      auto new_array = new BehaviourCore*[size + bs];
+
+      if (barray)
+      {
+        std::memcpy(new_array, barray, size * sizeof(BehaviourCore*));
+        delete barray;
+      }
+
+      barray = new_array;
+      std::memcpy(&barray[size], b.barray, bs * sizeof(BehaviourCore*));
+
+      size += bs;
+
+      return this;
+    }
+
+    DynamicAtomicBatch(const DynamicAtomicBatch&) = delete;
+    DynamicAtomicBatch(DynamicAtomicBatch&&) = delete;
+  };
+
+  template<>
+  Batch<0>::Batch()
+  {}
+
+  template<>
+  Batch<1>::Batch(BehaviourCore* b)
+  {
+    barray[0] = b;
+  }
 
   /**
    * Represents a single when statement.
@@ -242,7 +286,7 @@ namespace verona::cpp
     struct is_batch<AccessBatch<T>> : std::true_type
     {};
 
-    template<typename... Args2>
+    template<int bs>
     friend class Batch;
 
     /// Set of cowns used by this behaviour.
@@ -262,6 +306,8 @@ namespace verona::cpp
     // and the above requests[] array is not used.
     Request* req_extended;
     bool is_req_extended;
+
+    BehaviourCore* behaviour_body;
 
     /**
      * This uses template programming to turn the std::tuple into a C style
@@ -372,11 +418,12 @@ namespace verona::cpp
       return acquired_cown<C>(*c.t);
     }
 
-    auto to_tuple()
+    template<size_t index = 0>
+    void create_behaviour_new()
     {
-      if constexpr (sizeof...(Args) == 0)
+      if constexpr (index >= sizeof...(Args))
       {
-        return std::make_tuple(std::forward<F>(f));
+        return;
       }
       else
       {
@@ -388,18 +435,19 @@ namespace verona::cpp
 
         size_t count = array_assign(r);
 
-        return std::make_tuple(
-          count,
-          r,
-          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f = std::move(f)](Args... args) mutable {
-              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
-            };
+        auto closure = [f = std::move(f),
+                        cown_tuple = std::move(cown_tuple)]() mutable {
+          /// Effectively converts ActualCown<T>... to
+          /// acquired_cown... .
+          auto lift_f = [f = std::move(f)](Args... args) mutable {
+            std::move(f)(access_to_acquired<typename Args::Type>(args)...);
+          };
 
-            std::apply(std::move(lift_f), std::move(cown_tuple));
-          });
+          std::apply(std::move(lift_f), std::move(cown_tuple));
+        };
+        behaviour_body = Behaviour::prepare_to_schedule<
+          typename std::remove_reference<decltype(closure)>::type>(
+          count, r, std::move(closure));
       }
     }
 
@@ -418,18 +466,12 @@ namespace verona::cpp
         req_extended = reinterpret_cast<Request*>(
           heap::alloc(req_count * (sizeof(Request))));
       }
+
+      std::cout << "Will create behaviour\n";
+      create_behaviour_new();
     }
 
-    When(When&& o)
-    : cown_tuple(std::move(o.cown_tuple)),
-      f(std::forward<F>(o.f)),
-      is_req_extended(o.is_req_extended),
-      req_extended(o.req_extended)
-    {
-      o.req_extended = nullptr;
-      o.is_req_extended = false;
-    }
-
+    When(When&&) = delete;
     When(const When&) = delete;
 
     ~When()
@@ -438,6 +480,11 @@ namespace verona::cpp
       {
         heap::dealloc(req_extended);
       }
+    }
+
+    BehaviourCore* get_behaviour_body()
+    {
+      return behaviour_body;
     }
   };
 
@@ -479,12 +526,12 @@ namespace verona::cpp
       {
         // Execute now atomic batch makes no sense.
         verona::rt::schedule_lambda(std::forward<F>(f));
-        return Batch(std::make_tuple());
+        return Batch<0>();
       }
       else
       {
-        return Batch(
-          std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        return Batch<1>(
+          When(std::forward<F>(f), std::move(cown_tuple)).get_behaviour_body());
       }
     }
   };
@@ -494,12 +541,6 @@ namespace verona::cpp
    */
   template<typename T>
   Access(const cown_ptr<T>&) -> Access<T>;
-
-  /**
-   * Template deduction guide for Batch.
-   */
-  template<typename... Args>
-  Batch(std::tuple<Args...>) -> Batch<Args...>;
 
   /**
    * Implements a Verona-like `when` statement.
