@@ -26,12 +26,8 @@ void eat(size_t id, std::vector<cown_ptr<Fork>> forks, size_t to_eat)
     Logging::cout() << "Releasing Philosopher " << id << std::endl;
     return;
   }
-  // Subtle lifetime management here.  `forks.data()` is used after
-  // the std::move in the when.  This is safe as the vector won't reallocate
-  // the underlying array inside the when, but it is almost certainly
-  // UB.
   cown_array<Fork, false> forkspan(forks.data(), forks.size());
-  when(forkspan, [id, forks = std::move(forks), to_eat](auto f) {
+  when(forkspan, [id, forks, to_eat](auto f) {
     Logging::cout() << "Philosopher " << id << " eating " << to_eat
                     << std::endl;
     for (size_t i = 0; i < f.length(); i++)
