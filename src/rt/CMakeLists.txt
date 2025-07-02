@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(verona-rt C CXX)
 
+include(CheckCXXCompilerFlag)
+
 macro(subdirlist result curdir)
   file(GLOB children LIST_DIRECTORIES true CONFIGURE_DEPENDS RELATIVE ${curdir} ${curdir}/*)
   set(dirlist "")
@@ -66,7 +68,10 @@ if(MSVC)
   set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
 else()
   find_package(Threads REQUIRED)
-  target_compile_options(verona_rt INTERFACE -mcx16)
+  check_cxx_compiler_flag("-mcx16" HAS_MCX16_FLAG)
+  if(HAS_MCX16_FLAG)
+    target_compile_options(verona_rt INTERFACE -mcx16)
+  endif()
 endif()
 
 if(USE_SCHED_STATS)
