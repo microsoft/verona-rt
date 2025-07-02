@@ -41,29 +41,29 @@ void test_body()
   auto subject = make_cown<Subject>();
   auto observer = make_cown<Observer>();
 
-  when(subject) <<
+  when(
+    subject,
     [observer = observer.get_weak()](acquired_cown<Subject> subject) mutable {
       subject->observer = observer;
-    };
+    });
 
-  when(observer) <<
-    [subject = subject](acquired_cown<Observer> observer) mutable {
-      observer->subject = subject;
-    };
+  when(observer, [subject = subject](acquired_cown<Observer> observer) mutable {
+    observer->subject = subject;
+  });
 
-  when(subject) << [](acquired_cown<Subject> subject) mutable {
+  when(subject, [](acquired_cown<Subject> subject) mutable {
     auto observer = subject->observer.promote();
     if (observer)
     {
-      when(observer) << [](acquired_cown<Observer>) {
+      when(observer, [](acquired_cown<Observer>) {
         Logging::cout() << "Observer is alive" << Logging::endl;
-      };
+      });
     }
     else
     {
       Logging::cout() << "Observer is dead" << Logging::endl;
     }
-  };
+  });
 }
 
 int main(int argc, char** argv)

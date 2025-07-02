@@ -21,12 +21,6 @@ namespace verona::rt
   }
 
   template<typename Be>
-  static void schedule_lambda(size_t count, Request* requests, Be&& f)
-  {
-    Behaviour::schedule(count, requests, std::forward<Be>(f));
-  }
-
-  template<typename Be>
   static void schedule_lambda(Be&& f)
   {
     auto w = Closure::make([f = std::forward<Be>(f)](Work* w) mutable {

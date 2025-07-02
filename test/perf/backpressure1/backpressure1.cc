@@ -152,10 +152,10 @@ int main(int argc, char** argv)
       proxy_chain.push_back(new Proxy(p));
 
     auto e = make_cown<int>();
-    when(e) << [](auto) {
+    when(e, [](auto) {
       Logging::cout() << "Add external event source" << std::endl;
       Scheduler::add_external_event_source();
-    };
+    });
 
     harness.external_thread([=]() {
       for (size_t i = 0; i < senders; i++)
@@ -184,10 +184,10 @@ int main(int argc, char** argv)
           Cown::release(r);
       }
 
-      when(e) << [](auto) {
+      when(e, [](auto) {
         Logging::cout() << "Remove external event source" << std::endl;
         Scheduler::remove_external_event_source();
-      };
+      });
     });
   });
 }

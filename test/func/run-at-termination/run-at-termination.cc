@@ -29,10 +29,10 @@ void test_body()
   // Run NUM_OPS behaviours, each incrementing ops by NUM_OPS.
   for (int i = 0; i < NUM_OPS; i++)
   {
-    when() << []() {
+    when([]() {
       for (int i = 0; i < NUM_OPS; i++)
         ops++;
-    };
+    });
   }
 }
 

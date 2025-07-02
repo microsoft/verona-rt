@@ -15,23 +15,23 @@ public:
 
 using namespace verona::cpp;
 
-template<bool r, typename T>
-auto long_chain_helper(T obj)
+template<bool r, typename T, typename F>
+auto long_chain_helper(T obj, F&& body)
 {
   if constexpr (r == true)
   {
-    return when(read(obj));
+    return when(read(obj), std::forward<F>(body));
   }
   else
   {
-    return when(obj);
+    return when(obj, std::forward<F>(body));
   }
 }
 
 template<bool r1>
 auto make_var_chain(cown_ptr<Body> log, size_t n = 1)
 {
-  return (long_chain_helper<r1>(log) << [=](auto b) {
+  return long_chain_helper<r1>(log, [=](auto b) {
     for (int i = 0; i < 10; i++)
     {
       Logging::cout() << "Behaviour " << n << Logging::endl;
@@ -44,15 +44,16 @@ auto make_var_chain(cown_ptr<Body> log, size_t n = 1)
 template<bool r1, bool r2, bool... rs>
 auto make_var_chain(cown_ptr<Body> log, size_t n = 1)
 {
-  return (long_chain_helper<r1>(log) <<
-          [=](auto b) {
-            for (int i = 0; i < 10; i++)
-            {
-              Logging::cout() << "Behaviour " << n << Logging::endl;
-              Systematic::yield();
-              // sleep(1);
-            }
-          }) +
+  return (long_chain_helper<r1>(
+           log,
+           [=](auto b) {
+             for (int i = 0; i < 10; i++)
+             {
+               Logging::cout() << "Behaviour " << n << Logging::endl;
+               Systematic::yield();
+               // sleep(1);
+             }
+           })) +
     (make_var_chain<r2, rs...>(log, n + 1));
 }
 
@@ -63,21 +64,22 @@ void test_body()
   auto log = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  (when(log) <<
-   [=](auto b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(log2) << [=](auto) {
+  (when(
+    log,
+    [=](auto b) {
+      for (int i = 0; i < 10; i++)
+      {
+        Logging::cout() << "Behaviour 1\n";
+        // sleep(1);
+      }
+    })) +
+    (when(log2, [=](auto) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
         // sleep(1);
       }
-    });
+    }));
 }
 
 void test_body_read_mixed()
@@ -87,21 +89,22 @@ void test_body_read_mixed()
   auto log = make_cown<Body>();
   auto log2 = make_cown<Body>();
 
-  (when(read(log)) <<
-   [=](acquired_cown<const Body> b) {
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(log2) << [=](auto) {
+  (when(
+    read(log),
+    [=](acquired_cown<const Body> b) {
+      for (int i = 0; i < 10; i++)
+      {
+        Logging::cout() << "Behaviour 1\n";
+        // sleep(1);
+      }
+    })) +
+    (when(log2, [=](auto) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
         // sleep(1);
       }
-    });
+    }));
 }
 
 void test_body_smart()
@@ -112,40 +115,41 @@ void test_body_smart()
   auto log2 = make_cown<Body>();
   auto ptr = std::make_unique<int>(42);
 
-  (when(log) <<
-   [=, ptr = std::move(ptr)](auto b) {
-     std::cout << "ptr = " << *ptr << std::endl;
-     for (int i = 0; i < 10; i++)
-     {
-       Logging::cout() << "Behaviour 1\n";
-       // sleep(1);
-     }
-   }) +
-    (when(log2) << [=](auto) {
+  (when(
+    log,
+    [=, ptr = std::move(ptr)](auto b) {
+      std::cout << "ptr = " << *ptr << std::endl;
+      for (int i = 0; i < 10; i++)
+      {
+        Logging::cout() << "Behaviour 1\n";
+        // sleep(1);
+      }
+    })) +
+    (when(log2, [=](auto) {
       for (int i = 0; i < 10; i++)
       {
         Logging::cout() << "Behaviour 2\n";
         // sleep(1);
       }
-    });
+    }));
 }
 
 void test_body_concurrent_1()
 {
   auto log = make_cown<Body>();
 
-  when() << [=]() { make_var_chain<false, true>(log); };
+  when([=]() { make_var_chain<false, true>(log); });
 
-  when() << [=]() { make_var_chain<true, false>(log); };
+  when([=]() { make_var_chain<true, false>(log); });
 }
 
 void test_body_concurrent_2()
 {
   auto log = make_cown<Body>();
 
-  when() << [=]() { make_var_chain<false, true, false>(log); };
+  when([=]() { make_var_chain<false, true, false>(log); });
 
-  when() << [=]() { make_var_chain<true, false, true>(log); };
+  when([=]() { make_var_chain<true, false, true>(log); });
 }
 
 template<bool r1, bool... rs>
@@ -157,21 +161,23 @@ void test_body_long_chain_var()
 }
 
 auto repeat_shape = [](auto c1, auto c2, auto c3) {
-  return (when(c1, c2) <<
-          [=](auto b1, auto b2) {
-            for (int i = 0; i < 10; i++)
-            {
-              Logging::cout() << "Behaviour 1\n";
-              // sleep(1);
-            }
-          }) +
-    (when(c3) << [=](auto b) {
+  return (when(
+           c1,
+           c2,
+           [=](auto b1, auto b2) {
+             for (int i = 0; i < 10; i++)
+             {
+               Logging::cout() << "Behaviour 1\n";
+               // sleep(1);
+             }
+           })) +
+    (when(c3, [=](auto b) {
            for (int i = 0; i < 10; i++)
            {
              Logging::cout() << "Behaviour 2\n";
              // sleep(1);
            }
-         });
+         }));
 };
 
 void test_body_repeat1()

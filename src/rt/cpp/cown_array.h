@@ -16,8 +16,12 @@ namespace verona::cpp
    *
    * The destructor calls the destructor of each cown_ptr and frees the
    * allocated array.
+   *
+   * The template argument owning is used to determine if the cown_array
+   * should own the cown_ptr array or not. If it is false, the cown_array
+   * will not allocate a new array and will not free it in the destructor.
    */
-  template<typename T>
+  template<typename T, bool owning = true>
   struct cown_array
   {
     cown_ptr<T>* array;
@@ -25,20 +29,23 @@ namespace verona::cpp
 
     void constr_helper(cown_ptr<T>* arr)
     {
-      array = reinterpret_cast<cown_ptr<T>*>(
-        heap::alloc(length * sizeof(cown_ptr<T>*)));
+      if constexpr (owning)
+      {
+        array = reinterpret_cast<cown_ptr<T>*>(
+          heap::alloc(length * sizeof(cown_ptr<T>*)));
 
-      for (size_t i = 0; i < length; i++)
-        new (&array[i]) cown_ptr<T>(arr[i]);
+        for (size_t i = 0; i < length; i++)
+          new (&array[i]) cown_ptr<T>(arr[i]);
+      }
+      else
+      {
+        array = arr;
+      }
     }
 
-    template<bool should_move = false>
     cown_array(cown_ptr<T>* array_, size_t length_) : length(length_)
     {
-      if constexpr (should_move == false)
-      {
-        constr_helper(array_);
-      }
+      constr_helper(array_);
     }
 
     cown_array(const cown_array& o)
@@ -49,12 +56,24 @@ namespace verona::cpp
 
     ~cown_array()
     {
-      if (array)
+      if constexpr (owning)
       {
-        for (size_t i = 0; i < length; i++)
-          array[i].~cown_ptr<T>();
+        if (array)
+        {
+          for (size_t i = 0; i < length; i++)
+            array[i].~cown_ptr<T>();
 
+          heap::dealloc(array);
+        }
+      }
+    }
+
+    void steal()
+    {
+      if constexpr (owning)
+      {
         heap::dealloc(array);
+        array = nullptr;
       }
     }
 
@@ -72,15 +91,16 @@ namespace verona::cpp
    * We use inheritance to allow us to construct a cown_array<const T> from a
    * cown_array<T>.
    */
-  template<typename T>
-  class cown_array<const T> : public cown_array<T>
+  template<typename T, bool owning>
+  class cown_array<const T, owning> : public cown_array<T, owning>
   {
   public:
-    cown_array(const cown_array<T>& other) : cown_array<T>(other){};
+    cown_array(const cown_array<T, owning>& other)
+    : cown_array<T, owning>(other){};
   };
 
-  template<typename T>
-  cown_array<const T> read(cown_array<T> cown)
+  template<typename T, bool owning>
+  cown_array<const T, owning> read(cown_array<T, owning> cown)
   {
     Logging::cout() << "Read returning const array ptr" << Logging::endl;
     return cown;

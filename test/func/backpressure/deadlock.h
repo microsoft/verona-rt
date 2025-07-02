@@ -59,10 +59,10 @@ namespace backpressure_deadlock
     auto c3 = make_cown<C>();
 
     for (size_t i = 0; i < 100; i++)
-      when(c1) << [](auto) {};
+      when(c1, [](auto) {});
 
-    when(c3) << [c1](auto) { when(c1) << [](auto) {}; };
-    when(c2) << [c2, c3](auto) { when(c2, c3) << [](auto, auto) {}; };
-    when(c1) << [c1, c2](auto) { when(c1, c2) << [](auto, auto) {}; };
+    when(c3, [c1](auto) { when(c1, [](auto) {}); });
+    when(c2, [c2, c3](auto) { when(c2, c3, [](auto, auto) {}); });
+    when(c1, [c1, c2](auto) { when(c1, c2, [](auto, auto) {}); });
   }
 }

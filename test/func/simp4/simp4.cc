@@ -21,10 +21,10 @@ void test_body()
 
   auto log1 = make_cown<Body>();
 
-  when(log1) << [](auto l) {
+  when(log1, [](auto l) {
     Logging::cout() << "log" << Logging::endl;
-    when(l.cown()) << [](auto) { Logging::cout() << "log" << Logging::endl; };
-  };
+    when(l.cown(), [](auto) { Logging::cout() << "log" << Logging::endl; });
+  });
 }
 
 int main(int argc, char** argv)

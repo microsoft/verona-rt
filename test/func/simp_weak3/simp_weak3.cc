@@ -23,7 +23,7 @@ public:
 // Build a balanced binary tree of a given depth
 void build(cown_ptr<Tree>& curr, cown_ptr<Tree>::weak parent, size_t depth)
 {
-  when(curr) << [parent = std::move(parent), depth](acquired_cown<Tree> curr) {
+  when(curr, [parent = std::move(parent), depth](acquired_cown<Tree> curr) {
     curr->parent = std::move(parent);
     if (depth > 0)
     {
@@ -32,33 +32,33 @@ void build(cown_ptr<Tree>& curr, cown_ptr<Tree>::weak parent, size_t depth)
       build(curr->left, curr.cown().get_weak(), depth - 1);
       build(curr->right, curr.cown().get_weak(), depth - 1);
     }
-  };
+  });
 }
 
 // Walk up tree using parent pointers where they haven't been collected.
 void up(cown_ptr<Tree>& curr)
 {
-  when(curr) << [](acquired_cown<Tree> curr) {
+  when(curr, [](acquired_cown<Tree> curr) {
     auto parent = curr->parent.promote();
     if (parent)
     {
       Logging::cout() << "Parent is alive" << Logging::endl;
       up(parent);
     }
-  };
+  });
 }
 
 // Recursively decent the tree using strong references, and
 // perform up for each node.
 void down(cown_ptr<Tree>& curr)
 {
-  when(curr) << [](acquired_cown<Tree> curr) {
+  when(curr, [](acquired_cown<Tree> curr) {
     Logging::cout() << "Node is alive" << Logging::endl;
     if (curr->left)
       down(curr->left);
     if (curr->right)
       down(curr->right);
-  };
+  });
   up(curr);
 }
 
