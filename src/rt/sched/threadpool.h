@@ -60,8 +60,6 @@ namespace verona::rt
     ThreadSync<T> sync;
 #endif
 
-    uint64_t barrier_incarnation = 0;
-
     /// List of instantiated scheduler threads.
     /// Contains both free and active threads; protects accesses with a lock.
     SchedulerList<T> threads;
@@ -215,8 +213,8 @@ namespace verona::rt
 #endif
         threads.add_free(t);
       }
+      state.init(thread_count);
       Logging::cout() << "Runtime initialised" << Logging::endl;
-      init_barrier();
     }
 
     void run()
@@ -405,31 +403,6 @@ namespace verona::rt
         return false;
 
       return unpause_slow();
-    }
-
-    void init_barrier()
-    {
-      state.set_barrier(thread_count);
-    }
-
-    void enter_barrier()
-    {
-      auto inc = barrier_incarnation;
-      {
-        auto h = sync.handle(local());
-        auto barrier_count = state.exit_thread();
-        if (barrier_count != 0)
-        {
-          while (inc == barrier_incarnation)
-          {
-            h.pause();
-          }
-          return;
-        }
-        init_barrier();
-        barrier_incarnation++;
-        h.unpause_all();
-      }
     }
 
   public:
