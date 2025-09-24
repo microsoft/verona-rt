@@ -129,7 +129,6 @@ public:
     cores = opt.is<size_t>("--cores", 4);
 
     detect_leaks = !opt.has("--allow_leaks");
-    Scheduler::set_detect_leaks(detect_leaks);
 
 #if defined(_WIN32) && defined(CI_BUILD)
     _set_error_mode(_OUT_TO_STDERR);

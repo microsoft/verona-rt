@@ -37,7 +37,6 @@ namespace verona::rt
     static constexpr uint64_t TSC_PAUSE_SLOP = 1'000'000;
     static constexpr uint64_t TSC_UNPAUSE_SLOP = TSC_PAUSE_SLOP / 2;
 
-    bool detect_leaks{true};
     size_t incarnation{1};
 
     /**
@@ -96,16 +95,6 @@ namespace verona::rt
     static Core* first_core()
     {
       return get().core_pool.first_core;
-    }
-
-    static void set_detect_leaks(bool b)
-    {
-      get().detect_leaks = b;
-    }
-
-    static bool get_detect_leaks()
-    {
-      return get().detect_leaks;
     }
 
     /// Increment the external event source count. A non-zero count will prevent
