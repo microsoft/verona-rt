@@ -7,7 +7,6 @@
 #include "ds/dllist.h"
 #include "ds/hashmap.h"
 #include "mpmcq.h"
-#include "object/object.h"
 #include "schedulerlist.h"
 #include "schedulerstats.h"
 #include "threadpool.h"
@@ -40,9 +39,6 @@ namespace verona::rt
     friend Scheduler;
     friend DLList<SchedulerThread>;
     friend SchedulerList<SchedulerThread>;
-
-    template<typename Owner>
-    friend class Noticeboard;
 
     static constexpr uint64_t TSC_QUIESCENCE_TIMEOUT = 1'000'000;
 

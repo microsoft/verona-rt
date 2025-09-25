@@ -37,7 +37,6 @@ namespace verona::rt
     static constexpr uint64_t TSC_PAUSE_SLOP = 1'000'000;
     static constexpr uint64_t TSC_UNPAUSE_SLOP = TSC_PAUSE_SLOP / 2;
 
-    bool detect_leaks{true};
     size_t incarnation{1};
 
     /**
@@ -60,8 +59,6 @@ namespace verona::rt
 #else
     ThreadSync<T> sync;
 #endif
-
-    uint64_t barrier_incarnation = 0;
 
     /// List of instantiated scheduler threads.
     /// Contains both free and active threads; protects accesses with a lock.
@@ -96,16 +93,6 @@ namespace verona::rt
     static Core* first_core()
     {
       return get().core_pool.first_core;
-    }
-
-    static void set_detect_leaks(bool b)
-    {
-      get().detect_leaks = b;
-    }
-
-    static bool get_detect_leaks()
-    {
-      return get().detect_leaks;
     }
 
     /// Increment the external event source count. A non-zero count will prevent
@@ -226,8 +213,8 @@ namespace verona::rt
 #endif
         threads.add_free(t);
       }
+      state.init(thread_count);
       Logging::cout() << "Runtime initialised" << Logging::endl;
-      init_barrier();
     }
 
     void run()
@@ -260,15 +247,7 @@ namespace verona::rt
       Logging::cout() << "All threads deallocated" << Logging::endl;
 
       incarnation++;
-#ifdef USE_SYSTEMATIC_TESTING
-      Object::reset_ids();
-#endif
       thread_count = 0;
-      // Flush any cowns that weren't collected due to potential
-      // ABA issues on the queue.  The runtime is in a consistent
-      // state so no ABAs can exist anymore.
-      Epoch::flush();
-
       core_pool.clear();
 
       SchedulerStats::dump_global(std::cout, incarnation - 2);
@@ -416,31 +395,6 @@ namespace verona::rt
         return false;
 
       return unpause_slow();
-    }
-
-    void init_barrier()
-    {
-      state.set_barrier(thread_count);
-    }
-
-    void enter_barrier()
-    {
-      auto inc = barrier_incarnation;
-      {
-        auto h = sync.handle(local());
-        auto barrier_count = state.exit_thread();
-        if (barrier_count != 0)
-        {
-          while (inc == barrier_incarnation)
-          {
-            h.pause();
-          }
-          return;
-        }
-        init_barrier();
-        barrier_incarnation++;
-        h.unpause_all();
-      }
     }
 
   public:

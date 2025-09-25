@@ -134,7 +134,6 @@ int main(int argc, char** argv)
   Logging::enable_logging();
   Systematic::set_seed(seed);
 #endif
-  Scheduler::set_detect_leaks(true);
   auto& sched = Scheduler::get();
   sched.set_fair(true);
   sched.init(cores);

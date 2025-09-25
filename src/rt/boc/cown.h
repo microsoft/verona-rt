@@ -7,8 +7,6 @@
 #include "../ds/forward_list.h"
 #include "../region/region.h"
 #include "base_noticeboard.h"
-#include "core.h"
-#include "schedulerthread.h"
 #include "shared.h"
 
 #include <algorithm>

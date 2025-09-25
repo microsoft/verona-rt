@@ -7,6 +7,9 @@
 #  define SNMALLOC_USE_THREAD_DESTRUCTOR 1
 #endif
 
+#include "boc/cown.h"
+#include "boc/epoch.h"
+#include "boc/noticeboard.h"
 #include "cpp/lambdabehaviour.h"
 #include "cpp/promise.h"
 #include "cpp/vobject.h"
@@ -18,10 +21,7 @@
 #include "region/immutable.h"
 #include "region/region.h"
 #include "region/region_api.h"
-#include "sched/cown.h"
-#include "sched/epoch.h"
 #include "sched/mpmcq.h"
-#include "sched/noticeboard.h"
 #include "sched/schedulerthread.h"
 
 #include <snmalloc/snmalloc.h>

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "epoch.h"
-
 namespace verona::rt
 {
   /**

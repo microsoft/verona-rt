@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "epoch.h"
+#include "../ds/heap.h"
 
 #include <atomic>
 #include <snmalloc/snmalloc.h>

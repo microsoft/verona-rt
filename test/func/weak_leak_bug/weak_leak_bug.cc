@@ -39,7 +39,6 @@ int main(int argc, char** argv)
 {
   SystematicTestHarness h(argc, argv);
 
-  Scheduler::set_detect_leaks(false);
   h.detect_leaks = false;
 
   h.run(run_test);

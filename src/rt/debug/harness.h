@@ -129,7 +129,6 @@ public:
     cores = opt.is<size_t>("--cores", 4);
 
     detect_leaks = !opt.has("--allow_leaks");
-    Scheduler::set_detect_leaks(detect_leaks);
 
 #if defined(_WIN32) && defined(CI_BUILD)
     _set_error_mode(_OUT_TO_STDERR);
@@ -174,6 +173,7 @@ public:
 
     Logging::cout() << "External threads joined" << std::endl;
 
+    Epoch::flush();
     LocalEpochPool::sort();
 
     if (detect_leaks)
@@ -183,6 +183,10 @@ public:
               << " seconds" << std::endl;
 
     std::cout << "Test Harness Finished!" << std::endl;
+
+#ifdef USE_SYSTEMATIC_TESTING
+    Object::reset_ids();
+#endif
   }
 
   template<typename F, typename... Args>

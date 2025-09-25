@@ -18,7 +18,7 @@ jobs:
         #        platform: [ "ubuntu-latest", "windows-latest", "mac-latest" ]
         # Use VS 2019 as currently doesn't compile with latest
         # Disable mac-latest, not managing to get machines from the pool.
-        platform: [ "ubuntu-latest", "windows-2019" ]
+        platform: [ "ubuntu-latest", "windows-latest" ]
 
 
         build-type: [ "Release", "Debug" ]
@@ -34,7 +34,7 @@ jobs:
             cmake-flags: "-G Ninja -DSANITIZER=address,undefined -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
             dependencies: "sudo apt install ninja-build"
 
-          - platform: "windows-2019"
+          - platform: "windows-latest"
             build-type: "Debug"
             # Exclude perf tests in Debug on Windows as they take too long.
             ctest-flags: "-E perf"

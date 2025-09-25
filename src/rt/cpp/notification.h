@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../sched/shared.h"
+#include "../boc/shared.h"
 #include "behaviour.h"
 
 namespace verona::rt
