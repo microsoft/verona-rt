@@ -247,15 +247,7 @@ namespace verona::rt
       Logging::cout() << "All threads deallocated" << Logging::endl;
 
       incarnation++;
-#ifdef USE_SYSTEMATIC_TESTING
-      Object::reset_ids();
-#endif
       thread_count = 0;
-      // Flush any cowns that weren't collected due to potential
-      // ABA issues on the queue.  The runtime is in a consistent
-      // state so no ABAs can exist anymore.
-      Epoch::flush();
-
       core_pool.clear();
 
       SchedulerStats::dump_global(std::cout, incarnation - 2);

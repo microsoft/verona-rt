@@ -3,7 +3,10 @@
 
 #include <iostream>
 #include <snmalloc/snmalloc.h>
-#include <verona.h>
+#include <debug/systematic.h>
+#include <sched/threadpool.h>
+#include <sched/schedulerthread.h>
+#include <debug/logging.h>
 
 /**
  * Minimal test of the scheduler. Build a fibinacci sequence of scheduling

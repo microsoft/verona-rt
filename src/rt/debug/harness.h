@@ -173,6 +173,7 @@ public:
 
     Logging::cout() << "External threads joined" << std::endl;
 
+    Epoch::flush();
     LocalEpochPool::sort();
 
     if (detect_leaks)
@@ -182,6 +183,10 @@ public:
               << " seconds" << std::endl;
 
     std::cout << "Test Harness Finished!" << std::endl;
+
+#ifdef USE_SYSTEMATIC_TESTING
+    Object::reset_ids();
+#endif
   }
 
   template<typename F, typename... Args>

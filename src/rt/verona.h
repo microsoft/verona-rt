@@ -18,10 +18,10 @@
 #include "region/immutable.h"
 #include "region/region.h"
 #include "region/region_api.h"
-#include "sched/cown.h"
-#include "sched/epoch.h"
+#include "boc/cown.h"
+#include "boc/epoch.h"
 #include "sched/mpmcq.h"
-#include "sched/noticeboard.h"
+#include "boc/noticeboard.h"
 #include "sched/schedulerthread.h"
 
 #include <snmalloc/snmalloc.h>
