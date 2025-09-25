@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "../ds/heap.h"
+
 #include <atomic>
 #include <snmalloc/snmalloc.h>
-#include "../ds/heap.h"
 
 namespace verona::rt
 {

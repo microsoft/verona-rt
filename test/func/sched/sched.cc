@@ -1,12 +1,12 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
 
-#include <iostream>
-#include <snmalloc/snmalloc.h>
-#include <debug/systematic.h>
-#include <sched/threadpool.h>
-#include <sched/schedulerthread.h>
 #include <debug/logging.h>
+#include <debug/systematic.h>
+#include <iostream>
+#include <sched/schedulerthread.h>
+#include <sched/threadpool.h>
+#include <snmalloc/snmalloc.h>
 
 /**
  * Minimal test of the scheduler. Build a fibinacci sequence of scheduling

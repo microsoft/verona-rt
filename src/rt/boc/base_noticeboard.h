@@ -5,8 +5,8 @@
 #include "../debug/logging.h"
 #include "../ds/forward_list.h"
 #include "../region/region.h"
-#include "epoch.h"
 #include "../sched/schedulerthread.h"
+#include "epoch.h"
 
 #include <queue>
 
