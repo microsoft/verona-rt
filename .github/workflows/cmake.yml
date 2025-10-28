@@ -1,4 +1,6 @@
 name: Verona Runtime CI
+permissions:
+  contents: read
 
 on:
   push:
