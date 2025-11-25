@@ -34,6 +34,9 @@ namespace verona::cpp
   template<typename T>
   class cown_ptr;
 
+  template<typename T, typename P>
+  class nested_cown_ptr;
+
   /**
    * Internal Verona runtime cown for the type T.
    *
@@ -56,8 +59,16 @@ namespace verona::cpp
     template<typename TT>
     friend class cown_ptr;
 
+#if 0
+    template<typename TT, typename PP>
+    friend class nested_cown_ptr;
+#endif
+
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&... ts);
+
+    template<typename TT, typename PP, typename... Args>
+    friend nested_cown_ptr<TT, PP> make_nested_cown(cown_ptr<PP> p, Args&&... ts);
   };
 
   /**
@@ -208,6 +219,10 @@ namespace verona::cpp
       return allocated_cown;
     }
 
+    /*
+     * Change this to protected to allow nested_cown_ptr to call this constructor
+     */
+  protected:
     /**
      * Construct a new cown ptr object, actually allocates a runtime cown.
      *
@@ -335,6 +350,20 @@ namespace verona::cpp
     friend class When;
   };
 
+  template<typename T, typename P>
+  class nested_cown_ptr : cown_ptr<T>
+  {
+    cown_ptr<P> parent;
+    public:
+    nested_cown_ptr(ActualCown<T>* cown, cown_ptr<P> p) : cown_ptr<T>(cown), parent(p) {}
+
+      void foo()
+      {
+        std::cout << "Hello from a nested cown\n";
+      }
+
+  };
+
   /* A cown_ptr<const T> is used to mark that the cown is being accessed as
    * read-only. (This combines the type as the capability. We do not have deep
    * immutability in C++, so acquired_cown<const T> is an approximation.)
@@ -370,6 +399,18 @@ namespace verona::cpp
       "use case.");
     Scheduler::stats().cown();
     return cown_ptr<T>(new ActualCown<T>(std::forward<Args>(ts)...));
+  }
+
+  template<typename T, typename P, typename... Args>
+  nested_cown_ptr<T,P> make_nested_cown(cown_ptr<P> p, Args&&... ts)
+  {
+    static_assert(
+      !std::is_const_v<T>,
+      "Cannot make a cown of const type as this conflicts with read acquire "
+      "encoding trick. If we hit this assertion, raise an issue explaining the "
+      "use case.");
+    Scheduler::stats().cown();
+    return nested_cown_ptr<T, P>(new ActualCown<T>(std::forward<Args>(ts)...), p);
   }
 
   template<typename T>
