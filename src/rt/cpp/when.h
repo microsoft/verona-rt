@@ -143,21 +143,6 @@ namespace verona::cpp
     return Access<T>(std::move(c));
   }
 
-  template<typename T, typename P>
-  auto convert_access(const nested_cown_ptr<T,P>& c)
-  {
-    // Access the parent with read only
-    assert(0);
-    return Access<T>(c);
-  }
-
-  template<typename T, typename P>
-  auto convert_access(nested_cown_ptr<T, P>&& c)
-  {
-    assert(0);
-    return Access<T>(std::move(c));
-  }
-
   template<typename T>
   auto convert_access(const cown_array<T>& c)
   {
@@ -531,6 +516,13 @@ namespace verona::cpp
   auto when(Args&&... args)
   {
     return PreWhen(convert_access(std::forward<Args>(args))...);
+  }
+
+  // FIXME: Make it work for a single nested cown for now and extend later
+  template<typename T, typename P>
+  auto when(nested_cown_ptr<T, P> arg)
+  {
+    return when(static_cast<cown_ptr<T>>(arg), read(arg.get_parent()));
   }
 
 } // namespace verona::cpp

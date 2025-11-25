@@ -67,7 +67,6 @@ void test_body()
   Logging::cout() << "test_body()" << Logging::endl;
 
   auto pcown = make_cown<Parent>();
-#if 0
   auto ccown1 = make_cown<Child>(1);
   auto ccown2 = make_cown<Child>(2);
 
@@ -80,26 +79,28 @@ void test_body()
   when(ccown1) << [=](auto c) { c->fn(); };
   when(ccown2) << [=](auto c) { c->fn(); };
 
-  // Or it should be transformed to something like that under the hood
+  // instead it should be transformed to something like that under the hood
   when(ccown1, read(pcown)) << [=](auto c, auto p) { c->fn(); };
   when(ccown2, read(pcown)) << [=](auto c, auto p) { c->fn(); };
-#endif
 
+  // This is a sketch of the expected API
   auto nccown1 = make_nested_cown<Child, Parent>(pcown, 42);
   when(pcown) << [=](auto p) { p->add_nested_child(nccown1); };
 
   when(pcown) << [=](auto p) { p->access_nested_children(p); };
 
   auto pcown2 = make_cown<Parent>();
+#if 0
   // The next should fail
   when(pcown2) << [=](auto p) mutable {
     Child *c = nccown1.get_object_if_parent(p);
     assert(c != nullptr);
     c->fn();
   };
+#endif
 
-  // This needs fixing
-  // when(nccown1) << [=](auto c) { c->fn(); };
+  // I didn't want to have the parent there, but the compiler complained
+   when(nccown1) << [=](auto c, auto p) { c->fn(); };
 }
 
 int main(int argc, char** argv)

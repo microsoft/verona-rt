@@ -372,6 +372,11 @@ namespace verona::cpp
       ActualCown<T> *c = reinterpret_cast<ActualCown<T>*>(cown_ptr<T>::underlying_cown());
       return &c->value;
     }
+
+    cown_ptr<P> get_parent()
+    {
+      return parent;
+    }
   };
 
   /* A cown_ptr<const T> is used to mark that the cown is being accessed as
