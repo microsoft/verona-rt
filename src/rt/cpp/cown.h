@@ -350,8 +350,9 @@ namespace verona::cpp
     friend class When;
   };
 
+  // Should i have public inheritance here?
   template<typename T, typename P>
-  class nested_cown_ptr : cown_ptr<T>
+  class nested_cown_ptr : public cown_ptr<T>
   {
     cown_ptr<P> parent;
     public:

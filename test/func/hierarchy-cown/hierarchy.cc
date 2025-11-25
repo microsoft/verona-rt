@@ -79,7 +79,7 @@ void test_body()
 
   auto nccown1 = make_nested_cown<Child, Parent>(pcown, 1);
   nccown1.foo();
-  //when(nccown1) << [=](auto c) { c->fn(); };
+  when(nccown1) << [=](auto c) { c->fn(); };
 }
 
 int main(int argc, char** argv)
