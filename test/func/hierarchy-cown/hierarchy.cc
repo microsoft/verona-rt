@@ -27,10 +27,17 @@ public:
 class Parent
 {
   std::vector<cown_ptr<Child>> children;
+  std::vector<nested_cown_ptr<Child, Parent>> nested_children;
+
 public:
   void add_child(cown_ptr<Child> c)
   {
     children.push_back(c);
+  }
+
+  void add_nested_child(nested_cown_ptr<Child, Parent> c)
+  {
+    nested_children.push_back(c);
   }
 
   ~Parent()
@@ -38,14 +45,12 @@ public:
     Logging::cout() << "Parent destroyed" << Logging::endl;
   }
 
-  void access_children_directly()
+  void access_nested_children(acquired_cown<Parent> &ac)
   {
-    // TBD
-    // I should be able to do
-    // children[0].fn();
-    // children[1].fn();
-    // how does it look like?
-    // Is there a nested_cown_ptr?
+    Child *c1 = nested_children[0].get_object_if_parent(ac);
+    assert(c1 != nullptr);
+
+    c1->fn();
   }
 
   void access_children()
@@ -56,30 +61,45 @@ public:
   }
 };
 
-using namespace verona::cpp;
 
 void test_body()
 {
   Logging::cout() << "test_body()" << Logging::endl;
 
   auto pcown = make_cown<Parent>();
+#if 0
   auto ccown1 = make_cown<Child>(1);
   auto ccown2 = make_cown<Child>(2);
 
   when(pcown) << [=](auto p) { p->add_child(ccown1); };
   when(pcown) << [=](auto p) { p->add_child(ccown2); };
 
-  // I shouldn't be able to do that directly
+  when(pcown) << [=](auto p) { p->access_children(); };
+
+  // I shouldn't be able to do that to the nested children though
   when(ccown1) << [=](auto c) { c->fn(); };
   when(ccown2) << [=](auto c) { c->fn(); };
 
   // Or it should be transformed to something like that under the hood
   when(ccown1, read(pcown)) << [=](auto c, auto p) { c->fn(); };
   when(ccown2, read(pcown)) << [=](auto c, auto p) { c->fn(); };
+#endif
 
-  auto nccown1 = make_nested_cown<Child, Parent>(pcown, 1);
-  nccown1.foo();
-  when(nccown1) << [=](auto c) { c->fn(); };
+  auto nccown1 = make_nested_cown<Child, Parent>(pcown, 42);
+  when(pcown) << [=](auto p) { p->add_nested_child(nccown1); };
+
+  when(pcown) << [=](auto p) { p->access_nested_children(p); };
+
+  auto pcown2 = make_cown<Parent>();
+  // The next should fail
+  when(pcown2) << [=](auto p) mutable {
+    Child *c = nccown1.get_object_if_parent(p);
+    assert(c != nullptr);
+    c->fn();
+  };
+
+  // This needs fixing
+  // when(nccown1) << [=](auto c) { c->fn(); };
 }
 
 int main(int argc, char** argv)
