@@ -72,13 +72,13 @@ namespace verona::rt::heap
 
   inline void* calloc(size_t size)
   {
-    return snmalloc::alloc<snmalloc::YesZero>(size);
+    return snmalloc::alloc<snmalloc::Zero>(size);
   }
 
   template<size_t size>
   inline void* calloc()
   {
-    return snmalloc::alloc<size, snmalloc::YesZero>();
+    return snmalloc::alloc<size, snmalloc::Zero>();
   }
 
   inline void dealloc(void* ptr)
