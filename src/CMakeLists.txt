@@ -23,4 +23,7 @@ set(SNMALLOC_BUILD_TESTING OFF)
 # Don't add any of the targets to `all`.
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
+clangformat_targets(
+  INCLUDE_PATTERNS *.h *.cc
+)
 add_subdirectory(rt)

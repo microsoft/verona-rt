@@ -4,15 +4,11 @@ project(verona-rt-all CXX)
 
 add_subdirectory(src)
 
-# To build with just the header library target define SNMALLOC_ONLY_HEADER_LIBRARY
+# To build with just the header library target define VERONA_RT_ONLY_HEADER_LIBRARY
 # in containing Cmake file.
 if(NOT DEFINED VERONA_RT_ONLY_HEADER_LIBRARY)
   enable_testing()
   add_subdirectory(test)
-
-  # ## Clang-format target
-  include(cmake/clangformat.cmake)
-  clangformat_targets()
 
   ## Check copyright/license target
   include(cmake/copyright.cmake)
