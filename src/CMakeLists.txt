@@ -23,7 +23,9 @@ set(SNMALLOC_BUILD_TESTING OFF)
 # Don't add any of the targets to `all`.
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
-clangformat_targets(
-  INCLUDE_PATTERNS *.h *.cc
-)
+if(NOT DEFINED VERONA_RT_ONLY_HEADER_LIBRARY)
+  clangformat_targets(
+    INCLUDE_PATTERNS *.h *.cc
+  )
+endif()
 add_subdirectory(rt)

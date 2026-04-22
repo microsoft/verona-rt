@@ -255,7 +255,7 @@ namespace verona::rt
 
     Work* steal()
     {
-      uint64_t tsc = Aal::tick();
+      uint64_t tsc = DefaultPal::tick();
       Work* work;
 
       while (running)
@@ -292,7 +292,7 @@ namespace verona::rt
         }
 #else
         // Wait until a minimum timeout has passed.
-        uint64_t tsc2 = Aal::tick();
+        uint64_t tsc2 = DefaultPal::tick();
         if ((tsc2 - tsc) < TSC_QUIESCENCE_TIMEOUT)
         {
           Aal::pause();
