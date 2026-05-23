@@ -257,3 +257,19 @@ foreach(SEED RANGE 1 2)
   add_test(${TESTNAME} ${TESTRUNNER} perf-sys-hashtable --cores ${CORES} --seed ${SEEDLOWER} --seed_count 10)
 endforeach()
 endforeach()
+
+# Regression test for the cascade-walker WaitStatus race in
+# BehaviourCore::release()'s WakeupReaderChain. Sweep over chain shapes
+# (number of readers, trailing-writer on/off) and core counts so that
+# each combination has many opportunities to exercise the race window
+# between R1.StartEnqueue and R1.FinishEnqueue.
+foreach(CORES 2 3 4)
+foreach(READERS 1 2 3)
+  foreach(TRAILING "" "--no_trailing_writer")
+    foreach(SEED RANGE 1 ${TOP_SEED})
+      SET (TESTNAME "runtime/func-sys-readonly_cascade_${CORES}_${READERS}${TRAILING}_${SEED}")
+      add_test(${TESTNAME} ${TESTRUNNER} func-sys-readonly_cascade --cores ${CORES} --seed_count ${CHUNK} --chains 4 --readers ${READERS} ${TRAILING})
+    endforeach()
+  endforeach()
+endforeach()
+endforeach()
