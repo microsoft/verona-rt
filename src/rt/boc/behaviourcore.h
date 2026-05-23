@@ -1367,6 +1367,22 @@ namespace verona::rt
     size_t count = 0;
     while (true)
     {
+      // Spin while curr_slot's FinishEnqueue (set_ready /
+      // set_read_available_uncontended) has not yet run. Without this
+      // spin, observing STATUS_WAIT (0x0) would cause
+      // is_next_slot_read_only() below to return false (low bit unset),
+      // misclassifying the slot as having a writer successor and
+      // leaving cown.next_writer permanently null --- a silent
+      // deadlock in release builds. The C# port in
+      // docs/internal/concurrency/modelimpl-readonly/When.cs:802
+      // performs the same spin.
+      while (curr_slot->is_wait_2pl())
+      {
+        Systematic::yield_until(
+          [curr_slot]() { return !curr_slot->is_wait_2pl(); });
+        Aal::pause();
+      }
+
       auto status = curr_slot->set_read_available_contended();
       if (status)
       {
