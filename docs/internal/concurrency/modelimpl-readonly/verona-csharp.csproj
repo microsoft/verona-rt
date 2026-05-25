@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <RootNamespace>verona_csharp</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Share helpers with the paper model in ../modelimpl/. These files are
+    self-contained (no dependency on When.cs) and identical between the two
+    models, so we link them rather than duplicate them.
+  -->
+  <ItemGroup>
+    <Compile Include="..\modelimpl\StableOrder.cs" Link="StableOrder.cs" />
+    <Compile Include="..\modelimpl\Terminator.cs" Link="Terminator.cs" />
+  </ItemGroup>
+
+</Project>
+

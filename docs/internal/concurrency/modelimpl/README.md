@@ -10,3 +10,12 @@ This means it can focus on the aspects unique to Behaviour Oriented Concurrency.
 The C++ implementation avoids allocations by consolidating multiple objects into a single allocation.
 This improves efficiency but is less readable.
 This is not possible in the .NET implementation as interior pointers cannot be used on the heap.
+
+## See also
+
+For the extension to **read-only cowns**, see the sibling
+[`../modelimpl-readonly/`](../modelimpl-readonly) directory — its README
+contains both the protocol explainer (state machine, 2PL with read mode,
+worked examples, porting notes) and the executable C# port. The model in
+this directory is the recommended starting point; the read-only model
+builds directly on top of it.

@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+// A simplified C# model of this protocol (no atomic multi-schedule, no
+// reference counting) lives at docs/internal/concurrency/modelimpl-readonly/.
+// See docs/internal/concurrency/modelimpl-readonly/CPP_MAPPING.md for the
+// type/method correspondence and README.md there for the protocol explainer.
+
 #include "../ds/stackarray.h"
 #include "../object/object.h"
 #include "cown.h"

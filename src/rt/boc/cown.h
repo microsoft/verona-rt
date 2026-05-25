@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+// `ReadRefCount` and the read/write state on `Cown` below are modelled in C#
+// at docs/internal/concurrency/modelimpl-readonly/. See CPP_MAPPING.md there
+// for the type/method correspondence.
+
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/forward_list.h"
