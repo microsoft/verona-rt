@@ -255,6 +255,7 @@ namespace verona::rt
 
     Work* steal()
     {
+      core->stats.steal_attempt();
       uint64_t tsc = DefaultPal::tick();
       Work* work;
 

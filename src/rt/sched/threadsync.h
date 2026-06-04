@@ -4,6 +4,7 @@
 #pragma once
 #include "../pal/semaphore.h"
 #include "debug/logging.h"
+#include "schedulerstats.h"
 
 /**
  * This file contains the synchronisation implementation for suspending
@@ -122,6 +123,7 @@ namespace verona::rt
         while (curr != nullptr)
         {
           auto next = curr->next;
+          SchedulerStats::record_wake();
           curr->sem.wake();
           curr = next;
         }
@@ -170,6 +172,7 @@ namespace verona::rt
         sync.unlock();
 
         Logging::cout() << "Sleep" << Logging::endl;
+        SchedulerStats::record_sleep();
         thread->local_sync.sem.sleep();
         Logging::cout() << "Awake!" << Logging::endl;
 
