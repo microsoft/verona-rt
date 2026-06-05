@@ -15,6 +15,39 @@ namespace verona::rt
    * for Shared objects in the verona runtime.
    * This is extended to give other forms of Shared objects, such as Cowns.
    * [TODO A Notify as another subclass of Shared]
+   *
+   * --- Atomic ordering invariant ---
+   *
+   * Reference-count operations follow the classic shared_ptr pattern:
+   *
+   *   - acquire (incref / weak_acquire): relaxed fetch_add.  The caller
+   *     already holds a reference, so they already have whatever data HB
+   *     they need; the count itself does not need to acquire anything.
+   *
+   *   - release (decref / decref_shared / weak_release): release fetch_sub.
+   *     This publishes any writes the calling thread made to the object
+   *     body through its reference, so the eventual destroyer sees them.
+   *
+   *   - last-decrementer: acquires all the releases.  For the strong count
+   *     this is the compare_exchange_strong to FINISHED_RC in
+   *     Object::decref_shared (acquire).  For Object::decref it is an
+   *     explicit acquire fence.  For weak_release it is also an explicit
+   *     acquire fence.
+   *
+   * Most data writes to a cown body happen under the slot/behaviour 2PL
+   * protocol (see boc/behaviourcore.h::Slot, Cown::last_slot) which already
+   * provides release/acquire ordering between successive behaviours.  The
+   * release on the refcount is the defensive edge that covers the
+   * destruction path itself.
+   *
+   * Exception: acquire_strong_from_weak uses release (not relaxed) on its
+   * fetch_add to rc so that decref_shared's CAS failure path (acquire)
+   * can see the promoter's preceding weak_acquire.  See object.h for the
+   * cross-variable synchronisation argument.
+   *
+   * See "Wait-free weak reference counting" (doi:10.1145/3591195.3595271)
+   * for the formal argument for the two-phase strong-count close.
+   * https://dl.acm.org/doi/10.1145/3591195.3595271
    */
 
   class Shared : public Object
@@ -76,8 +109,14 @@ namespace verona::rt
     void weak_release()
     {
       Logging::cout() << "Cown " << this << " weak release" << Logging::endl;
-      if (weak_count.fetch_sub(1) == 1)
+      // Release: publish any writes through this weak ref to the eventual
+      // deallocator.
+      if (weak_count.fetch_sub(1, std::memory_order_release) == 1)
       {
+        // Last decrementer: acquire all the releases from the other
+        // weak_release calls on this object before calling dealloc().
+        std::atomic_thread_fence(std::memory_order_acquire);
+
         yield();
 
         Logging::cout() << "Cown " << this << " no references left."
@@ -89,8 +128,14 @@ namespace verona::rt
     void weak_acquire()
     {
       Logging::cout() << "Cown " << this << " weak acquire" << Logging::endl;
-      assert(weak_count > 0);
-      weak_count++;
+      assert(weak_count.load(std::memory_order_relaxed) > 0);
+      // Relaxed: pure arithmetic.  The caller already holds a live ref.
+      // In the promotion path (acquire_strong_from_weak), this runs
+      // *after* rc.fetch_add(release).  The rc release does not publish
+      // this later increment, but safety is structural: the promoter's
+      // pre-existing weak ref keeps weak_count >= 1, so a racing
+      // decref_shared weak_release cannot drive it to zero.
+      weak_count.fetch_add(1, std::memory_order_relaxed);
     }
 
     /**
