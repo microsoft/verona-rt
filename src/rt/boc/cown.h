@@ -98,7 +98,7 @@ namespace verona::rt
 
       assert(old == 3);
       Systematic::yield();
-      assert(count.load() == 1);
+      assert(count.load(std::memory_order_relaxed) == 1);
       count.store(0, std::memory_order_relaxed);
       return LAST_READER_WAITING_WRITER;
     }
@@ -116,24 +116,26 @@ namespace verona::rt
       if (count.load(std::memory_order_acquire) == 0)
         return true;
 
-      assert(count.load() % 2 == 0);
+      assert(count.load(std::memory_order_relaxed) % 2 == 0);
 
-      // Mark a pending write
-      if (count.fetch_add(1) != 0)
+      // Mark a pending write.  acq_rel: acquire pairs with add_read's
+      // release (we observe readers that registered before us); release
+      // so a racing release_read's acquire fetch_sub observes our bit.
+      if (count.fetch_add(1, std::memory_order_acq_rel) != 0)
         return false;
 
       // if in the time between reading and writing the ref count, it
       // became zero, we can now process the write, so clear the flag
       // and continue
-      count.store(0, std::memory_order_release);
+      count.store(0, std::memory_order_relaxed);
       Systematic::yield();
-      assert(count.load() == 0);
+      assert(count.load(std::memory_order_relaxed) == 0);
       return true;
     }
 
     size_t get_count()
     {
-      return count.load(std::memory_order_acquire);
+      return count.load(std::memory_order_relaxed);
     }
   };
 

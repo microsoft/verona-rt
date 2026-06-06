@@ -124,21 +124,32 @@ namespace verona::rt
     }
 
     /**
-     * Returns true if the next slot wants to acquire in read mode
+     * Returns true if the next slot wants to acquire in read mode.
      */
     bool is_next_slot_read_only()
     {
-      assert(status > STATUS_CHAIN_CLOSED);
-      return ((status.load(std::memory_order_acquire) & STATUS_READ_FLAG) != 0);
+      assert(status.load(std::memory_order_relaxed) > STATUS_CHAIN_CLOSED);
+      // Relaxed: this is a discriminator that selects between
+      // next_slot() (reader chain) and next_behaviour() (writer link).
+      // Both of those load the same word with acquire to extract the
+      // pointer they dereference, so the HB edge is taken there.
+      return ((status.load(std::memory_order_relaxed) & STATUS_READ_FLAG) != 0);
     }
 
     /**
      * Returns true if all the slots in a behaviour haven't finished their
-     * acquire phase
+     * acquire phase.
      */
     bool is_wait_2pl()
     {
-      return (status.load(std::memory_order_acquire)) == STATUS_WAIT;
+      // Relaxed: every caller is either an assertion (correctness
+      // documentation, not synchronisation) or a spin loop whose exit is
+      // followed by another atomic op on the same word that re-loads with
+      // acquire (an acq_rel CAS in set_next_slot_*_contended /
+      // set_read_available_contended, or set_read_available_contended's
+      // acquire-on-success).  Visibility of the value change is guaranteed
+      // by atomicity; HB ordering is established at the subsequent op.
+      return (status.load(std::memory_order_relaxed)) == STATUS_WAIT;
     }
 
     /**
@@ -161,11 +172,19 @@ namespace verona::rt
       Logging::cout() << "set_read_available_contended " << *this
                       << Logging::endl;
       assert(is_read_only());
-      assert(status != STATUS_WAIT);
-      assert(status != STATUS_READAVAILABLE);
+      assert(status.load(std::memory_order_relaxed) != STATUS_WAIT);
+      assert(status.load(std::memory_order_relaxed) != STATUS_READAVAILABLE);
       uintptr_t old_status = STATUS_READY;
-      return (status.load(std::memory_order_acquire) == old_status) &&
-        status.compare_exchange_strong(old_status, STATUS_READAVAILABLE);
+      // Early-out load is relaxed; on short-circuit we fall through to
+      // next_slot() which acquires.  CAS: acq_rel on success (release
+      // publishes READAVAILABLE, acquire pairs with set_ready's release),
+      // relaxed on failure (same fall-through to next_slot's acquire).
+      return (status.load(std::memory_order_relaxed) == old_status) &&
+        status.compare_exchange_strong(
+          old_status,
+          STATUS_READAVAILABLE,
+          std::memory_order_acq_rel,
+          std::memory_order_relaxed);
     }
 
     /**
@@ -176,9 +195,10 @@ namespace verona::rt
     {
       yield();
       Logging::cout() << "set_read_available " << this << " status "
-                      << (void*)status.load() << Logging::endl;
+                      << (void*)status.load(std::memory_order_relaxed)
+                      << Logging::endl;
       assert(is_read_only());
-      assert(status == STATUS_WAIT);
+      assert(status.load(std::memory_order_relaxed) == STATUS_WAIT);
       status.store(STATUS_READAVAILABLE, std::memory_order_release);
     }
 
@@ -216,7 +236,14 @@ namespace verona::rt
      */
     bool no_successor_response()
     {
-      return (status.load(std::memory_order_acquire)) < STATUS_CHAIN_CLOSED;
+      // Relaxed: every caller is either the gate before a
+      // release/relaxed CAS on last_slot (release()'s no-successor fast
+      // path; on success the release publishes our writes to a future
+      // chain_acquire exchange, and on failure we spin here), or the
+      // spin itself, whose exit is followed by another acquire-load (e.g.
+      // next_behaviour() / next_slot() extracting the successor pointer
+      // we dereference).
+      return (status.load(std::memory_order_relaxed)) < STATUS_CHAIN_CLOSED;
     }
 
     /**
@@ -226,12 +253,15 @@ namespace verona::rt
     void set_next_slot_reader_uncontended(Slot* n)
     {
       Logging::cout() << "set_next_slot_reader_uncontended " << this
-                      << " status " << (void*)status.load() << Logging::endl;
+                      << " status "
+                      << (void*)status.load(std::memory_order_relaxed)
+                      << Logging::endl;
       // Should only be called when neither the read-available nor reader bit
       // have been set.
-      assert(status == STATUS_WAIT);
+      assert(status.load(std::memory_order_relaxed) == STATUS_WAIT);
 
-      status = ((uintptr_t)n) | (STATUS_READ_FLAG);
+      status.store(
+        ((uintptr_t)n) | STATUS_READ_FLAG, std::memory_order_release);
     }
 
     /**
@@ -241,7 +271,8 @@ namespace verona::rt
     [[nodiscard]] bool set_next_slot_reader_contended(Slot* n)
     {
       Logging::cout() << "set_next_slot_reader_contended " << this << " status "
-                      << (void*)status.load() << Logging::endl;
+                      << (void*)status.load(std::memory_order_relaxed)
+                      << Logging::endl;
       // Should only be called when neither the read-available nor reader bit
       // have been set.
       assert(((uintptr_t)n & ~STATUS_NEXT_SLOT_MASK) == 0);
@@ -251,9 +282,16 @@ namespace verona::rt
       uintptr_t new_status = ((uintptr_t)n) | (STATUS_READ_FLAG);
       uintptr_t old_status = STATUS_READY;
 
-      bool success = (status.load() == old_status) &&
+      // Early-out load is relaxed; on short-circuit the failure path
+      // (STATUS_CHAIN_CLOSED store) needs no acquire.  CAS: acq_rel on
+      // success (release publishes successor link, acquire pairs with
+      // set_ready's release), relaxed on failure (same fall-through).
+      bool success = (status.load(std::memory_order_relaxed) == old_status) &&
         status.compare_exchange_strong(
-          old_status, new_status, std::memory_order_acq_rel);
+          old_status,
+          new_status,
+          std::memory_order_acq_rel,
+          std::memory_order_relaxed);
 
       Logging::cout() << *this << Logging::endl;
 
@@ -264,7 +302,7 @@ namespace verona::rt
       else
       {
         Logging::cout() << "set_next_slot_reader failed" << Logging::endl;
-        status = STATUS_CHAIN_CLOSED;
+        status.store(STATUS_CHAIN_CLOSED, std::memory_order_release);
       }
 
       return success;
@@ -288,12 +326,14 @@ namespace verona::rt
     void set_next_slot_writer_uncontended(BehaviourCore* b)
     {
       Logging::cout() << "set_next_slot_writer_uncontended " << this
-                      << " status " << (void*)status.load() << Logging::endl;
+                      << " status "
+                      << (void*)status.load(std::memory_order_relaxed)
+                      << Logging::endl;
       // Requires that neither the READONLY or read-available bits are set.
       assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
-      assert(status == STATUS_WAIT);
+      assert(status.load(std::memory_order_relaxed) == STATUS_WAIT);
 
-      status = (uintptr_t)b;
+      status.store((uintptr_t)b, std::memory_order_release);
     }
 
     /**
@@ -305,7 +345,8 @@ namespace verona::rt
     [[nodiscard]] bool set_next_slot_writer_contended(BehaviourCore* b)
     {
       Logging::cout() << "set_next_slot_writer_contended " << this << " status "
-                      << (void*)status.load() << Logging::endl;
+                      << (void*)status.load(std::memory_order_relaxed)
+                      << Logging::endl;
       // Requires that neither the READONLY or read-available bits are set.
       assert(((uintptr_t)b & ~STATUS_NEXT_SLOT_MASK) == 0);
 
@@ -313,14 +354,21 @@ namespace verona::rt
       // here.
       if (!is_read_only())
       {
-        status = (uintptr_t)b;
+        status.store((uintptr_t)b, std::memory_order_release);
         return true;
       }
 
       uintptr_t old_value = STATUS_READY;
-      auto success = (status.load(std::memory_order_acquire) == old_value) &&
+      // Early-out load is relaxed; on short-circuit the failure path
+      // (STATUS_CHAIN_CLOSED store) needs no acquire.  CAS: acq_rel on
+      // success (release publishes successor link, acquire pairs with
+      // set_ready's release), relaxed on failure (same fall-through).
+      auto success = (status.load(std::memory_order_relaxed) == old_value) &&
         status.compare_exchange_strong(
-          old_value, (uintptr_t)b, std::memory_order_acq_rel);
+          old_value,
+          (uintptr_t)b,
+          std::memory_order_acq_rel,
+          std::memory_order_relaxed);
 
       if (success)
       {
@@ -329,7 +377,7 @@ namespace verona::rt
       else
       {
         Logging::cout() << "set_next_slot_writer failed" << Logging::endl;
-        status = STATUS_CHAIN_CLOSED;
+        status.store(STATUS_CHAIN_CLOSED, std::memory_order_release);
       }
       return success;
     }
@@ -365,7 +413,8 @@ namespace verona::rt
       os << "-  Is_reader bit: " << ((s._cown & COWN_READER_FLAG) != 0)
          << Logging::endl;
 
-      os << "-  status: " << (void*)(s.status.load()) << Logging::endl;
+      os << "-  status: " << (void*)(s.status.load(std::memory_order_relaxed))
+         << Logging::endl;
 
       return os;
     }
@@ -376,8 +425,12 @@ namespace verona::rt
       // Check that the last two bits are zero
       assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
       _cown = (uintptr_t)__cown;
+      // Relaxed: the slot is private memory until the producer publishes
+      // it via cown->last_slot.exchange(this, acq_rel) in chain_acquire.
+      // That exchange acts as a release for every prior write by this
+      // thread, including this initial status.
       status.store(
-        ready ? STATUS_READY : STATUS_WAIT, std::memory_order_release);
+        ready ? STATUS_READY : STATUS_WAIT, std::memory_order_relaxed);
       behaviour = nullptr;
 
       Logging::cout() << "Slot created " << *this << Logging::endl;
@@ -424,7 +477,9 @@ namespace verona::rt
      */
     void reset_status()
     {
-      status.store(STATUS_WAIT, std::memory_order_release);
+      // Relaxed: the slot is still private until chain_acquire's
+      // cown->last_slot.exchange(this, acq_rel) publishes it.
+      status.store(STATUS_WAIT, std::memory_order_relaxed);
     }
 
     /**
@@ -432,7 +487,10 @@ namespace verona::rt
      */
     void reset()
     {
-      status.store(STATUS_WAIT, std::memory_order_release);
+      // Relaxed: same reasoning as reset_status; the next user of this
+      // slot must again call chain_acquire's publishing exchange before
+      // any other thread can observe it.
+      status.store(STATUS_WAIT, std::memory_order_relaxed);
     }
 
     /**
@@ -488,7 +546,7 @@ namespace verona::rt
     {
       return os << " Behaviour: " << &b << " Cowns: " << b.count
                 << " Pending dependencies: "
-                << b.exec_count_down.load(std::memory_order_acquire) << " ";
+                << b.exec_count_down.load(std::memory_order_relaxed) << " ";
     }
 
     Work* as_work()
@@ -506,10 +564,27 @@ namespace verona::rt
                       << *this << Logging::endl;
       // Note that we don't actually perform the last decrement as it is not
       // required.
+      //
+      // Classic last-decrementer pattern:
+      //   - Early-out load: relaxed.  Cheap probe; the fence below covers
+      //     synchronisation when this thread takes the scheduling path.
+      //   - fetch_sub: release.  Publishes this thread's set_ready /
+      //     slot.behaviour pointer / handoff writes so the eventual
+      //     scheduler can see them.
+      //   - On the scheduling path (we are the last decrementer): an
+      //     atomic_thread_fence(acquire) synchronises with the release
+      //     sequence headed by every other resolve()'s fetch_sub, so the
+      //     scheduler observes the union of all set_ready writes before
+      //     the body runs.
+      //
+      // This keeps the hot path (non-last decrement) to a single LDADD on
+      // aarch64 with no DMB ISH, paying the acquire fence only on the one
+      // thread that actually schedules.
       if (
-        (exec_count_down.load(std::memory_order_acquire) == n) ||
-        (exec_count_down.fetch_sub(n) == n))
+        (exec_count_down.load(std::memory_order_relaxed) == n) ||
+        (exec_count_down.fetch_sub(n, std::memory_order_release) == n))
       {
+        std::atomic_thread_fence(std::memory_order_acquire);
         Logging::cout() << "Scheduling Behaviour " << *this << Logging::endl;
         Scheduler::schedule(as_work(), fifo);
       }
@@ -747,7 +822,9 @@ namespace verona::rt
             Logging::cout() << " Writer waiting for previous readers cown "
                             << *chain_first_slot << Logging::endl;
             yield();
-            cown->next_writer = first_body;
+            // Release: publish the writer body to the eventual reader that
+            // runs wakeup_next_writer (which loads with acquire).
+            cown->next_writer.store(first_body, std::memory_order_release);
           }
 
           return;
@@ -759,7 +836,8 @@ namespace verona::rt
           // There should definitely be at least one reader in the chain.
           assert(!result);
           snmalloc::UNUSED(result);
-          cown->next_writer = first_writer;
+          // Release: pairs with the acquire load in wakeup_next_writer.
+          cown->next_writer.store(first_writer, std::memory_order_release);
         }
       }
 
@@ -1381,27 +1459,40 @@ namespace verona::rt
     }
   };
 
+  /**
+   * Wake up the writer waiting behind a reader chain.
+   */
   inline void Slot::wakeup_next_writer()
   {
-    auto w = cown()->next_writer.load();
+    // Acquire: pairs with the release store that installed the writer
+    // pointer.  If non-null, we have the HB edge we need before
+    // dereferencing w.
+    auto w = cown()->next_writer.load(std::memory_order_acquire);
 
     if (w == nullptr)
     {
-      while (cown()->next_writer.load() == nullptr)
+      // Spin relaxed: value changes are visible by atomicity; we never
+      // dereference the result of these loads.
+      while (cown()->next_writer.load(std::memory_order_relaxed) == nullptr)
       {
-        Systematic::yield_until(
-          [this]() { return cown()->next_writer.load() != nullptr; });
+        Systematic::yield_until([this]() {
+          return cown()->next_writer.load(std::memory_order_relaxed) != nullptr;
+        });
         Aal::pause();
       }
 
-      w = cown()->next_writer.load();
+      // Re-acquire after spin: this is the load whose result we dereference.
+      w = cown()->next_writer.load(std::memory_order_acquire);
     }
 
     Logging::cout() << *this << " Last Reader waking up next writer " << *w
                     << Logging::endl;
 
     yield();
-    cown()->next_writer = nullptr;
+    // Relaxed: the release to the resolved writer is provided by
+    // w->resolve() -> Scheduler::schedule -> MPMCQ.enqueue, not by
+    // this store.
+    cown()->next_writer.store(nullptr, std::memory_order_relaxed);
     w->resolve();
   }
 
@@ -1449,8 +1540,29 @@ namespace verona::rt
     {
       Logging::cout() << "No successor, so releasing the cown" << Logging::endl;
       auto slot_addr = this;
+      // CAS to remove ourselves from the tail of the MCS queue.
+      //
+      // Ordering:
+      //   - On success: release.  A future scheduler arriving at this
+      //     cown will do last_slot.exchange(other, acq_rel) in
+      //     chain_acquire and observe the nullptr we just stored.
+      //     Because that scheduler then sets had_no_predecessor and
+      //     runs its behaviour body *without* waiting on any
+      //     predecessor slot, the only synchronizes-with edge that
+      //     publishes our (now-completed) behaviour's writes to the
+      //     cown's user data is this release paired with the acquire
+      //     half of that exchange.
+      //   - On failure: relaxed.  A successor has appended itself.
+      //     We spin on status (no_successor_response, relaxed); when
+      //     it flips, next_behaviour()/next_slot() re-loads with
+      //     acquire, pairing with the successor's release write into
+      //     status.  That acquire is the HB edge we need before
+      //     dereferencing the successor pointer.
       if (cown()->last_slot.compare_exchange_strong(
-            slot_addr, nullptr, std::memory_order_acq_rel))
+            slot_addr,
+            nullptr,
+            std::memory_order_release,
+            std::memory_order_relaxed))
       {
         yield();
 
@@ -1565,7 +1677,9 @@ namespace verona::rt
       assert(!result);
       snmalloc::UNUSED(result);
       yield();
-      cown()->next_writer = curr_slot->next_behaviour();
+      // Release: pairs with the acquire load in wakeup_next_writer.
+      cown()->next_writer.store(
+        curr_slot->next_behaviour(), std::memory_order_release);
       yield();
     }
 
