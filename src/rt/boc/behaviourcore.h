@@ -233,16 +233,16 @@ namespace verona::rt
 
     /**
      * Returns true if this slot has not been updated by the sucessor.
+     *
+     * Load is relaxed: every caller is either the gate before an acq_rel
+     * CAS on last_slot (release()'s no-successor fast path; the CAS gives
+     * the acquire on success and the spin re-loads on failure), or the
+     * spin itself, whose exit is followed by another acquire-load (e.g.
+     * next_behaviour() / next_slot() extracting the successor pointer
+     * we dereference).
      */
     bool no_successor_response()
     {
-      // Relaxed: every caller is either the gate before a
-      // release/relaxed CAS on last_slot (release()'s no-successor fast
-      // path; on success the release publishes our writes to a future
-      // chain_acquire exchange, and on failure we spin here), or the
-      // spin itself, whose exit is followed by another acquire-load (e.g.
-      // next_behaviour() / next_slot() extracting the successor pointer
-      // we dereference).
       return (status.load(std::memory_order_relaxed)) < STATUS_CHAIN_CLOSED;
     }
 
