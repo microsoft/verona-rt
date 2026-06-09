@@ -1351,9 +1351,12 @@ namespace verona::rt
     }
 
     // Final case, we are a writer and waking up at least one reader.
-
+    //
+    // `first_reader` is normally true (count==0), but a delayed `try_write`
+    // from another chain can set the low bit at any point (see
+    // ReadRefCount::add_read), in which case we observe first_reader=false.
+    // Either way is benign: our chain's last reader will clear the bit.
     bool first_reader = cown()->read_ref_count.add_read();
-    assert(first_reader);
     snmalloc::UNUSED(first_reader);
 
     yield();

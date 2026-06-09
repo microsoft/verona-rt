@@ -65,11 +65,24 @@ namespace verona::rt
     std::atomic<size_t> count{0};
 
   public:
-    // true means first reader is added, false otherwise
+    /**
+     * Add `readers` to the count. Returns true iff this is the first reader.
+     *
+     * The low bit may be set on entry by a delayed `try_write` from another
+     * chain; the fetch_add preserves the encoding (it adds an even number)
+     * and the bit is cleared by the last reader's `release_read`.
+     */
     bool add_read(size_t readers = 1)
     {
-      // Once a writer is waiting, no new readers can be added.
-      assert(count % 2 == 0);
+      // `count == 1` means a writer has claimed the cown and no readers
+      // are present.  An add_read here would race with one of two transient
+      // count==1 windows --- try_write's success path between fetch_add(1)
+      // and store(0), or release_read's LAST_READER_WAITING_WRITER path
+      // between fetch_sub(2)=3 and store(0) --- and the subsequent store(0)
+      // would silently clobber our readers.  This invariant is the dual of
+      // the `assert(count == 1)` in release_read (~cown.h:88): together
+      // they detect either side of the race.
+      assert(count.load(std::memory_order_relaxed) != 1);
       return count.fetch_add(readers * 2, std::memory_order_release) == 0;
     }
 
