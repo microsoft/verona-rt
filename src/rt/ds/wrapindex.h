@@ -11,7 +11,7 @@ class WrapIndex
   size_t index;
 
 public:
-  WrapIndex() : index(0) {}
+  WrapIndex(size_t initial = 0) : index(initial % N) {}
 
   // Returns the next index and wraps around.
   size_t operator++()
