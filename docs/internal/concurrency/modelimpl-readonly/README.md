@@ -125,29 +125,37 @@ The six states:
                          StartEnqueue
                               v
                           +--------+
-                          |  Wait  |   (writers spin here; readers may close)
+                          |  Wait  |   (successors spin past this state)
                           +--------+
                               |
-                              |  FinishEnqueue   /  reader contended set
+                              |  FinishEnqueue (self, plain store)
               +---------------+---------------+
               |                               |
-              v                               v
-         +---------+                 +-----------------+
-         |  Ready  |---(writer)----->|   NextWriter(b) |
-         +---------+   contended     +-----------------+
-              |
-              |  reader contended
-              v
-         +-----------------+    successor reader joins      +-------------+
-         | ReadAvailable   |-------------------------------> | ChainClosed |
-         +-----------------+    (sets self.NextReader)      +-------------+
-              |
-              |  writer cascade walker visits me
-              v
-         +-----------------+
-         |   NextReader(r) |     (writer just woke this chain)
-         +-----------------+
+              | non-head reader / writer      | head reader (predecessor
+              v                               v  was ReadAvailable)
+         +---------+    cascade walker   +-----------------+
+         |  Ready  |--(CAS, by writer  ->| ReadAvailable   |
+         |         |   releasing chain)  +-----------------+
+         +---------+                              |
+           |   |                                  | successor reader joins
+           |   |                                  | (plain store, after
+           |   |                                  v  CAS to Next* failed)
+           |   |                           +-------------+
+           |   |                           | ChainClosed |
+           |   |                           +-------------+
+           |   |
+           |   +-- successor reader (CAS) --> +---------------+
+           |                                  | NextReader(r) |
+           |                                  +---------------+
+           |
+           +------ successor writer (CAS) --> +---------------+
+                                              | NextWriter(b) |
+                                              +---------------+
 ```
+
+`Ready` is the only contended state: all three of its outgoing CAS
+transitions race against each other and against the cascade walker's
+CAS to `ReadAvailable`.
 
 Three actors write to a given slot's `status` after construction:
 
@@ -272,8 +280,9 @@ T6:  W's body finishes; W.Release() sees W.status = NextReader(R1).
 The crucial property: the cascade walker **does not skip past `Wait`**. It
 always spins until the request has transitioned out of `Wait`, because the
 state encodes *the successor link*, which is the only correct thing to walk.
-Treating `Wait` as "writer-successor by elimination" is exactly the bug
-that the H2 spin guards against (and that the C++ runtime fix in
+Treating `Wait` as "writer-successor by elimination" is exactly the
+cascade-walker `Wait` race that the spin guards against (and that the C++
+runtime fix in
 [`behaviourcore.h:159`](../../../../src/rt/boc/behaviourcore.h) addresses).
 
 ---
@@ -349,7 +358,10 @@ Three properties hold the design together:
   status is published in `FinishEnqueue`. Between those two steps the
   slot exists in the chain with `status == Wait`. The walker must not
   interpret `Wait` as "writer-successor by elimination" — that
-  mis-classification is the H2 bug.
+  mis-classification is the cascade-walker `Wait` race that this PR's
+  C++ fix addresses (and that the systematic test
+  [`test/func/readonly_cascade`](../../../../test/func/readonly_cascade/readonly_cascade.cc)
+  reproduces).
 - **Pre-register `AddRead(1)` before publishing `ReadAvailable`.** A
   writer arriving mid-cascade can chain-close on the terminator we just
   published. Without the up-front `AddRead(1)` that writer would see
@@ -482,7 +494,7 @@ production port should use a flat representation.
 
 ### Recommended encoding by language
 
-- **Rust (recommended)**: a flat 6-variant enum. Wait/Ready/ReadAvailable/
+- **Rust**: a flat 6-variant enum. Wait/Ready/ReadAvailable/
   ChainClosed are unit variants; NextReader and NextWriter carry a raw
   pointer (`*const Slot` / `*const Behaviour`). Wrap in `AtomicU64` (or
   `AtomicPtr` with low-bit tagging if you want a single-word repr — that
