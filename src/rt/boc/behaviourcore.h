@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+// A simplified C# model of this protocol (no atomic multi-schedule, no
+// reference counting) lives at docs/internal/concurrency/modelimpl-readonly/.
+// See docs/internal/concurrency/modelimpl-readonly/CPP_MAPPING.md for the
+// type/method correspondence and README.md there for the protocol explainer.
+
 #include "../ds/stackarray.h"
 #include "../object/object.h"
 #include "cown.h"
@@ -1346,9 +1351,12 @@ namespace verona::rt
     }
 
     // Final case, we are a writer and waking up at least one reader.
-
+    //
+    // `first_reader` is normally true (count==0), but a delayed `try_write`
+    // from another chain can set the low bit at any point (see
+    // ReadRefCount::add_read), in which case we observe first_reader=false.
+    // Either way is benign: our chain's last reader will clear the bit.
     bool first_reader = cown()->read_ref_count.add_read();
-    assert(first_reader);
     snmalloc::UNUSED(first_reader);
 
     yield();
@@ -1367,6 +1375,22 @@ namespace verona::rt
     size_t count = 0;
     while (true)
     {
+      // Spin while curr_slot's FinishEnqueue (set_ready /
+      // set_read_available_uncontended) has not yet run. Without this
+      // spin, observing STATUS_WAIT (0x0) would cause
+      // is_next_slot_read_only() below to return false (low bit unset),
+      // misclassifying the slot as having a writer successor and
+      // leaving cown.next_writer permanently null --- a silent
+      // deadlock in release builds. The C# port in
+      // docs/internal/concurrency/modelimpl-readonly/When.cs:802
+      // performs the same spin.
+      while (curr_slot->is_wait_2pl())
+      {
+        Systematic::yield_until(
+          [curr_slot]() { return !curr_slot->is_wait_2pl(); });
+        Aal::pause();
+      }
+
       auto status = curr_slot->set_read_available_contended();
       if (status)
       {
