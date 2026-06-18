@@ -295,7 +295,10 @@ namespace verona::rt
 
       // Work has become available, we shouldn't pause.
       if (check_for_work())
+      {
+        local()->get_stats().pause_aborted_check_for_work();
         return false;
+      }
 
       yield();
 
@@ -305,7 +308,10 @@ namespace verona::rt
         // An unpause has occurred since, we started to pause.
         if (
           local_unpause_epoch != unpause_epoch.load(std::memory_order_relaxed))
+        {
+          local()->get_stats().pause_aborted_race();
           return false;
+        }
 
         // Check if we should wait for other threads to generate more work.
         auto value = state.get_active_threads();
