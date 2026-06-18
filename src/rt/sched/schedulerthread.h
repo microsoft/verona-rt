@@ -11,6 +11,7 @@
 #include "schedulerstats.h"
 #include "threadpool.h"
 
+#include <algorithm>
 #include <snmalloc/snmalloc.h>
 
 namespace verona::rt
@@ -41,6 +42,31 @@ namespace verona::rt
     friend SchedulerList<SchedulerThread>;
 
     static constexpr uint64_t TSC_QUIESCENCE_TIMEOUT = 1'000'000;
+
+    // Adaptive back-off control for the steal loop.
+    //
+    // The steal loop spins on `Aal::pause()` while polling its own queue
+    // and stealing from victim queues. After `TSC_QUIESCENCE_TIMEOUT`
+    // nanoseconds without finding work, it enters the pause/sleep
+    // protocol. The check that decides whether the timeout has elapsed
+    // calls `DefaultPal::tick()`, which on platforms without a
+    // user-space cycle counter (e.g. Linux aarch64, where snmalloc's
+    // `Aal::tick()` falls back to `clock_gettime(CLOCK_MONOTONIC)`) is
+    // a syscall and dominates the cost of the back-off loop when many
+    // threads are stealing simultaneously.
+    //
+    // To amortise this, we sample the clock every `budget` iterations
+    // and adapt `budget` so that we end up sampling the clock roughly
+    // `STEAL_TICKS_PER_TIMEOUT` times across one full timeout window
+    // regardless of how fast the loop body is on the current platform.
+    static constexpr uint64_t STEAL_TICKS_PER_TIMEOUT = 10;
+    static constexpr uint64_t STEAL_TARGET_SLICE_NS =
+      TSC_QUIESCENCE_TIMEOUT / STEAL_TICKS_PER_TIMEOUT;
+    static constexpr uint64_t STEAL_INITIAL_BUDGET = 64;
+    // Upper bound on budget (iterations). Even on the fastest loop body
+    // (~1ns per iteration) we want at least one clock sample per target
+    // slice, so cap at STEAL_TARGET_SLICE_NS iterations.
+    static constexpr uint64_t STEAL_MAX_BUDGET = STEAL_TARGET_SLICE_NS;
 
     Core* core = nullptr;
 #ifdef USE_SYSTEMATIC_TESTING
@@ -256,50 +282,101 @@ namespace verona::rt
     Work* steal()
     {
       core->stats.steal_attempt();
-      uint64_t tsc = DefaultPal::tick();
       Work* work;
 
       while (running)
       {
-        yield();
+#ifndef USE_SYSTEMATIC_TESTING
+        // Timer state for this quiescence window.  Initialised lazily:
+        // tsc_start remains 0 until the first STEAL_INITIAL_BUDGET
+        // iterations elapse without finding work, avoiding the ~700ns
+        // tick() syscall on the common fast-steal path.
+        uint64_t tsc_start = 0;
+        uint64_t tsc_prev = 0;
+        uint64_t budget = STEAL_INITIAL_BUDGET;
+        uint64_t iters_until_check = budget;
+#endif
 
-        // Check if some other thread has pushed work on our queue.
-        work = core->q.dequeue();
-
-        if (work != nullptr)
-          return work;
-
-        // Try to steal from the victim thread.
-        work = core->q.steal(victim->q);
-
-        if (work != nullptr)
-        {
-          core->stats.steal();
-          Logging::cout() << "Stole work " << work << " from "
-                          << victim->affinity << Logging::endl;
-          return work;
-        }
-
-        // We were unable to steal, move to the next victim thread.
-        victim = victim->next;
-
-#ifdef USE_SYSTEMATIC_TESTING
-        // Only try to pause with 1/(2^5) probability
-        UNUSED(tsc);
-        if (!Systematic::coin(5))
+        while (running)
         {
           yield();
-          continue;
-        }
+
+          // Check if some other thread has pushed work on our queue.
+          work = core->q.dequeue();
+
+          if (work != nullptr)
+            return work;
+
+          // Try to steal from the victim thread.
+          work = core->q.steal(victim->q);
+
+          if (work != nullptr)
+          {
+            core->stats.steal();
+            Logging::cout() << "Stole work " << work << " from "
+                            << victim->affinity << Logging::endl;
+            return work;
+          }
+
+          // We were unable to steal, move to the next victim thread.
+          victim = victim->next;
+
+#ifdef USE_SYSTEMATIC_TESTING
+          // Only try to pause with 1/(2^5) probability
+          if (!Systematic::coin(5))
+          {
+            yield();
+            continue;
+          }
+          break;
 #else
-        // Wait until a minimum timeout has passed.
-        uint64_t tsc2 = DefaultPal::tick();
-        if ((tsc2 - tsc) < TSC_QUIESCENCE_TIMEOUT)
-        {
-          Aal::pause();
-          continue;
-        }
+          // Spin for `budget` iterations between wall-clock samples.
+          // Counting down lets the hot-path check compile to a single
+          // decrement-and-branch-on-non-zero.
+          if (--iters_until_check != 0)
+          {
+            Aal::pause();
+            continue;
+          }
+
+          // Sample the clock and check the quiescence timeout.
+          uint64_t tsc_now = DefaultPal::tick();
+          if (tsc_start == 0)
+          {
+            // First sample in this quiescence window: record the
+            // baseline timestamps and start the next spin slice without
+            // checking the timeout yet.
+            tsc_start = tsc_now;
+            tsc_prev = tsc_now;
+            iters_until_check = budget;
+            Aal::pause();
+            continue;
+          }
+          if ((tsc_now - tsc_start) < TSC_QUIESCENCE_TIMEOUT)
+          {
+            // We just spun `budget` iterations in (tsc_now - tsc_prev) ns.
+            // Rescale `budget` so the next wall-clock sample lands roughly
+            // STEAL_TARGET_SLICE_NS later, giving us about
+            // STEAL_TICKS_PER_TIMEOUT clock reads per full timeout window.
+            uint64_t elapsed_slice = tsc_now - tsc_prev;
+            if (elapsed_slice > 0)
+            {
+              budget = std::clamp(
+                (budget * STEAL_TARGET_SLICE_NS) / elapsed_slice,
+                STEAL_INITIAL_BUDGET,
+                STEAL_MAX_BUDGET);
+            }
+            tsc_prev = tsc_now;
+            iters_until_check = budget;
+            Aal::pause();
+            continue;
+          }
+
+          // Quiescence timeout exceeded — break to the outer loop
+          // which will call pause() and then re-initialise the timers.
+          break;
 #endif
+        }
 
         // We've been spinning looking for work for some time. While paused,
         // our running flag may be set to false, in which case we terminate.
