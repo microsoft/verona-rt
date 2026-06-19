@@ -910,7 +910,7 @@ namespace verona::rt
      *    new (&slots[0])) Slot(cown1);
      *    new (&slots[1])) Slot(cown2);
      *
-     *    BehaviourCore::schedule_many(&b, 1);
+     *    BehaviourCore::schedule(&b, 1);
      *
      * This fills in the two slots, and then schedules the behaviour.  The
      * function set_read_only should be called on a slot if it only requires
@@ -944,6 +944,25 @@ namespace verona::rt
         "Work size must be a multiple of pointer size");
 
       return behaviour;
+    }
+
+    /**
+     * @brief Inline dispatch point for behaviour scheduling.
+     *
+     * Chooses `schedule_one` (single behaviour, single cown) or
+     * `schedule_many` (general case). Designed to be inlined at the call
+     * site so the branch is predicted locally and either path is reached
+     * via a direct call with no intermediate frame.
+     */
+    static SNMALLOC_FAST_PATH void
+    schedule(BehaviourCore** bodies, size_t body_count)
+    {
+      if (body_count == 1 && bodies[0]->count == 1)
+      {
+        schedule_one(bodies[0]);
+        return;
+      }
+      schedule_many(bodies, body_count);
     }
 
     /**
