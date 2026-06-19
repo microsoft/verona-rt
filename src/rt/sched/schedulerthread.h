@@ -6,7 +6,6 @@
 #include "core.h"
 #include "ds/dllist.h"
 #include "ds/hashmap.h"
-#include "mpmcq.h"
 #include "schedulerlist.h"
 #include "schedulerstats.h"
 #include "threadpool.h"
@@ -20,14 +19,19 @@ namespace verona::rt
    * There is typically one scheduler thread pinned to each physical CPU core.
    * Each scheduler thread is responsible for running cowns in its queue and
    * periodically stealing cowns from the queues of other scheduler threads.
-   * This periodic work stealing is done to fairly distribute work across the
-   * available scheduler threads. The period of work stealing for fairness is
-   * determined by a single token cown that will be dequeued once all cowns
-   * before it have been run. The removal of the token cown from the queue
-   * occurs at a rate inversely proportional to the amount of cowns pending work
-   * on that thread. A scheduler thread will enqueue a new token, if its
-   * previous one has been dequeued or stolen, once more work is scheduled on
-   * the scheduler thread.
+   *
+   * Fair distribution of work is amortised across the D-empty event of the
+   * per-core WSQ: each time the owner observes all D[k] empty via
+   * pop_local() (a cheap, D-only probe), it invokes refill_steal(victim),
+   * which simultaneously drains own E and own I into D AND probes one
+   * victim's I/E/D for work, publishing the merged chain to D in a single
+   * release-fence + N relaxed stores.  The natural quiescence boundary IS
+   * the fairness probe -- no token-cown rotation needed.
+   *
+   * Refill_steal uses ProbeOrder::Light (I, D, E) on the per-D-empty path
+   * (small chunks, low victim-side cacheline pressure) and ProbeOrder::Heavy
+   * (I, E, D) inside the blocking steal() spin loop (large chunks, the
+   * blocked thread is willing to bear the cost).
    */
   class SchedulerThread
   {
@@ -166,39 +170,27 @@ namespace verona::rt
 
       batch = BATCH_SIZE;
 
-      if (core->should_steal_for_fairness)
-      {
-        // Check if we have some work. We should only reschedule the token
-        // if we do have some work.  Otherwise, the token will be rescheduled
-        // and we will fail to reach quicescence.
-        if (!core->q.is_empty())
-        {
-          auto work = try_steal();
-          // Set the flag before rescheduling the token so that we don't have
-          // a race.
-          core->should_steal_for_fairness = false;
-          // Reschedule the token.
-          core->q.enqueue(core->token_work);
-          if (work != nullptr)
-          {
-            return_next_work();
-            return work;
-          }
-        }
-      }
-
-      auto work = core->q.dequeue();
+      // Hot path: pop one item from our D.  D-only probe; does NOT
+      // touch own E or I (cross-core write-hot lines) until D is empty.
+      auto work = core->q.pop_local();
       if (work != nullptr)
       {
         return_next_work();
         return work;
       }
 
-      // Our queue is effectively empty, so this is like receiving a token,
-      // try a steal.
-      work = try_steal();
+      // D-empty event = fairness probe (F1).  Fused refill + steal:
+      // drains own E and I onto D AND probes one victim (Light order:
+      // I, D, E) in a single publish.  Pair with unpause: stripe_into_
+      // dequeue's release stores must be sequenced-before the unpause
+      // CAS so a third thread that paused inside the transient-empty
+      // window observes the publish.
+      work = core->q.refill_steal(victim->q);
+      victim = victim->next; // F2: advance fairness rotor once per probe.
       if (work != nullptr)
       {
+        if (Scheduler::get().unpause())
+          core->stats.unpause();
         return_next_work();
         return work;
       }
@@ -260,25 +252,6 @@ namespace verona::rt
       Scheduler::local() = nullptr;
     }
 
-    Work* try_steal()
-    {
-      Work* work = nullptr;
-      // Try to steal from the victim thread.
-      work = core->q.steal(victim->q);
-
-      if (work != nullptr)
-      {
-        core->stats.steal();
-        Logging::cout() << "Fast-steal work " << work << " from "
-                        << victim->affinity << Logging::endl;
-      }
-
-      // Move to the next victim thread.
-      victim = victim->next;
-
-      return work;
-    }
-
     Work* steal()
     {
       core->stats.steal_attempt();
@@ -301,20 +274,31 @@ namespace verona::rt
         {
           yield();
 
-          // Check if some other thread has pushed work on our queue.
-          work = core->q.dequeue();
-
+          // Drain own E and I if anything arrived during the spin (e.g.
+          // an external schedule_lifo into our inbox).  refill_steal
+          // with self-probe (&victim == this) is a pure drain: no
+          // foreign probe, no steal_index rotation.  Publish into D
+          // creates a transient-empty window; pair with unpause.
+          work = core->q.refill_steal(core->q);
           if (work != nullptr)
+          {
+            if (Scheduler::get().unpause())
+              core->stats.unpause();
             return work;
+          }
 
-          // Try to steal from the victim thread.
-          work = core->q.steal(victim->q);
-
+          // Steal from a foreign victim with the heavy probe order
+          // (I, E, D): the blocked thread prefers a bulky chain even
+          // at higher victim-side cacheline cost.
+          work = core->q.refill_steal<ProbeOrder::Heavy>(victim->q);
           if (work != nullptr)
           {
             core->stats.steal();
             Logging::cout() << "Stole work " << work << " from "
                             << victim->affinity << Logging::endl;
+            if (Scheduler::get().unpause())
+              core->stats.unpause();
+            victim = victim->next;
             return work;
           }
 

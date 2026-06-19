@@ -21,7 +21,6 @@
 #include "region/immutable.h"
 #include "region/region.h"
 #include "region/region_api.h"
-#include "sched/mpmcq.h"
 #include "sched/schedulerthread.h"
 
 #include <snmalloc/snmalloc.h>

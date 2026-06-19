@@ -4,7 +4,6 @@
 
 #include "../ds/heap.h"
 
-#include <atomic>
 #include <snmalloc/snmalloc.h>
 
 namespace verona::rt
@@ -20,7 +19,7 @@ namespace verona::rt
   struct Work
   {
     // This references the next element in the queue.
-    std::atomic<Work*> next_in_queue{nullptr};
+    Work* next_in_queue{nullptr};
 
     // The function to execute this work item. It is supplied with a self
     // pointer and is responsible for all casting and memory management.
