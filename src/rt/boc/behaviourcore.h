@@ -947,6 +947,86 @@ namespace verona::rt
     }
 
     /**
+     * @brief Fast-path specialisation of `schedule_many` for the common case
+     * of scheduling a single behaviour with a single cown (i.e.
+     * `when (c) << lambda`).
+     *
+     * Skips:
+     *   - the three `StackArray<>` allocations that `schedule_many` makes
+     *     for the slot map, execution-count vector, and chain-info array
+     *     (each defaults to 128 elements on-stack and triggers Linux stack
+     *     probe instructions);
+     *   - the `cown_count` accumulation loop;
+     *   - the sort + dedup logic (no possible duplicates with one cown);
+     *   - the chain-construction while-loop (a single-slot chain is just
+     *     the slot itself).
+     *
+     * Re-uses `chain_acquire` / `chain_release` / `chain_process` for the
+     * actual 2PL protocol so that the slot/cown state-machine
+     * implementation lives in exactly one place. If the protocol ever
+     * changes, both paths change in lockstep because they call the same
+     * helpers against the same `ChainInfo` shape.
+     *
+     * Precondition: `body->count == 1`.
+     */
+    static void schedule_one(BehaviourCore* body)
+    {
+      assert(body->count == 1);
+
+      Logging::cout() << "BehaviourCore::schedule_one " << body
+                      << Logging::endl;
+
+      Slot* slot = body->get_slots();
+      const bool is_read = slot->is_read_only();
+
+      ChainInfo ci{
+        slot->cown(),
+        /*first_body_index=*/0,
+        slot,
+        slot,
+        slot->take_move(),
+        /*had_no_predecessor=*/false,
+        /*ref_count=*/0,
+        /*read_only_can_run=*/false,
+        /*first_writer=*/is_read ? nullptr : body,
+        /*first_consecutive_readers_count=*/is_read ? size_t{1} : size_t{0}};
+
+      Logging::cout() << "Processing " << ci.cown << " " << body << " " << slot
+                      << " Index 0" << Logging::endl;
+
+      // Read-only slots remember the behaviour they belong to so that a
+      // contended predecessor can resolve us via Slot::get_behaviour().
+      // Matches the "last slot in chain" set_behaviour call in
+      // schedule_many's chain-construction loop.
+      if (is_read)
+        slot->set_behaviour(body);
+
+      // Mark the slot as ready for scheduling (matches the corresponding
+      // call at the end of phase 1 in schedule_many).
+      slot->reset_status();
+      yield();
+
+      // Phase 2 - acquire.
+      chain_acquire(ci, body);
+
+      // Phase 3 - release. (schedule_many issues a `yield()` before each
+      // chain_release call; preserve that.)
+      yield();
+      chain_release(ci);
+
+      // Phase 4 - process & resolve. ec starts at 1 (matches the
+      // schedule_many initialiser) and chain_process bumps it iff the
+      // behaviour can run immediately.
+      size_t ec = 1;
+      chain_process(ci, body, &ec);
+
+      // Final per-body resolve (matches the trailing loop in
+      // schedule_many).
+      yield();
+      body->resolve(ec);
+    }
+
+    /**
      *  @brief Atomically schedule a collection of behaviours for
      * execution.
      * @param bodies An array of behaviours to schedule
