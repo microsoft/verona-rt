@@ -203,7 +203,7 @@ namespace verona::cpp
         BehaviourCore* barray[sizeof...(Args)];
         create_behaviour(barray);
 
-        BehaviourCore::schedule_many(barray, sizeof...(Args));
+        BehaviourCore::schedule(barray, sizeof...(Args));
       }
     }
 

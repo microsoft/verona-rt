@@ -163,7 +163,7 @@ namespace verona::rt
 
       BehaviourCore* arr[] = {body};
 
-      BehaviourCore::schedule_many(arr, 1);
+      BehaviourCore::schedule(arr, 1);
     }
   };
 } // namespace verona::rt
