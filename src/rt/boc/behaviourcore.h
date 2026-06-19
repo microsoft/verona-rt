@@ -589,6 +589,189 @@ namespace verona::rt
     }
 
     /**
+     * Per-cown scheduling state used to drive phases 2-4 of `schedule_many`
+     * (acquire / release / process). Exposed as a nested type so that the
+     * specialised single-cown fast path (`schedule_one`) and the generic
+     * `schedule_many` share the same protocol implementation without code
+     * duplication.
+     */
+    struct ChainInfo
+    {
+      Cown* cown;
+      size_t first_body_index;
+      Slot* first_slot;
+      Slot* last_slot;
+      size_t transfer_count;
+      bool had_no_predecessor;
+      size_t ref_count;
+      bool read_only_can_run;
+      BehaviourCore* first_writer;
+      size_t first_consecutive_readers_count;
+    };
+
+    /**
+     * Phase 2 (acquire) body for a single chain. Exchanges this chain's
+     * last slot onto the cown's MCS queue, waits for any predecessor to
+     * finish phase-2, and records in `ci` whether the chain had no
+     * predecessor and / or can run immediately as a read.
+     */
+    static SNMALLOC_FAST_PATH void
+    chain_acquire(ChainInfo& ci, BehaviourCore* first_body)
+    {
+      auto* cown = ci.cown;
+      auto* chain_last_slot = ci.last_slot;
+      auto* chain_first_slot = ci.first_slot;
+
+      auto prev_slot =
+        cown->last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
+
+      yield();
+
+      if (prev_slot == nullptr)
+      {
+        ci.had_no_predecessor = true;
+        if (chain_first_slot->is_read_only())
+        {
+          auto enqueue_res = handle_read_only_enqueue(
+            prev_slot,
+            chain_first_slot,
+            chain_last_slot,
+            ci.first_consecutive_readers_count,
+            cown);
+          ci.ref_count = std::get<0>(enqueue_res);
+          ci.read_only_can_run = std::get<1>(enqueue_res);
+        }
+        return;
+      }
+
+      while (prev_slot->is_wait_2pl())
+      {
+        Systematic::yield_until(
+          [prev_slot]() { return !prev_slot->is_wait_2pl(); });
+        Aal::pause();
+      }
+
+      if (chain_first_slot->is_read_only())
+      {
+        auto enqueue_res = handle_read_only_enqueue(
+          prev_slot,
+          chain_first_slot,
+          chain_last_slot,
+          ci.first_consecutive_readers_count,
+          cown);
+        ci.ref_count = std::get<0>(enqueue_res);
+        ci.read_only_can_run = std::get<1>(enqueue_res);
+        return;
+      }
+
+      Logging::cout()
+        << " Writer waiting for cown. Set next of previous slot cown "
+        << *chain_last_slot << " previous " << *prev_slot << Logging::endl;
+      if (!prev_slot->set_next_slot_writer_contended(first_body))
+      {
+        yield();
+        // The previous slot had read available, we need to add ourselves as
+        // the next_writer to the cown, etc.
+        ci.read_only_can_run = true;
+      }
+      yield();
+    }
+
+    /**
+     * Phase 3 (release) body for a single chain. Marks the chain's last
+     * slot ready (or read-available if no writer has joined yet), allowing
+     * any successor that has finished phase-2 to proceed.
+     */
+    static SNMALLOC_FAST_PATH void chain_release(const ChainInfo& ci)
+    {
+      auto* slot = ci.last_slot;
+      if (ci.had_no_predecessor || ci.read_only_can_run)
+      {
+        if (ci.first_writer == nullptr)
+        {
+          Logging::cout() << "Setting slot " << slot << " to read available."
+                          << Logging::endl;
+          slot->set_read_available_uncontended();
+          return;
+        }
+      }
+      Logging::cout() << "Setting slot " << slot << " to ready"
+                      << Logging::endl;
+      slot->set_ready();
+    }
+
+    /**
+     * Phase 4 (process & resolve) body for a single chain. Reconciles the
+     * caller-provided RC transfer with the chain's actual needs, claims
+     * the cown for a head-of-queue writer or registers it as `next_writer`,
+     * and bumps the execution-count entries for any heads-of-queue readers.
+     *
+     * `ec_base` points to `ec[ci.first_body_index]`. The helper writes
+     * `ec_base[0]` for the writer case and
+     * `ec_base[0..first_consecutive_readers_count)` for the read-only case.
+     */
+    static SNMALLOC_FAST_PATH void chain_process(
+      const ChainInfo& ci, BehaviourCore* first_body, size_t* ec_base)
+    {
+      auto* cown = ci.cown;
+      auto* chain_first_slot = ci.first_slot;
+      auto chain_had_no_predecessor = ci.had_no_predecessor;
+      auto transfer_count = ci.transfer_count;
+      auto ref_count = ci.ref_count;
+      auto read_only_can_run = ci.read_only_can_run;
+      auto first_consecutive_readers_count = ci.first_consecutive_readers_count;
+      auto* first_writer = ci.first_writer;
+
+      // Process reference count
+      if (chain_had_no_predecessor)
+      {
+        ref_count++;
+      }
+      acquire_with_transfer(cown, transfer_count, ref_count);
+
+      // Process writes without predecessor
+      if ((chain_had_no_predecessor || read_only_can_run))
+      {
+        if (!chain_first_slot->is_read_only())
+        {
+          if (cown->read_ref_count.try_write())
+          {
+            Logging::cout() << " Writer at head of queue and got the cown "
+                            << *chain_first_slot << Logging::endl;
+            // Process execution count
+            ec_base[0] += 1;
+            yield();
+          }
+          else
+          {
+            Logging::cout() << " Writer waiting for previous readers cown "
+                            << *chain_first_slot << Logging::endl;
+            yield();
+            cown->next_writer = first_body;
+          }
+
+          return;
+        }
+
+        if (first_writer != nullptr)
+        {
+          auto result = cown->read_ref_count.try_write();
+          // There should definitely be at least one reader in the chain.
+          assert(!result);
+          snmalloc::UNUSED(result);
+          cown->next_writer = first_writer;
+        }
+      }
+
+      // This part is only for chains that start with a read-only behaviour
+      if (read_only_can_run)
+      {
+        for (size_t i = 0; i < first_consecutive_readers_count; i++)
+          ec_base[i] += 1;
+      }
+    }
+
+    /**
      * @brief Release all slots in the behaviour.
      *
      * This is should be called when the behaviour has executed.
@@ -959,20 +1142,6 @@ namespace verona::rt
           cown_to_behaviour_slot_map.get() + cown_count,
           compare);
 
-      // Helper struct to be used after building the chains in the next phases
-      struct ChainInfo
-      {
-        Cown* cown;
-        size_t first_body_index;
-        Slot* first_slot;
-        Slot* last_slot;
-        size_t transfer_count;
-        bool had_no_predecessor;
-        size_t ref_count;
-        bool read_only_can_run;
-        BehaviourCore* first_writer;
-        size_t first_consecutive_readers_count;
-      };
       size_t i = 0;
       size_t chain_count = 0;
       StackArray<ChainInfo> chain_info(cown_count);
@@ -1080,65 +1249,7 @@ namespace verona::rt
       // Second phase - Acquire phase
       for (size_t i = 0; i < chain_count; i++)
       {
-        auto* cown = chain_info[i].cown;
-        auto first_body_index = chain_info[i].first_body_index;
-        auto* first_body = bodies[first_body_index];
-        auto* chain_last_slot = chain_info[i].last_slot;
-        auto* chain_first_slot = chain_info[i].first_slot;
-
-        auto prev_slot =
-          cown->last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
-
-        yield();
-
-        if (prev_slot == nullptr)
-        {
-          chain_info[i].had_no_predecessor = true;
-          if (chain_first_slot->is_read_only())
-          {
-            auto enqueue_res = handle_read_only_enqueue(
-              prev_slot,
-              chain_first_slot,
-              chain_last_slot,
-              chain_info[i].first_consecutive_readers_count,
-              cown);
-            chain_info[i].ref_count = std::get<0>(enqueue_res);
-            chain_info[i].read_only_can_run = std::get<1>(enqueue_res);
-          }
-          continue;
-        }
-
-        while (prev_slot->is_wait_2pl())
-        {
-          Systematic::yield_until(
-            [prev_slot]() { return !prev_slot->is_wait_2pl(); });
-          Aal::pause();
-        }
-
-        if (chain_first_slot->is_read_only())
-        {
-          auto enqueue_res = handle_read_only_enqueue(
-            prev_slot,
-            chain_first_slot,
-            chain_last_slot,
-            chain_info[i].first_consecutive_readers_count,
-            cown);
-          chain_info[i].ref_count = std::get<0>(enqueue_res);
-          chain_info[i].read_only_can_run = std::get<1>(enqueue_res);
-          continue;
-        }
-
-        Logging::cout()
-          << " Writer waiting for cown. Set next of previous slot cown "
-          << *chain_last_slot << " previous " << *prev_slot << Logging::endl;
-        if (!prev_slot->set_next_slot_writer_contended(first_body))
-        {
-          yield();
-          // The previous slot had read available, we need to add ourselves as
-          // the next_writer to the cown, etc.
-          chain_info[i].read_only_can_run = true;
-        }
-        yield();
+        chain_acquire(chain_info[i], bodies[chain_info[i].first_body_index]);
       }
 
       // Third phase - Release phase.
@@ -1151,85 +1262,16 @@ namespace verona::rt
       for (size_t i = 0; i < chain_count; i++)
       {
         yield();
-        auto slot = chain_info[i].last_slot;
-        if (chain_info[i].had_no_predecessor || chain_info[i].read_only_can_run)
-        {
-          if (chain_info[i].first_writer == nullptr)
-          {
-            Logging::cout() << "Setting slot " << slot << " to read available."
-                            << Logging::endl;
-            slot->set_read_available_uncontended();
-            continue;
-          }
-        }
-        Logging::cout() << "Setting slot " << slot << " to ready"
-                        << Logging::endl;
-        slot->set_ready();
+        chain_release(chain_info[i]);
       }
 
       // Fourth phase - Process & Resolve
 
       for (size_t i = 0; i < chain_count; i++)
       {
-        auto* cown = chain_info[i].cown;
-        auto first_body_index = chain_info[i].first_body_index;
-        auto* first_body = bodies[first_body_index];
-        auto* chain_first_slot = chain_info[i].first_slot;
-        auto chain_had_no_predecessor = chain_info[i].had_no_predecessor;
-        auto transfer_count = chain_info[i].transfer_count;
-        auto ref_count = chain_info[i].ref_count;
-        auto read_only_can_run = chain_info[i].read_only_can_run;
-        auto first_consecutive_readers_count =
-          chain_info[i].first_consecutive_readers_count;
-        auto first_writer = chain_info[i].first_writer;
-
-        // Process reference count
-        if (chain_had_no_predecessor)
-        {
-          ref_count++;
-        }
-        acquire_with_transfer(cown, transfer_count, ref_count);
-
-        // Process writes without predecessor
-        if ((chain_had_no_predecessor || read_only_can_run))
-        {
-          if (!chain_first_slot->is_read_only())
-          {
-            if (cown->read_ref_count.try_write())
-            {
-              Logging::cout() << " Writer at head of queue and got the cown "
-                              << *chain_first_slot << Logging::endl;
-              // Process execution count
-              ec[first_body_index] += 1;
-              yield();
-            }
-            else
-            {
-              Logging::cout() << " Writer waiting for previous readers cown "
-                              << *chain_first_slot << Logging::endl;
-              yield();
-              cown->next_writer = first_body;
-            }
-
-            continue;
-          }
-
-          if (first_writer != nullptr)
-          {
-            auto result = cown->read_ref_count.try_write();
-            // There should definitely be at least one reader in the chain.
-            assert(!result);
-            snmalloc::UNUSED(result);
-            cown->next_writer = first_writer;
-          }
-        }
-
-        // This part is only for chains that start with a read-only behaviour
-        if (read_only_can_run)
-        {
-          for (int i = 0; i < first_consecutive_readers_count; i++)
-            ec[first_body_index + i] += 1;
-        }
+        auto& ci = chain_info[i];
+        chain_process(
+          ci, bodies[ci.first_body_index], &ec[ci.first_body_index]);
       }
 
       for (size_t i = 0; i < body_count; i++)
