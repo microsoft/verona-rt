@@ -708,7 +708,14 @@ namespace verona::rt
       assert(
         (get_class() == RegionMD::RC) || (get_class() == RegionMD::SHARED));
 
-      return get_header().rc.fetch_add(ONE_RC) == get_class();
+      // Relaxed: incref is purely arithmetic.  The caller already holds a
+      // reference (otherwise it would have no way to invoke incref on this
+      // pointer), so any data HB the caller might need was established when
+      // they acquired that reference.  The matching synchronisation point is
+      // the release on the *decref* that publishes "this thread is done
+      // writing".
+      return get_header().rc.fetch_add(ONE_RC, std::memory_order_relaxed) ==
+        get_class();
     }
 
     inline bool decref()
@@ -725,11 +732,22 @@ namespace verona::rt
 
       if (approx_rc != done_rc)
       {
-        approx_rc = get_header().rc.fetch_sub(ONE_RC);
+        // Release: ensure any writes this thread made to the object body
+        // through its reference are visible to the eventual destroyer
+        // (the thread that observes the final decref and invokes the
+        // destructor).  The destroyer's matching acquire is on the
+        // last decrement (the early-out path here observes done_rc with
+        // an acquire fence implicit in the caller's destruction sequence).
+        approx_rc =
+          get_header().rc.fetch_sub(ONE_RC, std::memory_order_release);
 
         if (approx_rc != done_rc)
           return false;
       }
+
+      // Last decrementer: acquire all the releases from the other decrefs
+      // before the caller runs the destructor.
+      std::atomic_thread_fence(std::memory_order_acquire);
 
       assert(approx_rc == done_rc);
       return true;
@@ -744,8 +762,11 @@ namespace verona::rt
 
     /**
      * Returns true, if this was the last decref on the shared object.  If this
-     *returns true all future, and parallel, calls to acquire_strong_from_weak
-     *will return false.
+     * returns true all future, and parallel, calls to acquire_strong_from_weak
+     * will return false.
+     *
+     * Two-phase strong-count close per "Wait-free weak reference counting"
+     * (doi:10.1145/3591195.3595271).  See inline comments for orderings.
      **/
     inline bool decref_shared(bool& release_weak)
     {
@@ -761,7 +782,9 @@ namespace verona::rt
       assert(get_class() == RegionMD::SHARED);
       static constexpr size_t DONE_RC = (size_t)RegionMD::SHARED + ONE_RC;
 
-      size_t prev_rc = get_header().rc.fetch_sub(ONE_RC);
+      // Release: publish any writes this thread made through its strong ref.
+      size_t prev_rc =
+        get_header().rc.fetch_sub(ONE_RC, std::memory_order_release);
 
       if (prev_rc != DONE_RC)
         return false;
@@ -770,8 +793,17 @@ namespace verona::rt
 
       Logging::cout() << "decref_shared part 2" << (void*)this << std::endl;
       size_t zero_rc = (size_t)RegionMD::SHARED;
-      auto result =
-        get_header().rc.compare_exchange_strong(zero_rc, FINISHED_RC);
+      // Acquire: pair with the release fetch_sub from every other
+      // decref_shared, so collect() sees the final state of the object
+      // body.  On failure (a promoter raced), acquire pairs with the
+      // promoter's release fetch_add in acquire_strong_from_weak,
+      // ensuring we see the promoter's preceding weak_acquire before
+      // the caller decrements the weak count.  No release needed:
+      // FINISHED_RC is only read by acquire_strong_from_weak which
+      // never touches object data on that path (visibility of the
+      // value itself is guaranteed by coherence on rc).
+      auto result = get_header().rc.compare_exchange_strong(
+        zero_rc, FINISHED_RC, std::memory_order_acquire);
       release_weak = !result;
       return result;
     }
@@ -781,7 +813,13 @@ namespace verona::rt
      **/
     inline bool acquire_strong_from_weak(bool& reacquire_weak)
     {
-      auto old = get_header().rc.fetch_add(ONE_RC);
+      // Release: publishes all prior writes by the promoter, including
+      // the weak_acquire that originally established this thread's weak
+      // reference.  A racing decref_shared whose CAS fails (with acquire
+      // on rc) thereby sees a weak_count that includes the promoter's
+      // weak ref, preventing premature deallocation when the CAS-failure
+      // path drops a weak ref.
+      auto old = get_header().rc.fetch_add(ONE_RC, std::memory_order_release);
 
       // Check if top bit is set, if not then we have validily created a new
       // strong reference
