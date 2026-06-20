@@ -518,4 +518,11 @@ namespace verona::cpp
     return PreWhen(convert_access(std::forward<Args>(args))...);
   }
 
+  // FIXME: Make it work for a single nested cown for now and extend later
+  template<typename T, typename P>
+  auto when(nested_cown_ptr<T, P> arg)
+  {
+    return when(static_cast<cown_ptr<T>>(arg), read(arg.get_parent()));
+  }
+
 } // namespace verona::cpp

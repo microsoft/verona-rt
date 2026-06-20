@@ -34,6 +34,12 @@ namespace verona::cpp
   template<typename T>
   class cown_ptr;
 
+  template<typename T, typename P>
+  class nested_cown_ptr;
+
+  template<typename T>
+  class acquired_cown;
+
   /**
    * Internal Verona runtime cown for the type T.
    *
@@ -56,8 +62,14 @@ namespace verona::cpp
     template<typename TT>
     friend class cown_ptr;
 
+    template<typename TT, typename PP>
+    friend class nested_cown_ptr;
+
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&... ts);
+
+    template<typename TT, typename PP, typename... Args>
+    friend nested_cown_ptr<TT, PP> make_nested_cown(cown_ptr<PP> p, Args&&... ts);
   };
 
   /**
@@ -200,6 +212,11 @@ namespace verona::cpp
      */
     ActualCown<T>* allocated_cown{nullptr};
 
+    /*
+     * Change this to protected to allow nested_cown_ptr to call this constructor
+     * and the underlying_cown()
+     */
+  protected:
     /**
      * Accesses the internal Verona runtime cown for this handle.
      */
@@ -326,6 +343,9 @@ namespace verona::cpp
     template<typename>
     friend class acquired_cown;
 
+    template<typename TT, typename PP>
+    friend class nested_cown_ptr;
+
     // Note only requires friend when TT is T
     // but C++ doesn't like this.
     template<typename TT, typename... Args>
@@ -333,6 +353,30 @@ namespace verona::cpp
 
     template<typename F, typename... Args2>
     friend class When;
+  };
+
+  // Should i have public inheritance here?
+  template<typename T, typename P>
+  class nested_cown_ptr : public cown_ptr<T>
+  {
+    cown_ptr<P> parent;
+    public:
+    nested_cown_ptr(ActualCown<T>* cown, cown_ptr<P> p) : cown_ptr<T>(cown), parent(p) {}
+
+    T* get_object_if_parent(acquired_cown<P> &p)
+    {
+      // Need to check if the parent is indeed the parent first before returning
+      if (p.get_actual_cown() != reinterpret_cast<ActualCown<P>*>(parent.underlying_cown()))
+        return nullptr;
+
+      ActualCown<T> *c = reinterpret_cast<ActualCown<T>*>(cown_ptr<T>::underlying_cown());
+      return &c->value;
+    }
+
+    cown_ptr<P> get_parent()
+    {
+      return parent;
+    }
   };
 
   /* A cown_ptr<const T> is used to mark that the cown is being accessed as
@@ -370,6 +414,18 @@ namespace verona::cpp
       "use case.");
     Scheduler::stats().cown();
     return cown_ptr<T>(new ActualCown<T>(std::forward<Args>(ts)...));
+  }
+
+  template<typename T, typename P, typename... Args>
+  nested_cown_ptr<T,P> make_nested_cown(cown_ptr<P> p, Args&&... ts)
+  {
+    static_assert(
+      !std::is_const_v<T>,
+      "Cannot make a cown of const type as this conflicts with read acquire "
+      "encoding trick. If we hit this assertion, raise an issue explaining the "
+      "use case.");
+    Scheduler::stats().cown();
+    return nested_cown_ptr<T, P>(new ActualCown<T>(std::forward<Args>(ts)...), p);
   }
 
   template<typename T>
@@ -410,6 +466,9 @@ namespace verona::cpp
     template<typename T2>
     friend class AccessBatch;
 
+    template<typename TT, typename PP>
+    friend class nested_cown_ptr;
+
   private:
     /// Underlying cown that has been acquired.
     /// Runtime is actually holding this reference count.
@@ -419,6 +478,11 @@ namespace verona::cpp
     acquired_cown(ActualCown<std::remove_const_t<T>>& origin)
     : origin_cown(origin)
     {}
+
+    ActualCown<T> *get_actual_cown()
+    {
+      return &origin_cown;
+    }
 
   public:
     /// Get a handle on the underlying cown.
