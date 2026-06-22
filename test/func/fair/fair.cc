@@ -18,9 +18,9 @@ struct A
   A(int id_) : id{id_} {}
 };
 
-void loop(cown_ptr<A> c)
+void loop(const cown_ptr<A>& c)
 {
-  when(c) << [c = std::move(c)](auto a) {
+  when(c) << [](auto a) {
     auto& count = a->count;
 
     if (count == 0)
@@ -29,7 +29,7 @@ void loop(cown_ptr<A> c)
     }
 
     count--;
-    loop(std::move(c));
+    loop(a.cown());
   };
 }
 

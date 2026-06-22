@@ -189,11 +189,10 @@ namespace verona::cpp
     };
 
   private:
-    template<typename TT>
-    friend class Access;
+    friend class When;
 
-    template<typename TT>
-    friend class AccessBatch;
+    template<typename... TTs>
+    friend class PreWhen;
 
     /**
      * Internal Verona runtime cown for this type.
@@ -203,7 +202,7 @@ namespace verona::cpp
     /**
      * Accesses the internal Verona runtime cown for this handle.
      */
-    Cown* underlying_cown()
+    Cown* underlying_cown() const
     {
       return allocated_cown;
     }
@@ -255,7 +254,7 @@ namespace verona::cpp
      * and is more efficient than copying, as it does not need
      * to perform reference count operations.
      */
-    cown_ptr(cown_ptr&& other)
+    cown_ptr(cown_ptr&& other) noexcept
     {
       allocated_cown = other.allocated_cown;
       other.allocated_cown = nullptr;
@@ -266,7 +265,7 @@ namespace verona::cpp
      * and is more efficient than copying, as it does not need
      * to perform reference count operations.
      */
-    cown_ptr& operator=(cown_ptr&& other)
+    cown_ptr& operator=(cown_ptr&& other) noexcept
     {
       clear();
       allocated_cown = other.allocated_cown;
@@ -308,7 +307,7 @@ namespace verona::cpp
       }
     }
 
-    weak get_weak()
+    weak get_weak() const
     {
       if (allocated_cown != nullptr)
         allocated_cown->weak_acquire();
@@ -330,9 +329,6 @@ namespace verona::cpp
     // but C++ doesn't like this.
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&...);
-
-    template<typename F, typename... Args2>
-    friend class When;
   };
 
   /* A cown_ptr<const T> is used to mark that the cown is being accessed as
@@ -403,37 +399,46 @@ namespace verona::cpp
   template<typename T>
   class acquired_cown
   {
-    /// Needed to build one from inside a `When`
-    template<typename F, typename... Args2>
     friend class When;
 
-    template<typename T2>
-    friend class AccessBatch;
+    template<typename TT>
+    friend class acquired_cown_span;
 
   private:
-    /// Underlying cown that has been acquired.
-    /// Runtime is actually holding this reference count.
-    ActualCown<std::remove_const_t<T>>& origin_cown;
-
-    /// Constructor is private, as only `When` can construct one.
-    acquired_cown(ActualCown<std::remove_const_t<T>>& origin)
-    : origin_cown(origin)
-    {}
+    /// Non-owning cown_ptr — constructed without acquire, nulled before
+    /// destruction to prevent release.
+    cown_ptr<std::remove_const_t<T>> wrapped;
 
   public:
-    /// Get a handle on the underlying cown.
-    cown_ptr<std::remove_const_t<T>> cown() const
+    /// Constructor initialises wrapped without acquiring a reference.
+    /// The behaviour's slot holds the queue ref that keeps the cown alive.
+    acquired_cown(Slot* slot)
     {
-      verona::rt::Cown::acquire(&origin_cown);
-      return cown_ptr<T>(&origin_cown);
+      wrapped.allocated_cown =
+        static_cast<ActualCown<std::remove_const_t<T>>*>(slot->cown());
+    }
+
+    ~acquired_cown()
+    {
+      // Null out to prevent cown_ptr's destructor from releasing.
+      wrapped.allocated_cown = nullptr;
+    }
+
+    /// Get a non-owning reference to the underlying cown_ptr.
+    /// The returned reference is valid for the lifetime of this acquired_cown
+    /// (i.e. the body of the when-block). Callers may copy it (triggering
+    /// acquire) if they need ownership beyond that scope.
+    const cown_ptr<std::remove_const_t<T>>& cown() const
+    {
+      return wrapped;
     }
 
     T& get_ref() const
     {
       if constexpr (std::is_const<T>())
-        return const_cast<T&>(origin_cown.value);
+        return const_cast<T&>(wrapped.allocated_cown->value);
       else
-        return origin_cown.value;
+        return wrapped.allocated_cown->value;
     }
 
     T& operator*()
@@ -463,4 +468,12 @@ namespace verona::cpp
     acquired_cown& operator=(const acquired_cown&) = delete;
     /// @}
   };
+
+  template<typename T>
+  Logging::SysLog&
+  operator<<(Logging::SysLog& log, const verona::cpp::acquired_cown<T>& cown)
+  {
+    log << &cown.get_ref();
+    return log;
+  }
 } // namespace verona::rt

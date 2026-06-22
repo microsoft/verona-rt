@@ -58,9 +58,18 @@ namespace verona::cpp
       }
     }
 
-    // Not needed at the moment. Marked as delete to avoid bugs
-    // Could be implemented if necessary
-    cown_array(cown_array&& old) = delete;
+    /// Release ownership of the underlying cown_ptr array without
+    /// running destructors. Used after slots have taken ownership.
+    void steal()
+    {
+      heap::dealloc(array);
+      array = nullptr;
+    }
+
+    cown_array(cown_array&& old) noexcept : array(old.array), length(old.length)
+    {
+      old.array = nullptr;
+    }
     cown_array& operator=(cown_array&&) = delete;
     cown_array& operator=(const cown_array&) = delete;
   };

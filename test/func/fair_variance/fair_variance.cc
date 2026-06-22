@@ -23,9 +23,9 @@ struct A
 int constexpr n_cowns = 6;
 double elapsed_secs[n_cowns];
 
-void loop(cown_ptr<A> c)
+void loop(const cown_ptr<A>& c)
 {
-  when(c) << [c = std::move(c)](auto a) {
+  when(c) << [](auto a) {
     auto& count = a->count;
     auto id = a->id;
 
@@ -44,7 +44,7 @@ void loop(cown_ptr<A> c)
     }
 
     count--;
-    loop(std::move(c));
+    loop(a.cown());
   };
 }
 

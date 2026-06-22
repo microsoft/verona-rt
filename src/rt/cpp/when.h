@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <verona.h>
 
@@ -16,506 +17,463 @@ namespace verona::cpp
   using namespace verona::rt;
 
   template<typename T>
-  struct acquired_cown_span
+  class acquired_cown_span
   {
-    acquired_cown<T>* array;
-    size_t length;
+    template<typename... Args>
+    friend class PreWhen;
+
+    friend class When;
+
+    Slot* array;
+    size_t length_;
+
+    acquired_cown_span(Slot* arr, size_t len) : array(arr), length_(len) {}
+
+  public:
+    acquired_cown<T> operator[](size_t i)
+    {
+      assert(i < length_);
+      return acquired_cown<T>(&array[i]);
+    }
+
+    size_t length() const
+    {
+      return length_;
+    }
+
+    acquired_cown_span(const acquired_cown_span&) = delete;
+    acquired_cown_span& operator=(const acquired_cown_span&) = delete;
+    acquired_cown_span(acquired_cown_span&&) = delete;
+    acquired_cown_span& operator=(acquired_cown_span&&) = delete;
   };
 
   /**
-   * Used to track the type of access request by embedding const into
-   * the type T, or not having const.
+   * Batch accumulates BehaviourCore pointers and schedules them atomically
+   * on destruction. Batches are non-copyable and non-movable; they exist only
+   * as temporaries within a single expression. The `+` operator (&&-qualified)
+   * combines temporaries into a larger batch via C++17 guaranteed elision.
+   *
+   * LIFETIME REQUIREMENT: If any `when()` in the batch borrowed a cown_ptr
+   * (lvalue path), that cown_ptr must remain alive until this Batch destructs.
+   * In the normal single-expression pattern
+   *   `(when(c1) << f1) + (when(c2) << f2);`
+   * this holds naturally because all sources are alive for the full statement.
    */
-  template<typename T>
-  class Access
-  {
-    using Type = T;
-    ActualCown<std::remove_const_t<T>>* t;
-    bool is_move;
-
-  public:
-    Access(const cown_ptr<T>& c) : t(c.allocated_cown), is_move(false)
-    {
-      assert(c.allocated_cown != nullptr);
-    }
-
-    Access(cown_ptr<T>&& c) : t(c.allocated_cown), is_move(true)
-    {
-      assert(c.allocated_cown != nullptr);
-      c.allocated_cown = nullptr;
-    }
-
-    template<typename F, typename... Args>
-    friend class When;
-  };
-
-  /**
-   * Used to track the type of access request in the case of cown_array
-   * Ownership is handled the same for all cown_ptr in the span.
-   * If is_move is true, all cown_ptrs will be moved.
-   */
-  template<typename T>
-  class AccessBatch
-  {
-    using Type = T;
-    ActualCown<std::remove_const_t<T>>** act_array;
-    acquired_cown<T>* acq_array;
-    size_t arr_len;
-    bool is_move;
-
-    void constr_helper(const cown_array<T>& ptr_span)
-    {
-      // Allocate the actual_cown and the acquired_cown array
-      // The acquired_cown array is after the actual_cown one
-      size_t act_size =
-        ptr_span.length * sizeof(ActualCown<std::remove_const_t<T>>*);
-      size_t acq_size =
-        ptr_span.length * sizeof(acquired_cown<std::remove_const_t<T>>);
-      act_array = reinterpret_cast<ActualCown<std::remove_const_t<T>>**>(
-        heap::alloc(act_size + acq_size));
-
-      for (size_t i = 0; i < ptr_span.length; i++)
-      {
-        act_array[i] = ptr_span.array[i].allocated_cown;
-      }
-      arr_len = ptr_span.length;
-
-      acq_array =
-        reinterpret_cast<acquired_cown<T>*>((char*)(act_array) + act_size);
-
-      for (size_t i = 0; i < ptr_span.length; i++)
-      {
-        new (&acq_array[i]) acquired_cown<T>(*ptr_span.array[i].allocated_cown);
-      }
-    }
-
-  public:
-    AccessBatch(const cown_array<T>& ptr_span) : is_move(false)
-    {
-      constr_helper(ptr_span);
-    }
-
-    AccessBatch(cown_array<T>&& ptr_span) : is_move(true)
-    {
-      constr_helper(ptr_span);
-
-      ptr_span.length = 0;
-      ptr_span.arary = nullptr;
-    }
-
-    AccessBatch(AccessBatch&& old)
-    {
-      act_array = old.act_array;
-      acq_array = old.acq_array;
-      arr_len = old.arr_len;
-      is_move = old.is_move;
-
-      old.acq_array = nullptr;
-      old.act_array = nullptr;
-      old.arr_len = 0;
-    }
-
-    ~AccessBatch()
-    {
-      if (act_array)
-      {
-        heap::dealloc(act_array);
-      }
-    }
-
-    AccessBatch& operator=(AccessBatch&&) = delete;
-    AccessBatch(const AccessBatch&) = delete;
-    AccessBatch& operator=(const AccessBatch&) = delete;
-
-    template<typename F, typename... Args>
-    friend class When;
-  };
-
-  template<typename T>
-  auto convert_access(const cown_ptr<T>& c)
-  {
-    return Access<T>(c);
-  }
-
-  template<typename T>
-  auto convert_access(cown_ptr<T>&& c)
-  {
-    return Access<T>(std::move(c));
-  }
-
-  template<typename T>
-  auto convert_access(const cown_array<T>& c)
-  {
-    return AccessBatch<T>(c);
-  }
-
-  template<typename... Args>
+  template<size_t Size = 1>
   class Batch
   {
-    /// This is a tuple of
-    ///    (exists Ts. When<Ts>)
-    /// As existential types are not supported this is using inferred template
-    /// parameters.
-    std::tuple<Args...> when_batch;
+    std::array<BehaviourCore*, Size> when_batch;
+    bool part_of_larger_batch{false};
 
-    /// This is used to prevent the destructor from scheduling the behaviour
-    /// more than once.
-    /// If this batch is combined with another batch, then the destructor of
-    /// the uncombined batches should not run.
-    bool part_of_larger_batch = false;
-
-    template<typename... Args2>
+    template<size_t Size_>
     friend class Batch;
 
-    template<size_t index = 0>
-    void create_behaviour(BehaviourCore** barray)
+    template<size_t Size1, size_t Size2>
+    Batch(Batch<Size1>&& b1, Batch<Size2>&& b2)
     {
-      if constexpr (index >= sizeof...(Args))
-      {
-        return;
-      }
-      else
-      {
-        auto&& w = std::get<index>(when_batch);
-        // Add the behaviour here
-        auto t = w.to_tuple();
-        barray[index] = Behaviour::prepare_to_schedule<
-          typename std::remove_reference<decltype(std::get<2>(t))>::type>(
-          std::move(std::get<0>(t)),
-          std::move(std::get<1>(t)),
-          std::move(std::get<2>(t)));
-        create_behaviour<index + 1>(barray);
-      }
+      b1.part_of_larger_batch = true;
+      b2.part_of_larger_batch = true;
+      for (size_t i = 0; i < Size1; i++)
+        when_batch[i] = b1.when_batch[i];
+      for (size_t i = 0; i < Size2; i++)
+        when_batch[i + Size1] = b2.when_batch[i];
     }
 
   public:
-    Batch(std::tuple<Args...> args) : when_batch(std::move(args)) {}
+    Batch(BehaviourCore* b) : when_batch({b}) {}
 
     Batch(const Batch&) = delete;
+    Batch(Batch&&) = delete;
+    Batch& operator=(const Batch&) = delete;
+    Batch& operator=(Batch&&) = delete;
 
     ~Batch()
     {
-      if constexpr (sizeof...(Args) > 0)
-      {
-        if (part_of_larger_batch)
-          return;
+      if (part_of_larger_batch)
+        return;
 
-        BehaviourCore* barray[sizeof...(Args)];
-        create_behaviour(barray);
+      // Filter out nulls (from zero-cown when() calls).
+      BehaviourCore* valid[Size];
+      size_t valid_count = 0;
+      for (size_t i = 0; i < Size; i++)
+        if (when_batch[i] != nullptr)
+          valid[valid_count++] = when_batch[i];
 
-        BehaviourCore::schedule(barray, sizeof...(Args));
-      }
+      if (valid_count > 0)
+        BehaviourCore::schedule(valid, valid_count);
     }
 
-    template<typename... Args2>
-    auto operator+(Batch<Args2...>&& wb)
+    template<size_t Size2>
+    auto operator+(Batch<Size2>&& wb) &&
     {
-      wb.part_of_larger_batch = true;
-      this->part_of_larger_batch = true;
-      return Batch<Args..., Args2...>(
-        std::tuple_cat(std::move(this->when_batch), std::move(wb.when_batch)));
+      return Batch<Size + Size2>(std::move(*this), std::move(wb));
     }
   };
 
-  /**
-   * Represents a single when statement.
-   *
-   * It carries all the information needed to create the behaviour.
-   */
-  template<typename F, typename... Args>
   class When
   {
-    template<class T>
-    struct is_read_only : std::false_type
-    {};
-    template<class T>
-    struct is_read_only<Access<const T>&> : std::true_type
-    {};
-    template<class T>
-    struct is_read_only<AccessBatch<const T>&> : std::true_type
-    {};
+    template<typename... Args>
+    friend class PreWhen;
 
-    template<class T>
-    struct is_batch : std::false_type
-    {};
-    template<class T>
-    struct is_batch<AccessBatch<T>> : std::true_type
-    {};
-
-    template<typename... Args2>
-    friend class Batch;
-
-    /// Set of cowns used by this behaviour.
-    std::tuple<Args...> cown_tuple;
-
-    /// The closure to be executed.
-    F f;
-
-    /// Used as a temporary to build the behaviour.
-    /// The stack lifetime is tricky, and this avoids
-    /// a heap allocation.
-    Request requests[sizeof...(Args)];
-
-    // If cown_ptr spans provided more requests are required
-    // and thus are dynamically allocated.
-    // If is_req_extended is true, then req_extended holds an array of Request
-    // and the above requests[] array is not used.
-    Request* req_extended;
-    bool is_req_extended;
-
+    ///@{
     /**
-     * This uses template programming to turn the std::tuple into a C style
-     * stack allocated array.
-     * The index template parameter is used to perform each the assignment for
-     * each index.
+     * Helper to get the type of the cown from a cown_ptr or cown_array.
      */
-    template<typename C>
-    static void array_assign_helper_access(Request* req, Access<C>& p)
+    template<typename T>
+    struct CownType;
+
+    template<typename T>
+    struct CownType<cown_array<T>>
     {
-      if constexpr (is_read_only<decltype(p)>())
-        *req = Request::read(p.t);
-      else
-        *req = Request::write(p.t);
+      using type = T;
+    };
 
-      if (p.is_move)
-        req->mark_move();
-
-      assert(req->cown() != nullptr);
-    }
-
-    template<typename C>
-    static size_t
-    array_assign_helper_access_batch(Request* req, AccessBatch<C>& p)
+    template<typename T>
+    struct CownType<cown_ptr<T>>
     {
-      size_t it_cnt = 0;
-      for (size_t i = 0; i < p.arr_len; i++)
-      {
-        if constexpr (is_read_only<decltype(p)>())
-          *req = Request::read(p.act_array[i]);
-        else
-          *req = Request::write(p.act_array[i]);
+      using type = T;
+    };
 
-        if (p.is_move)
-          req->mark_move();
+    template<typename T>
+    using GetCownType =
+      typename CownType<std::remove_const_t<std::remove_reference_t<T>>>::type;
+    ///@}
 
-        req++;
-        it_cnt++;
-      }
-
-      return it_cnt;
-    }
-
-    template<size_t index = 0>
-    size_t array_assign(Request* requests)
-    {
-      if constexpr (index >= sizeof...(Args))
-      {
-        return 0;
-      }
-      else
-      {
-        size_t it_cnt;
-
-        auto& p = std::get<index>(cown_tuple);
-        if constexpr (is_batch<
-                        typename std::remove_reference<decltype(p)>::type>())
-        {
-          it_cnt = array_assign_helper_access_batch(requests, p);
-          requests += it_cnt;
-        }
-        else
-        {
-          array_assign_helper_access(requests, p);
-          requests++;
-          it_cnt = 1;
-        }
-        return it_cnt + array_assign<index + 1>(requests);
-      }
-    }
-
-    template<size_t index = 0>
-    size_t get_cown_count(size_t count = 0)
-    {
-      if constexpr (index >= sizeof...(Args))
-      {
-        return count;
-      }
-      else
-      {
-        auto& p = std::get<index>(cown_tuple);
-        size_t to_add;
-        if constexpr (is_batch<
-                        typename std::remove_reference<decltype(p)>::type>())
-          to_add = p.arr_len;
-        else
-          to_add = 1;
-
-        return get_cown_count<index + 1>(count + to_add);
-      }
-    }
-
+    ///@{
     /**
-     * Converts a single `cown_ptr` into a `acquired_cown`.
+     * Helper to distinguish cown_ptr and cown_array.
+     */
+    template<typename T>
+    struct IsCownArray_t
+    {
+      static constexpr bool value = false;
+    };
+
+    template<typename T>
+    struct IsCownArray_t<cown_array<T>>
+    {
+      static constexpr bool value = true;
+    };
+
+    template<typename T>
+    static constexpr bool IsCownArray =
+      IsCownArray_t<std::remove_const_t<std::remove_reference_t<T>>>::value;
+    ///@}
+
+    ///@{
+    /**
+     * Storage helpers for PreWhen.
      *
-     * Needs to be a separate function for the template parameter to work.
+     * Lvalue cown args are stored as const pointers (borrowed — no refcount
+     * increment).  Rvalue cown args are stored by value (owned — the
+     * PreWhen takes the caller's reference via move).
+     *
+     * ArgStorage<Arg> selects the type.  make_storage / deref provide
+     * construction and uniform access.
      */
-    template<typename C>
-    static auto access_to_acquired(AccessBatch<C>& c)
+    template<typename Arg>
+    using ArgStorage = std::conditional_t<
+      std::is_lvalue_reference_v<Arg>,
+      std::remove_reference_t<Arg> const*,
+      std::decay_t<Arg>>;
+
+    template<typename Arg>
+    static ArgStorage<Arg> make_storage(Arg&& a)
     {
-      return acquired_cown_span<C>{c.acq_array, c.arr_len};
+      if constexpr (std::is_lvalue_reference_v<Arg>)
+        return &a;
+      else
+        return std::move(a);
     }
 
-    template<typename C>
-    static auto access_to_acquired(Access<C>& c)
+    /// Dereference a stored element to get a uniform reference.
+    template<typename S>
+    static auto& deref(S& s)
     {
-      assert(c.t != nullptr);
-      return acquired_cown<C>(*c.t);
+      if constexpr (std::is_pointer_v<std::decay_t<S>>)
+        return *s;
+      else
+        return s;
     }
 
-    auto to_tuple()
+    /// True when the stored element is a borrowed pointer (lvalue origin).
+    template<typename S>
+    static constexpr bool is_borrowed_v = std::is_pointer_v<std::decay_t<S>>;
+
+    /// Get the raw cown/array type from a stored element type, stripping
+    /// the pointer wrapper and const.
+    template<typename S>
+    using RawStored = std::remove_const_t<std::conditional_t<
+      std::is_pointer_v<std::decay_t<S>>,
+      std::remove_pointer_t<std::decay_t<S>>,
+      std::decay_t<S>>>;
+    ///@}
+
+    struct Spec
+    {
+      size_t slot_count;
+      size_t span_count;
+
+      Spec operator+(Spec other) const
+      {
+        return {slot_count + other.slot_count, span_count + other.span_count};
+      }
+    };
+
+    template<typename Stored, typename... Rest>
+    static Spec calculate_spec(const Stored& s, const Rest&... rest)
+    {
+      Spec here;
+      if constexpr (IsCownArray<RawStored<Stored>>)
+        here = {deref(s).length, 1};
+      else
+        here = {1, 0};
+
+      if constexpr (sizeof...(Rest) > 0)
+        return here + calculate_spec(rest...);
+      else
+        return here;
+    }
+
+    // Internal structure for representing a cown acquired by a `when`.
+    template<typename T>
+    struct AccessCown
+    {
+      Slot* slot;
+      AccessCown(Slot* s) : slot(s) {}
+    };
+
+    // Internal structure for representing a cown array acquired by a `when`.
+    template<typename T>
+    struct AccessCownArray
+    {
+      Slot* slots;
+      size_t length;
+    };
+
+    // Build a tuple using the type signature of the cown arguments.
+    template<typename Arg, typename... Args>
+    static auto construct_access_tuple(Slot* slots, size_t* lengths)
     {
       if constexpr (sizeof...(Args) == 0)
       {
-        return std::make_tuple(std::forward<F>(f));
+        // Last type arg — this is the terminal; return empty tuple.
+        return std::make_tuple();
       }
       else
       {
-        Request* r;
-        if (is_req_extended)
-          r = req_extended;
+        if constexpr (IsCownArray<Arg>)
+        {
+          size_t length = lengths[0];
+          auto cown_tuple =
+            std::make_tuple<AccessCownArray<GetCownType<Arg>>>({slots, length});
+          return std::tuple_cat(
+            cown_tuple,
+            construct_access_tuple<Args...>(slots + length, lengths + 1));
+        }
         else
-          r = reinterpret_cast<Request*>(&requests);
-
-        size_t count = array_assign(r);
-
-        return std::make_tuple(
-          count,
-          r,
-          [f = std::move(f), cown_tuple = std::move(cown_tuple)]() mutable {
-            /// Effectively converts ActualCown<T>... to
-            /// acquired_cown... .
-            auto lift_f = [f = std::move(f)](Args... args) mutable {
-              std::move(f)(access_to_acquired<typename Args::Type>(args)...);
-            };
-
-            std::apply(std::move(lift_f), std::move(cown_tuple));
-          });
+        {
+          auto cown_tuple =
+            std::make_tuple<AccessCown<GetCownType<Arg>>>(slots);
+          return std::tuple_cat(
+            cown_tuple, construct_access_tuple<Args...>(slots + 1, lengths));
+        }
       }
     }
 
-  public:
-    When(F&& f_) : f(std::forward<F>(f_)) {}
-
-    When(F&& f_, std::tuple<Args...> cown_tuple_)
-    : f(std::forward<F>(f_)),
-      cown_tuple(std::move(cown_tuple_)),
-      is_req_extended(false)
+    ///@{
+    /**
+     * Convert the internal representation into an unmovable/copyable one.
+     */
+    template<typename T>
+    static auto convert_to_acquired(AccessCown<T> ac)
     {
-      const size_t req_count = get_cown_count();
-      if (req_count > sizeof...(Args))
+      return acquired_cown<T>{ac.slot};
+    }
+
+    template<typename T>
+    static auto convert_to_acquired(AccessCownArray<T> ac)
+    {
+      return acquired_cown_span<T>{ac.slots, ac.length};
+    }
+    ///@}
+
+    /// Initialise slots from stored cown arguments.
+    ///
+    /// Owned args (rvalues): set_move + null allocated_cown to transfer the
+    /// reference to the slot.  The runtime's acquire_with_transfer sees
+    /// transfer=1 and avoids a redundant acquire.
+    ///
+    /// Borrowed args (lvalues): no set_move, no null.  The original variable
+    /// keeps its reference.  The runtime acquires independently if needed
+    /// (head of queue).  Zero refcount overhead for the borrow.
+    template<typename Stored, typename... Rest>
+    static void
+    initialise_slots(Slot* slots, size_t* lengths, Stored& s, Rest&... rest)
+    {
+      auto& cp = deref(s);
+      constexpr bool borrowed = is_borrowed_v<Stored>;
+
+      if constexpr (IsCownArray<RawStored<Stored>>)
       {
-        is_req_extended = true;
-        req_extended = reinterpret_cast<Request*>(
-          heap::alloc(req_count * (sizeof(Request))));
+        size_t length = cp.length;
+        lengths[0] = length;
+
+        for (size_t i = 0; i < length; i++)
+        {
+          new (&slots[i]) Slot(cp.array[i].underlying_cown());
+          if constexpr (std::is_const<GetCownType<RawStored<Stored>>>())
+          {
+            slots[i].set_read_only();
+          }
+          if constexpr (!borrowed)
+          {
+            slots[i].set_move();
+            cp.array[i].allocated_cown = nullptr;
+          }
+        }
+        if constexpr (sizeof...(Rest) > 0)
+          initialise_slots(slots + length, lengths + 1, rest...);
       }
-    }
-
-    When(When&& o)
-    : cown_tuple(std::move(o.cown_tuple)),
-      f(std::forward<F>(o.f)),
-      is_req_extended(o.is_req_extended),
-      req_extended(o.req_extended)
-    {
-      o.req_extended = nullptr;
-      o.is_req_extended = false;
-    }
-
-    When(const When&) = delete;
-
-    ~When()
-    {
-      if (is_req_extended)
+      else
       {
-        heap::dealloc(req_extended);
+        new (slots) Slot(cp.underlying_cown());
+        if constexpr (std::is_const<GetCownType<RawStored<Stored>>>())
+        {
+          slots[0].set_read_only();
+        }
+        if constexpr (!borrowed)
+        {
+          slots[0].set_move();
+          cp.allocated_cown = nullptr;
+        }
+        if constexpr (sizeof...(Rest) > 0)
+          initialise_slots(slots + 1, lengths, rest...);
       }
+    }
+
+    /// Invoke function stored in BehaviourCore. Reconstructs acquired_cowns
+    /// from slots at runtime.
+    template<typename Be, typename... CownArgs>
+    static void invoke(Work* work)
+    {
+      BehaviourCore* b = BehaviourCore::from_work(work);
+      Be* body = b->template get_body<Be>();
+      constexpr size_t lengths_offset =
+        (sizeof(Be) + alignof(size_t) - 1) & ~(alignof(size_t) - 1);
+      size_t* lengths = reinterpret_cast<size_t*>(
+        reinterpret_cast<char*>(body) + lengths_offset);
+
+      auto* slots = b->get_slots();
+
+      // Reconstruct access tuple from slots and lengths.
+      // We append a dummy void* type to CownArgs to match
+      // construct_access_tuple's terminal condition (sizeof...(Args)==0).
+      auto cown_tuple =
+        construct_access_tuple<CownArgs..., void*>(slots, lengths);
+
+      std::apply(
+        [&](auto&&... args) { (*body)(convert_to_acquired(args)...); },
+        cown_tuple);
+
+      if (Behaviour::behaviour_rerun())
+      {
+        Behaviour::behaviour_rerun() = false;
+        Scheduler::schedule(work);
+        return;
+      }
+
+      body->~Be();
+      BehaviourCore::finished(work);
     }
   };
 
   /**
-   * Class for staging the when creation.
+   * Staging object for `when(cowns...) << lambda`.
    *
-   * Do not call directly use `when`
-   *
-   * This provides an operator << to apply the closure.  This allows the
-   * argument order to be more sensible, as variadic arguments have to be last.
-   *
-   *   when (cown1, ..., cownn) << closure;
-   *
-   * Allows the variadic number of cowns to occur before the closure.
+   * Lvalue cown args are borrowed (stored as pointers — no refcount).
+   * Rvalue cown args are owned (stored by value — ref transferred to slot
+   * via set_move + null).
    */
   template<typename... Args>
   class PreWhen
   {
-    // Note only requires friend when Args2 == Args
-    // but C++ doesn't like this.
-    template<typename... Args2>
-    friend auto when(Args2&&... args);
+    std::tuple<When::ArgStorage<Args>...> cown_args;
 
-    /**
-     * Internally uses AcquiredCown.  The cown is only acquired after the
-     * behaviour is scheduled.
-     */
-    std::tuple<Args...> cown_tuple;
+    template<typename... As>
+    friend auto when(As&&... args);
 
-    PreWhen(Args... args) : cown_tuple(std::move(args)...) {}
+    PreWhen(Args&&... args)
+    : cown_args(When::make_storage<Args>(std::forward<Args>(args))...)
+    {}
+
+    PreWhen(const PreWhen&) = delete;
+    PreWhen(PreWhen&&) = delete;
+    PreWhen& operator=(const PreWhen&) = delete;
+    PreWhen& operator=(PreWhen&&) = delete;
 
   public:
     template<typename F>
-    auto operator<<(F&& f)
+    auto operator<<(F&& f) &&
     {
       Scheduler::stats().behaviour(sizeof...(Args));
 
       if constexpr (sizeof...(Args) == 0)
       {
-        // Execute now atomic batch makes no sense.
+        // No cowns — execute directly via scheduler.
         verona::rt::schedule_lambda(std::forward<F>(f));
-        return Batch(std::make_tuple());
+        // Return a null batch (filtered out in Batch destructor).
+        return Batch<1>(nullptr);
       }
       else
       {
-        return Batch(
-          std::make_tuple(When(std::forward<F>(f), std::move(cown_tuple))));
+        // Calculate slot and span counts from the held cown arguments.
+        auto spec = std::apply(
+          [](auto&... args) { return When::calculate_spec(args...); },
+          cown_args);
+
+        using Be = std::remove_reference_t<F>;
+
+        static_assert(
+          alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
+
+        // Allocate BehaviourCore: slots + body(F) + aligned span lengths
+        constexpr size_t lengths_offset =
+          (sizeof(Be) + alignof(size_t) - 1) & ~(alignof(size_t) - 1);
+        auto* behaviour_core = BehaviourCore::make(
+          spec.slot_count,
+          When::invoke<Be, Args...>,
+          lengths_offset + spec.span_count * sizeof(size_t));
+
+        auto* body = behaviour_core->template get_body<Be>();
+        size_t* lengths = reinterpret_cast<size_t*>(
+          reinterpret_cast<char*>(body) + lengths_offset);
+
+        // Initialise slots directly from cown arguments.
+        std::apply(
+          [&](auto&... args) {
+            When::initialise_slots(
+              behaviour_core->get_slots(), lengths, args...);
+          },
+          cown_args);
+
+        // Placement-new the user's lambda into the body.
+        new (body) Be(std::forward<F>(f));
+
+        return Batch<1>(behaviour_core);
       }
     }
   };
 
   /**
-   * Template deduction guide for Access.
-   */
-  template<typename T>
-  Access(const cown_ptr<T>&) -> Access<T>;
-
-  /**
-   * Template deduction guide for Batch.
-   */
-  template<typename... Args>
-  Batch(std::tuple<Args...>) -> Batch<Args...>;
-
-  /**
    * Implements a Verona-like `when` statement.
    *
-   * Uses `<<` to apply the closure.
-   *
-   * This should really take a type of
-   *   ((cown_ptr<A1>& | cown_ptr<A1>&& | cown_array<A1>& ||
-   * cown_array<A1>&& )... To get the universal reference type to work, we
-   * can't place this constraint on it directly, as it needs to be on a type
-   * argument.
+   *   when(cown1, ..., cownn) << [](acquired_cown<T1>, ...) { ... };
    */
   template<typename... Args>
   auto when(Args&&... args)
   {
-    return PreWhen(convert_access(std::forward<Args>(args))...);
+    return PreWhen<Args...>(std::forward<Args>(args)...);
   }
 
 } // namespace verona::cpp
