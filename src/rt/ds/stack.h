@@ -182,6 +182,40 @@ namespace verona::rt
       }
     }
 
+    /// Remove the first occurrence of `item` from the stack.
+    /// Returns true if the item was found and removed, false otherwise.
+    /// This is O(n) in the size of the stack.
+    bool remove(T* item, Alloc& alloc = default_alloc)
+    {
+      // Scan from top to bottom looking for the item.
+      T** curr = index;
+
+      while (curr != null_index)
+      {
+        if (*curr == item)
+        {
+          // Found it. Pop the top element and overwrite this slot with it.
+          // This is O(1) since we just move the top element here.
+          T* top = pop(alloc);
+          if (curr != index + 1)
+          {
+            // curr is not the element we just popped (which was the top),
+            // so overwrite the found slot with top.
+            *curr = top;
+          }
+          return true;
+        }
+
+        curr--;
+        if (is_empty(curr))
+        {
+          curr = get_block(curr)->prev;
+        }
+      }
+
+      return false;
+    }
+
   private:
     /// Slow path for push, performs a push, when allocation is required.
     void push_slow(T* item, Alloc& alloc)
