@@ -609,6 +609,17 @@ namespace verona::rt
               p->finalise(nullptr, sub_regions);
               gc.push(p);
             }
+            else
+            {
+              // RC is still > 0, so this object may be part of a cycle.
+              // Push it onto the Lins stack as a candidate for cycle
+              // collection, matching the behaviour of decref().
+              if (p->get_rc_colour() != RcColour::BLACK)
+              {
+                p->set_rc_colour(RcColour::BLACK);
+                reg->lins_stack.push(p);
+              }
+            }
             break;
           case Object::SCC_PTR:
             p->immutable();
