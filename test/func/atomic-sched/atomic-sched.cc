@@ -20,11 +20,11 @@ auto long_chain_helper(T obj)
 {
   if constexpr (r == true)
   {
-    return when(read(obj));
+    return when(read(std::move(obj)));
   }
   else
   {
-    return when(obj);
+    return when(std::move(obj));
   }
 }
 
