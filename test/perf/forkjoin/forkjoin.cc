@@ -22,7 +22,7 @@ using Clock = std::chrono::high_resolution_clock;
 static int g_fib_n = 35;
 static int g_nq_n = 13;
 static int g_fib_cutoff = 20;
-static int g_nq_cutoff = 5;
+static int g_nq_cutoff = 10;
 static int g_reps = 5;
 
 // ============================================================
