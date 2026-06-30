@@ -14,3 +14,8 @@ if(NOT DEFINED VERONA_RT_ONLY_HEADER_LIBRARY)
   include(cmake/copyright.cmake)
   copyright_targets()
 endif()
+
+# Standalone benchmark: THE vs Verona WSQ
+add_executable(cilk_wsq test/perf/wsq_compare/cilk_wsq.cc)
+target_link_libraries(cilk_wsq verona_rt)
+target_include_directories(cilk_wsq PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src/rt)
