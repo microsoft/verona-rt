@@ -307,7 +307,8 @@ struct FibBench
         process(stolen, id);
         continue;
       }
-      break;
+      // No work found — yield and retry (don't exit)
+      std::this_thread::yield();
     }
   }
 
