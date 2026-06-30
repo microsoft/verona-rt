@@ -538,7 +538,7 @@ struct UTSFrame
   Frame base; // reuse the Frame struct for queue linkage + join counter
   uint64_t state; // hash state determining children
   int depth;
-  int64_t count; // subtree size (result)
+  std::atomic<int64_t> subtree_count{0}; // accumulated subtree size (atomic for concurrent children)
 };
 
 namespace uts
@@ -642,12 +642,12 @@ struct UTSBench
 
   void join(Frame* f, int id)
   {
-    // Sum children's counts
     UTSFrame* uf = reinterpret_cast<UTSFrame*>(f);
-    // result already accumulated by children
+    f->result = uf->subtree_count.load(std::memory_order_relaxed);
     if (f->parent)
     {
-      f->parent->result += f->result;
+      UTSFrame* up = reinterpret_cast<UTSFrame*>(f->parent);
+      up->subtree_count.fetch_add(f->result, std::memory_order_relaxed);
       if (f->parent->join_counter.fetch_sub(1, std::memory_order_acq_rel) == 1)
         join(f->parent, id);
     }
@@ -664,7 +664,8 @@ struct UTSBench
       f->result = uts::explore_serial(uf->state, uf->depth, max_depth);
       if (f->parent)
       {
-        f->parent->result += f->result;
+        UTSFrame* up = reinterpret_cast<UTSFrame*>(f->parent);
+        up->subtree_count.fetch_add(f->result, std::memory_order_relaxed);
         if (f->parent->join_counter.fetch_sub(1, std::memory_order_acq_rel) == 1)
           join(f->parent, id);
       }
@@ -672,7 +673,7 @@ struct UTSBench
     }
 
     // Fork children
-    f->result = 1; // count this node
+    uf->subtree_count.store(1, std::memory_order_relaxed); // count this node
     f->join_counter.store(nc + 1, std::memory_order_relaxed); // self + nc children
 
     // Push all but last child, execute last inline (work-first)
@@ -684,6 +685,7 @@ struct UTSBench
       uc->depth = uf->depth + 1;
       child->parent = f;
       child->result = 0;
+      reinterpret_cast<UTSFrame*>(child)->subtree_count.store(0, std::memory_order_relaxed);
       workers[id]->push(child);
     }
 
@@ -694,6 +696,7 @@ struct UTSBench
     ulast->depth = uf->depth + 1;
     last_child->parent = f;
     last_child->result = 0;
+    reinterpret_cast<UTSFrame*>(last_child)->subtree_count.store(0, std::memory_order_relaxed);
     process(last_child, id);
 
     // Remove self-count
@@ -862,7 +865,8 @@ struct UTSBench
     auto t1 = std::chrono::high_resolution_clock::now();
     double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-    *result = root->result;
+    UTSFrame* uroot = reinterpret_cast<UTSFrame*>(root);
+    *result = uroot->subtree_count.load(std::memory_order_relaxed);
 
     if (collect_stats)
     {
@@ -951,7 +955,7 @@ int main(int argc, char** argv)
   }
 
   printf("=== THE vs D[4] WSQ: Cilk-style Fork/Join ===\n");
-  printf("fib(%d) cutoff=%d, cores=%d, reps=%d\n", fib_n, cutoff, num_threads, reps);
+  printf("fib(%d) cutoff=%d, cores=%d, reps=%d (interleaved)\n", fib_n, cutoff, num_threads, reps);
   printf("Reporting: median [Q1, Q3] over %d runs\n\n", reps);
 
   // Serial baseline
@@ -969,27 +973,26 @@ int main(int argc, char** argv)
   printf("Serial:   median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
          ser.median, ser.min, ser.q1, ser.q3);
 
-  // THE protocol
+  // Interleaved fib runs
   Bench<the_proto::Worker> the_bench;
-  std::vector<double> the_times;
-  for (int r = 0; r < reps; r++)
-    the_times.push_back(the_bench.run_once(fib_n, cutoff, num_threads));
-  auto the_s = compute_stats(the_times);
-  printf("THE:      median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
-         the_s.median, the_s.min, the_s.q1, the_s.q3);
-
-  // D[4] WSQ
   Bench<d4_proto::Worker> d4_bench;
+  std::vector<double> the_times;
   std::vector<double> d4_times;
   for (int r = 0; r < reps; r++)
+  {
+    the_times.push_back(the_bench.run_once(fib_n, cutoff, num_threads));
     d4_times.push_back(d4_bench.run_once(fib_n, cutoff, num_threads));
+  }
+  auto the_s = compute_stats(the_times);
   auto d4_s = compute_stats(d4_times);
+  printf("THE:      median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
+         the_s.median, the_s.min, the_s.q1, the_s.q3);
   printf("D[4]:     median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
          d4_s.median, d4_s.min, d4_s.q1, d4_s.q3);
 
-  printf("\nD[4]/THE median ratio: %.3fx (>1 = D[4] faster)\n",
+  printf("\nFib D[4]/THE median ratio: %.3fx (>1 = D[4] faster)\n",
          the_s.median / d4_s.median);
-  printf("D[4]/THE min ratio:    %.3fx\n", the_s.min / d4_s.min);
+  printf("Fib D[4]/THE min ratio:    %.3fx\n", the_s.min / d4_s.min);
 
   // ---- UTS (Unbalanced Tree Search) ----
   if (uts_broad)
@@ -1019,35 +1022,28 @@ int main(int argc, char** argv)
   printf("Serial:   median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
          uts_ser.median, uts_ser.min, uts_ser.q1, uts_ser.q3);
 
-  // THE
+  // Interleaved UTS runs
   UTSBench<the_proto::Worker> uts_the;
-  std::vector<double> uts_the_times;
-  for (int r = 0; r < reps; r++)
-  {
-    int64_t res = 0;
-    bool last_run = (r == reps - 1);
-    uts_the_times.push_back(
-      uts_the.run_once(uts_seed, uts_depth, uts_cutoff, num_threads, &res, last_run));
-    if (res != uts_expected)
-      printf("  WARNING: THE UTS result=%ld expected=%ld (run %d)\n", res, uts_expected, r);
-  }
-  auto uts_the_s = compute_stats(uts_the_times);
-  printf("THE:      median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
-         uts_the_s.median, uts_the_s.min, uts_the_s.q1, uts_the_s.q3);
-
-  // D[4]
   UTSBench<d4_proto::Worker> uts_d4;
+  std::vector<double> uts_the_times;
   std::vector<double> uts_d4_times;
   for (int r = 0; r < reps; r++)
   {
-    int64_t res = 0;
+    int64_t res_the = 0, res_d4 = 0;
     bool last_run = (r == reps - 1);
+    uts_the_times.push_back(
+      uts_the.run_once(uts_seed, uts_depth, uts_cutoff, num_threads, &res_the, last_run));
+    if (res_the != uts_expected)
+      printf("  WARNING: THE UTS result=%ld expected=%ld (run %d)\n", res_the, uts_expected, r);
     uts_d4_times.push_back(
-      uts_d4.run_once(uts_seed, uts_depth, uts_cutoff, num_threads, &res, last_run));
-    if (res != uts_expected)
-      printf("  WARNING: D[4] UTS result=%ld expected=%ld (run %d)\n", res, uts_expected, r);
+      uts_d4.run_once(uts_seed, uts_depth, uts_cutoff, num_threads, &res_d4, last_run));
+    if (res_d4 != uts_expected)
+      printf("  WARNING: D[4] UTS result=%ld expected=%ld (run %d)\n", res_d4, uts_expected, r);
   }
+  auto uts_the_s = compute_stats(uts_the_times);
   auto uts_d4_s = compute_stats(uts_d4_times);
+  printf("THE:      median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
+         uts_the_s.median, uts_the_s.min, uts_the_s.q1, uts_the_s.q3);
   printf("D[4]:     median=%.1fms  min=%.1fms  [%.1f, %.1f]\n",
          uts_d4_s.median, uts_d4_s.min, uts_d4_s.q1, uts_d4_s.q3);
 
