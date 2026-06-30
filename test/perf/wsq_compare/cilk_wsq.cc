@@ -488,7 +488,8 @@ struct Bench
     workers.resize(nthreads);
     arenas.resize(nthreads);
     arena_next.assign(nthreads, 0);
-    victim_rotor.assign(nthreads, 0);
+    victim_rotor.resize(nthreads);
+    for (int i = 0; i < nthreads; i++) victim_rotor[i] = i;
     for (int i = 0; i < nthreads; i++)
     {
       workers[i] = new Worker();
@@ -851,7 +852,8 @@ struct UTSBench
     workers.resize(nthreads);
     arenas.resize(nthreads);
     arena_next.assign(nthreads, 0);
-    victim_rotor.assign(nthreads, 0);
+    victim_rotor.resize(nthreads);
+    for (int i = 0; i < nthreads; i++) victim_rotor[i] = i;
     for (int i = 0; i < nthreads; i++)
     {
       workers[i] = new Worker();
