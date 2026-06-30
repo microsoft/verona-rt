@@ -227,7 +227,7 @@ namespace d4_proto
     // Each D slot on its own cache line to avoid false sharing with thieves
     alignas(64) std::atomic<Frame*> D[N];
     size_t push_idx{N - 1};
-    size_t pop_idx{0};
+    size_t steal_start{0}; // rotates on each steal attempt
 
     Worker()
     {
@@ -269,15 +269,20 @@ namespace d4_proto
       return nullptr;
     }
 
-    // Steal: exchange one D slot to nullptr (steal-all from that bucket)
+    // Steal: exchange one D slot to nullptr, rotating start position
     Frame* steal()
     {
       for (size_t i = 0; i < N; i++)
       {
-        Frame* chain = D[i].exchange(nullptr, std::memory_order_acquire);
+        size_t idx = (steal_start + i) % N;
+        Frame* chain = D[idx].exchange(nullptr, std::memory_order_acquire);
         if (chain)
+        {
+          steal_start = (idx + 1) % N; // advance for next steal
           return chain;
+        }
       }
+      steal_start = (steal_start + 1) % N; // advance even on failure
       return nullptr;
     }
 
@@ -286,6 +291,7 @@ namespace d4_proto
       for (size_t i = 0; i < N; i++)
         D[i].store(nullptr, std::memory_order_relaxed);
       push_idx = N - 1;
+      steal_start = 0;
     }
   };
 } // namespace d4_proto
@@ -309,8 +315,17 @@ struct Bench
   std::vector<Worker*> workers;
   std::vector<Frame*> arenas;
   std::vector<size_t> arena_next;
+  std::vector<int> victim_rotor; // per-thread rotating victim index
   size_t arena_size{4'000'000};
   std::atomic<bool> done{false};
+
+  int next_victim(int id)
+  {
+    int v = victim_rotor[id];
+    do { v = (v + 1) % num_threads; } while (v == id);
+    victim_rotor[id] = v;
+    return v;
+  }
 
   Frame* alloc_frame(int id)
   {
@@ -388,10 +403,9 @@ struct Bench
         Frame* work = workers[id]->pop();
         if (!work)
         {
-          for (int v = 0; v < num_threads; v++)
+          for (int attempt = 0; attempt < num_threads - 1; attempt++)
           {
-            if (v == id)
-              continue;
+            int v = next_victim(id);
             work = workers[v]->steal();
             if (work)
             {
@@ -440,11 +454,10 @@ struct Bench
         continue;
       }
       bool found = false;
-      for (int v = 0; v < num_threads; v++)
+      for (int attempt = 0; attempt < num_threads - 1; attempt++)
       {
-        if (v == id)
-          continue;
-        Frame* stolen = workers[v]->steal();
+        int v = next_victim(id);
+            Frame* stolen = workers[v]->steal();
         if (stolen)
         {
           Frame* rest = stolen->next;
@@ -475,6 +488,7 @@ struct Bench
     workers.resize(nthreads);
     arenas.resize(nthreads);
     arena_next.assign(nthreads, 0);
+    victim_rotor.assign(nthreads, 0);
     for (int i = 0; i < nthreads; i++)
     {
       workers[i] = new Worker();
@@ -624,8 +638,17 @@ struct UTSBench
   std::vector<Worker*> workers;
   std::vector<Frame*> arenas;
   std::vector<size_t> arena_next;
+  std::vector<int> victim_rotor;
   size_t arena_size{8'000'000};
   std::atomic<bool> done{false};
+
+  int next_victim(int id)
+  {
+    int v = victim_rotor[id];
+    do { v = (v + 1) % num_threads; } while (v == id);
+    victim_rotor[id] = v;
+    return v;
+  }
 
   Frame* alloc_frame(int id)
   {
@@ -710,10 +733,9 @@ struct UTSBench
         Frame* work = workers[id]->pop();
         if (!work)
         {
-          for (int v = 0; v < num_threads; v++)
+          for (int _attempt = 0; _attempt < num_threads - 1; _attempt++)
           {
-            if (v == id)
-              continue;
+            int v = next_victim(id);
             work = workers[v]->steal();
             if (work)
             {
@@ -772,11 +794,10 @@ struct UTSBench
         continue;
       }
       bool found = false;
-      for (int v = 0; v < num_threads; v++)
+      for (int _attempt = 0; _attempt < num_threads - 1; _attempt++)
       {
-        if (v == id)
-          continue;
-        Frame* stolen = workers[v]->steal();
+        int v = next_victim(id);
+            Frame* stolen = workers[v]->steal();
         if (stolen)
         {
           // Count items in stolen chain and record subtree sizes
@@ -830,6 +851,7 @@ struct UTSBench
     workers.resize(nthreads);
     arenas.resize(nthreads);
     arena_next.assign(nthreads, 0);
+    victim_rotor.assign(nthreads, 0);
     for (int i = 0; i < nthreads; i++)
     {
       workers[i] = new Worker();
