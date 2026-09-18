@@ -27,8 +27,8 @@ production-implementation concerns:
 
 | C++ (`boc/`, `object/`, `cpp/`)          | C# (`When.cs`)                  |
 |------------------------------------------|---------------------------------|
-| `Cown` (`boc/cown.h`)                    | `CownBase`                      |
-| `CownSchedulerState`                     | Scheduler fields in `CownBase`  |
+| `Cown` (`object/cown.h`)                 | `CownBase`                      |
+| `CownSchedulerState` (`boc/cown_scheduler_state.h`) | Scheduler fields in `CownBase` |
 | `ActualCown<T>` (`cpp/cown.h`)           | `Cown<T>`                       |
 | `cown_ptr<const T>` + `Access<const T>`  | `ReadCown<T>` + `read(c)`       |
 | `boc::BehaviourCore` (`boc/behaviourcore.h`) | `Behaviour`               |

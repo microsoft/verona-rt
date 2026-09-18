@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "../object/cown.h"
 #include "../region/region_api.h"
 
 #include <new>

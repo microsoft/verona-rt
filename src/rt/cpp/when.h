@@ -3,7 +3,7 @@
 #pragma once
 
 #include "../boc/behaviourcore.h"
-#include "../boc/cown.h"
+#include "../object/verona_object_model.h"
 #include "behaviour_rerun.h"
 #include "cown.h"
 #include "cown_array.h"
