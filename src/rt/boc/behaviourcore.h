@@ -1406,10 +1406,6 @@ namespace verona::rt::boc
           auto slot_next = std::get<1>(cown_to_behaviour_slot_map[i]);
           if (body_next == body)
           {
-            // Check if the caller passed an RC and add to the total.
-            transfer_count +=
-              std::get<1>(cown_to_behaviour_slot_map[i])->take_move();
-
             Logging::cout() << "Duplicate " << cown << " for " << body
                             << " Index " << i << Logging::endl;
             // We need to reduce the execution count by one, as we can't wait
