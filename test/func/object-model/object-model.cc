@@ -19,42 +19,45 @@ struct TestObjectModel
   using Cown = TestCown;
 
   static CownSchedulerState<TestObjectModel>&
-  get_cown_scheduler_state(Cown& cown)
+  get_cown_scheduler_state(Cown& cown) noexcept
   {
     return cown.scheduler_state;
   }
 
-  static void acquire(Cown& cown)
+  static void acquire(Cown& cown) noexcept
   {
     cown.references.fetch_add(1, std::memory_order_relaxed);
   }
 
-  static void release(Cown& cown)
+  static void release(Cown& cown) noexcept
   {
     auto previous = cown.references.fetch_sub(1, std::memory_order_relaxed);
     assert(previous > 0);
   }
 
-  static uintptr_t get_cown_identity(const Cown& cown)
+  static uintptr_t get_cown_identity(const Cown& cown) noexcept
   {
     return reinterpret_cast<uintptr_t>(&cown);
   }
 };
 
 using TestBehaviour = boc::BehaviourCore<TestObjectModel>;
-using TestSlot = boc::Slot<TestObjectModel>;
 
-struct Payload
+struct alignas(64) Body
 {
   std::atomic<size_t>* execution_count;
+  TestCown* expected_cown;
 };
 
-void invoke(Work* work)
+void invoke(Work* work) noexcept
 {
   auto* behaviour = TestBehaviour::from_work(work);
-  auto* payload = behaviour->get_body<Payload>();
-  payload->execution_count->fetch_add(1, std::memory_order_relaxed);
-  payload->~Payload();
+  auto* body = behaviour->get_body<Body>();
+  assert(reinterpret_cast<uintptr_t>(body) % alignof(Body) == 0);
+  assert(behaviour->acquired_cown(0) == body->expected_cown);
+  assert(behaviour->acquired_mode(0) == AccessMode::Write);
+  body->execution_count->fetch_add(1, std::memory_order_relaxed);
+  body->~Body();
   TestBehaviour::finished(work);
 }
 
@@ -66,12 +69,19 @@ int main()
   TestCown cown;
   std::atomic<size_t> execution_count{0};
 
-  auto* behaviour = TestBehaviour::make(1, invoke, sizeof(Payload));
-  new (behaviour->get_slots()) TestSlot(&cown);
-  new (behaviour->get_body<Payload>()) Payload{&execution_count};
+  auto aborted = TestBehaviour::make(1, 0, alignof(void*), invoke);
+  TestBehaviour::initialise_request(
+    aborted, 0, &cown, AccessMode::Write, Ownership::Borrowed);
+  TestBehaviour::abort(aborted);
+  assert(aborted.behaviour == nullptr);
 
-  TestBehaviour* batch[] = {behaviour};
-  TestBehaviour::schedule(batch, 1);
+  auto construction =
+    TestBehaviour::make(1, sizeof(Body), alignof(Body), invoke);
+  TestBehaviour::initialise_request(
+    construction, 0, &cown, AccessMode::Write, Ownership::Borrowed);
+  new (construction.body) Body{&execution_count, &cown};
+
+  TestBehaviour::schedule(TestBehaviour::finish_construction(construction));
 
   scheduler.run();
 

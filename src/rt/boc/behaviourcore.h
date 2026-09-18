@@ -13,6 +13,23 @@
 
 #include <algorithm>
 #include <snmalloc/snmalloc.h>
+#include <type_traits>
+#include <utility>
+
+namespace verona::rt
+{
+  enum class AccessMode : uint8_t
+  {
+    Write,
+    Read
+  };
+
+  enum class Ownership : uint8_t
+  {
+    Borrowed,
+    Transferred
+  };
+} // namespace verona::rt
 
 namespace verona::rt::boc
 {
@@ -560,6 +577,38 @@ namespace verona::rt::boc
   public:
     using Cown = typename ObjectModel::Cown;
     using Slot = boc::Slot<ObjectModel>;
+    using EntryPoint = void (*)(Work*) noexcept;
+
+    struct Construction
+    {
+      BehaviourCore* behaviour;
+      void* body;
+
+#ifndef NDEBUG
+      size_t next_request;
+#endif
+    };
+
+    static_assert(
+      std::is_same_v<
+        decltype(ObjectModel::get_cown_scheduler_state(std::declval<Cown&>())),
+        CownSchedulerState<ObjectModel>&>);
+    static_assert(
+      noexcept(ObjectModel::get_cown_scheduler_state(std::declval<Cown&>())));
+    static_assert(std::is_same_v<
+                  decltype(ObjectModel::acquire(std::declval<Cown&>())),
+                  void>);
+    static_assert(noexcept(ObjectModel::acquire(std::declval<Cown&>())));
+    static_assert(std::is_same_v<
+                  decltype(ObjectModel::release(std::declval<Cown&>())),
+                  void>);
+    static_assert(noexcept(ObjectModel::release(std::declval<Cown&>())));
+    static_assert(
+      std::is_convertible_v<
+        decltype(ObjectModel::get_cown_identity(std::declval<const Cown&>())),
+        uintptr_t>);
+    static_assert(
+      noexcept(ObjectModel::get_cown_identity(std::declval<const Cown&>())));
 
   private:
     friend Slot;
@@ -929,16 +978,41 @@ namespace verona::rt::boc
       return pointer_offset<Slot>(this, sizeof(BehaviourCore));
     }
 
-    size_t get_count()
+    size_t get_count() const noexcept
     {
       return count;
     }
 
-    template<typename T = void>
-    T* get_body()
+    void* get_body(size_t alignment = alignof(void*)) noexcept
     {
+      assert(alignment != 0);
+      assert((alignment & (alignment - 1)) == 0);
+
       Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
+      auto* unaligned = pointer_offset<void>(slots, sizeof(Slot) * count);
+      return pointer_align_up(unaligned, alignment);
+    }
+
+    template<typename T = void>
+    T* get_body() noexcept
+    {
+      if constexpr (std::is_void_v<T>)
+        return static_cast<T*>(get_body(alignof(void*)));
+      else
+        return static_cast<T*>(get_body(alignof(T)));
+    }
+
+    Cown* acquired_cown(size_t index) noexcept
+    {
+      assert(index < count);
+      return get_slots()[index].cown();
+    }
+
+    AccessMode acquired_mode(size_t index) noexcept
+    {
+      assert(index < count);
+      return get_slots()[index].is_read_only() ? AccessMode::Read :
+                                                 AccessMode::Write;
     }
 
     /**
@@ -948,104 +1022,119 @@ namespace verona::rt::boc
      * This is inherently unsafe, and should only be used when it is known the
      * work object was constructed using `BehaviourCore::make`.
      */
-    static BehaviourCore* from_work(Work* w)
+    static BehaviourCore* from_work(Work* w) noexcept
     {
       return pointer_offset<BehaviourCore>(w, sizeof(Work));
     }
 
     /**
-     * @brief Called on completion of a behaviour.  This will release the slots
-     * so that subsequent behaviours can be scheduled.
-     * @param work - The work object that was used to schedule the behaviour.
-     * @param reuse - If true, then the behaviour will be reset and reused.
-     * Otherwise, it will be deallocated.
+     * Complete a behaviour after its body has been destroyed.
+     *
+     * Releases the acquired slots and deallocates the behaviour. The work
+     * pointer is invalid after this call.
      */
-    static void finished(Work* work, bool reuse = false)
+    static void finished(Work* work) noexcept
     {
       auto behaviour = BehaviourCore::from_work(work);
       Logging::cout() << "Finished Behaviour " << *behaviour << Logging::endl;
       behaviour->release_all();
-      if (!reuse)
-        heap::dealloc(work);
-      else
-        behaviour->reset();
+      heap::dealloc(work);
     }
 
     /**
-     * @brief Deallocate the behaviour.
+     * Complete a reusable behaviour after one invocation.
      *
-     * This will deallocate the work object, and the body of the behaviour.
-     * This only needs to be called for behaviours that called finished(...,
-     * true) as the finished function will not have deallocated the work object
-     * and behaviour.
+     * Releases the acquired slots and resets the behaviour without
+     * deallocating it.
      */
-    void dealloc()
+    static void finished_and_reuse(Work* work) noexcept
+    {
+      auto behaviour = BehaviourCore::from_work(work);
+      Logging::cout() << "Finished reusable Behaviour " << *behaviour
+                      << Logging::endl;
+      behaviour->release_all();
+      behaviour->reset();
+    }
+
+    /**
+     * Deallocate a reusable behaviour after its body has been destroyed and
+     * it can no longer be scheduled.
+     */
+    void dealloc() noexcept
     {
       Logging::cout() << "Deallocating Behaviour " << *this << Logging::endl;
       heap::dealloc(as_work());
     }
 
     /**
-     * @brief Constructs a behaviour.  Leaves space for the closure.
+     * Allocate storage for a behaviour under construction.
      *
-     * @param count - Number of slots to allocate, i.e. how many cowns to wait
-     * for.
-     * @param f - The function to execute once all the behaviours dependencies
-     * are ready.  This should have a specific form as it will receive a pointer
-     * to work object rather than body itself.
-     * @param payload - The size of the payload to allocate.
-     * @return BehaviourCore* - the pointer to the behaviour object.
+     * The allocation contains a `Work`, a `BehaviourCore`, storage for `count`
+     * cown requests, padding for `body_alignment`, and `body_size` bytes of
+     * body storage. Each request is represented internally by a `Slot`.
+     * `body_alignment` must be a non-zero power of two.
      *
-     * @note
-     * The work function of f should be of the form:Aal
+     * The returned `Construction` owns the unscheduled allocation. Construct
+     * the body in `construction.body`, then initialise every request with
+     * `initialise_request`. Call `finish_construction` to obtain the
+     * schedulable `BehaviourCore`, and pass that result to `schedule`.
      *
-     *   void invoke(Work*)
-     *   {
-     *     BehaviourCore* behaviour = BehaviourCore::from_work(work);
-     *     Body* body = behaviour->get_body<Body>();
+     * If construction cannot be completed, destroy any body that was
+     * constructed and call `abort`. References marked as
+     * `Ownership::Transferred` remain owned by the caller until `schedule`
+     * begins.
      *
-     *     // Load the cown pointers from the behaviour.
-     *     Cown* cown1 = behaviour->get_slots()[0].cown();
-     *     Cown* cown2 = behaviour->get_slots()[1].cown();
-     *     ...
+     * The scheduler invokes `entry` through its single indirect call. The
+     * entry point must recover the behaviour and body, execute the body,
+     * destroy it, and call `finished`. It must not unwind through `Work::run`.
+     * For example:
      *
-     *     // Do the actual behaviours work
-     *     ...
+     *     using Behaviour = BehaviourCore<MyObjectModel>;
      *
-     *     BehaviourCore::finished(work);
-     *   }
+     *     void invoke(Work* work) noexcept
+     *     {
+     *       auto* behaviour = Behaviour::from_work(work);
+     *       auto* body = behaviour->get_body<Body>();
      *
-     * Using this form allows the implementation to use a single indirect call
-     * to this function, rather than having to do a second indirect call inside
-     * the body of the behaviour for what to do.  (Note the underlying
-     * scheduler runs things other than behaviours, so it will alway need at
-     * least one indirect call).
+     *       (*body)();
+     *       body->~Body();
+     *       Behaviour::finished(work);
+     *     }
      *
-     * @note The behaviour does not fill in the slots for the cowns, and those
-     * should be filled in by the caller.
+     *     auto construction =
+     *       Behaviour::make(1, sizeof(Body), alignof(Body), invoke);
+     *     new (construction.body) Body{...};
+     *     Behaviour::initialise_request(
+     *       construction,
+     *       0,
+     *       cown,
+     *       AccessMode::Write,
+     *       Ownership::Borrowed);
+     *     auto* behaviour = Behaviour::finish_construction(construction);
+     *     Behaviour::schedule(behaviour);
      *
-     *    BehaviourCore b = make(2, invoke, sizeof(Body));
-     *    auto slots = b.get_slots();
-     *    new (&slots[0])) Slot(cown1);
-     *    new (&slots[1])) Slot(cown2);
-     *
-     *    BehaviourCore::schedule(&b, 1);
-     *
-     * This fills in the two slots, and then schedules the behaviour.  The
-     * function set_read_only should be called on a slot if it only requires
-     * read access to the cown, and set_move should be called if the cown is
-     * being moved into the behaviour, i.e. the context is transferring an RC
-     * to the cown.
+     * @param count Number of cown requests.
+     * @param body_size Number of bytes reserved for the body.
+     * @param body_alignment Required alignment of the body storage.
+     * @param entry Non-throwing entry point invoked by the scheduler.
+     * @return An unscheduled construction and its aligned body address.
      */
-    static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
+    static Construction make(
+      size_t count,
+      size_t body_size,
+      size_t body_alignment,
+      EntryPoint entry) noexcept
     {
+      assert(body_alignment != 0);
+      assert((body_alignment & (body_alignment - 1)) == 0);
+
       // Manual memory layout of the behaviour structure.
-      //   | Work | Behaviour | Slot ... Slot | Body |
-      size_t size =
-        sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
+      //   | Work | Behaviour | Slot ... Slot | padding | Body |
+      size_t size = sizeof(Work) + sizeof(BehaviourCore) +
+        (sizeof(Slot) * count) + (body_alignment - 1) + body_size;
       void* base = heap::alloc(size);
 
-      Work* work = new (base) Work(f);
+      Work* work = new (base) Work(entry);
       void* base_behaviour = from_work(work);
       BehaviourCore* behaviour = new (base_behaviour) BehaviourCore(count);
 
@@ -1061,8 +1150,73 @@ namespace verona::rt::boc
       static_assert(
         sizeof(Work) % sizeof(void*) == 0,
         "Work size must be a multiple of pointer size");
+      static_assert(
+        std::is_trivially_destructible_v<Slot>,
+        "Unscheduled slots must not require destruction");
+
+      return {behaviour, behaviour->get_body(body_alignment)};
+    }
+
+    /**
+     * Construct one request in an allocated behaviour.
+     */
+    static void initialise_request(
+      Construction& construction,
+      size_t index,
+      Cown* cown,
+      AccessMode access,
+      Ownership ownership) noexcept
+    {
+      auto* behaviour = construction.behaviour;
+      assert(behaviour != nullptr);
+      assert(index < behaviour->count);
+
+      assert(index == construction.next_request);
+
+      auto* slot = new (&behaviour->get_slots()[index]) Slot(cown);
+      if (access == AccessMode::Read)
+        slot->set_read_only();
+      if (ownership == Ownership::Transferred)
+        slot->set_move();
+
+#ifndef NDEBUG
+      construction.next_request++;
+#endif
+    }
+
+    /**
+     * Finish constructing a behaviour and return its schedulable form.
+     */
+    static BehaviourCore*
+    finish_construction(Construction& construction) noexcept
+    {
+      assert(construction.behaviour != nullptr);
+
+      assert(construction.next_request == construction.behaviour->get_count());
+
+      auto* behaviour = construction.behaviour;
+
+#ifndef NDEBUG
+      construction = {nullptr, nullptr};
+#endif
 
       return behaviour;
+    }
+
+    /**
+     * Deallocate a behaviour whose construction has not been finished.
+     *
+     * The caller remains responsible for destroying any constructed body.
+     * Ownership marked as transferred does not commit until schedule begins.
+     */
+    static void abort(Construction& construction) noexcept
+    {
+      assert(construction.behaviour != nullptr);
+      heap::dealloc(construction.behaviour->as_work());
+
+#ifndef NDEBUG
+      construction = {nullptr, nullptr};
+#endif
     }
 
     /**
@@ -1073,8 +1227,13 @@ namespace verona::rt::boc
      * site so the branch is predicted locally and either path is reached
      * via a direct call with no intermediate frame.
      */
+    static SNMALLOC_FAST_PATH void schedule(BehaviourCore* body) noexcept
+    {
+      schedule(&body, 1);
+    }
+
     static SNMALLOC_FAST_PATH void
-    schedule(BehaviourCore** bodies, size_t body_count)
+    schedule(BehaviourCore* const* bodies, size_t body_count) noexcept
     {
       if (body_count == 1 && bodies[0]->count == 1)
       {
@@ -1107,7 +1266,7 @@ namespace verona::rt::boc
      *
      * Precondition: `body->count == 1`.
      */
-    static void schedule_one(BehaviourCore* body)
+    static void schedule_one(BehaviourCore* body) noexcept
     {
       assert(body->count == 1);
 
@@ -1174,7 +1333,8 @@ namespace verona::rt::boc
      * @note This adds the behaviours to the dependency graph, and handles all
      * the process of waking up the work and adding to the underlying scheduler.
      */
-    static void schedule_many(BehaviourCore** bodies, size_t body_count)
+    static void
+    schedule_many(BehaviourCore* const* bodies, size_t body_count) noexcept
     {
       /* IMPLEMENTATION NOTE
        * *** Single behaviour scheduling ***
@@ -1739,4 +1899,4 @@ namespace verona::rt::boc
     }
     last_slot->get_behaviour()->resolve(1, false);
   }
-} // namespace verona::rt
+} // namespace verona::rt::boc

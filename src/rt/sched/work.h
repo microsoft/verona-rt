@@ -23,12 +23,12 @@ namespace verona::rt
 
     // The function to execute this work item. It is supplied with a self
     // pointer and is responsible for all casting and memory management.
-    void (*f)(Work*);
+    void (*f)(Work*) noexcept;
 
-    constexpr Work(void (*f)(Work*)) : f(f) {}
+    constexpr Work(void (*f)(Work*) noexcept) : f(f) {}
 
     // Helper to run the item.
-    void run()
+    void run() noexcept
     {
       f(this);
     }
@@ -47,7 +47,7 @@ namespace verona::rt
      * layout of the types from make.
      */
     template<typename T>
-    static void invoke(Work* w)
+    static void invoke(Work* w) noexcept
     {
       T* t = snmalloc::pointer_offset<T>(w, sizeof(Work));
       bool dealloc = (*t)(w);

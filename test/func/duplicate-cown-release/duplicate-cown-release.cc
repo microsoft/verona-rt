@@ -20,19 +20,19 @@ struct TestObjectModel
   using Cown = TestCown;
 
   static CownSchedulerState<TestObjectModel>&
-  get_cown_scheduler_state(Cown& cown)
+  get_cown_scheduler_state(Cown& cown) noexcept
   {
     assert(!cown.logically_destroyed.load(std::memory_order_relaxed));
     return cown.scheduler_state;
   }
 
-  static void acquire(Cown& cown)
+  static void acquire(Cown& cown) noexcept
   {
     assert(!cown.logically_destroyed.load(std::memory_order_relaxed));
     cown.references.fetch_add(1, std::memory_order_relaxed);
   }
 
-  static void release(Cown& cown)
+  static void release(Cown& cown) noexcept
   {
     auto previous = cown.references.fetch_sub(1, std::memory_order_relaxed);
     assert(previous > 0);
@@ -40,16 +40,15 @@ struct TestObjectModel
       cown.logically_destroyed.store(true, std::memory_order_relaxed);
   }
 
-  static uintptr_t get_cown_identity(const Cown& cown)
+  static uintptr_t get_cown_identity(const Cown& cown) noexcept
   {
     return reinterpret_cast<uintptr_t>(&cown);
   }
 };
 
 using TestBehaviour = boc::BehaviourCore<TestObjectModel>;
-using TestSlot = boc::Slot<TestObjectModel>;
 
-void invoke(Work* work)
+void invoke(Work* work) noexcept
 {
   TestBehaviour::finished(work);
 }
@@ -60,18 +59,13 @@ int main()
   scheduler.init(2);
 
   TestCown cown;
-  auto* behaviour = TestBehaviour::make(2, invoke, 0);
-  auto* slots = behaviour->get_slots();
+  auto construction = TestBehaviour::make(2, 0, alignof(void*), invoke);
+  TestBehaviour::initialise_request(
+    construction, 0, &cown, AccessMode::Write, Ownership::Transferred);
+  TestBehaviour::initialise_request(
+    construction, 1, &cown, AccessMode::Read, Ownership::Transferred);
 
-  new (&slots[0]) TestSlot(&cown);
-  slots[0].set_move();
-
-  new (&slots[1]) TestSlot(&cown);
-  slots[1].set_read_only();
-  slots[1].set_move();
-
-  TestBehaviour* batch[] = {behaviour};
-  TestBehaviour::schedule(batch, 1);
+  TestBehaviour::schedule(TestBehaviour::finish_construction(construction));
 
   scheduler.run();
 
