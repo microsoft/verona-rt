@@ -1574,7 +1574,6 @@ namespace verona::rt::boc
   template<class ObjectModel>
   inline void Slot<ObjectModel>::release()
   {
-    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     Logging::cout() << "Release slot " << *this << Logging::endl;
 
     // This slot represents a duplicate cown, so we can ignore releasing it.
@@ -1584,6 +1583,7 @@ namespace verona::rt::boc
       return;
     }
 
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     assert(!is_wait_2pl());
 
     if (no_successor_response())
