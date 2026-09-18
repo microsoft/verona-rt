@@ -1,8 +1,8 @@
 # C++ ↔ C# correspondence
 
-This table maps the C# model in this directory to the production
-read-only-cowns implementation in `src/rt/boc/`. Use it as the bridge
-when porting fixes in either direction.
+This table maps the C# model in this directory to the production read-only
+cown protocol in `src/rt/boc/` and the current object-model adapter in
+`src/rt/object/`. Use it as the bridge when porting fixes in either direction.
 
 ## Things the C# model deliberately leaves out
 
@@ -25,13 +25,14 @@ production-implementation concerns:
 
 ## Type and method mapping
 
-| C++ (`boc/`, `cpp/`)                     | C# (`When.cs`)                  |
+| C++ (`boc/`, `object/`, `cpp/`)          | C# (`When.cs`)                  |
 |------------------------------------------|---------------------------------|
 | `Cown` (`boc/cown.h`)                    | `CownBase`                      |
+| `CownSchedulerState`                     | Scheduler fields in `CownBase`  |
 | `ActualCown<T>` (`cpp/cown.h`)           | `Cown<T>`                       |
 | `cown_ptr<const T>` + `Access<const T>`  | `ReadCown<T>` + `read(c)`       |
-| `BehaviourCore` (`boc/behaviourcore.h`)  | `Behaviour`                     |
-| `Slot` (`boc/behaviourcore.h`)           | `Request`                       |
+| `boc::BehaviourCore` (`boc/behaviourcore.h`) | `Behaviour`               |
+| `boc::Slot` (`boc/behaviourcore.h`)      | `Request`                       |
 | `Slot::status` (6-state atomic word)     | `Request.status : Status`       |
 | `STATUS_WAIT`                            | `WaitStatus.Instance`           |
 | `STATUS_READY`                           | `ReadyStatus.Instance`          |
@@ -42,9 +43,9 @@ production-implementation concerns:
 | `COWN_READER_FLAG`                       | `Request.isRead`                |
 | `COWN_DUPLICATE_FLAG`                    | `Request.isDuplicate`           |
 | `Slot::behaviour` (reader back-pointer)  | `Request.behaviour`             |
-| `Cown::next_writer`                      | `CownBase.nextWriter`           |
-| `Cown::read_ref_count` (`ReadRefCount`)  | `CownBase.readRefCount`         |
-| `cown->last_slot`                        | `CownBase.last`                 |
+| `CownSchedulerState::next_writer`        | `CownBase.nextWriter`           |
+| `CownSchedulerState::read_count`         | `CownBase.readRefCount`         |
+| `CownSchedulerState::last_slot`          | `CownBase.last`                 |
 | `set_next_slot_reader_contended`         | `Request.TrySetNextReader`      |
 | `set_next_slot_writer_contended`         | `Request.TrySetNextWriter`      |
 | `set_read_available_contended`           | `Request.TrySetReadAvailable`   |

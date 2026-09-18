@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../boc/behaviourcore.h"
+#include "../boc/cown.h"
 
 namespace verona::rt
 {

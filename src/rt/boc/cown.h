@@ -2,25 +2,24 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-// `ReadRefCount` and the read/write state on `Cown` below are modelled in C#
+// `ReadRefCount` and the read/write state used by `Cown` are modelled in C#
 // at docs/internal/concurrency/modelimpl-readonly/. See CPP_MAPPING.md there
 // for the type/method correspondence.
 
 #include "../debug/logging.h"
-#include "../debug/systematic.h"
-#include "../ds/forward_list.h"
-#include "../region/region.h"
-#include "base_noticeboard.h"
+#include "cown_scheduler_state.h"
 #include "shared.h"
 
-#include <algorithm>
-#include <vector>
+#ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
+#  include "base_noticeboard.h"
+
+#  include <vector>
+#endif
 
 namespace verona::rt
 {
-  using namespace snmalloc;
   class Cown;
-  using Scheduler = ThreadPool<SchedulerThread>;
+  struct VeronaObjectModel;
 
   /**
    * A cown, or concurrent owner, encapsulates a set of resources that may be
@@ -45,143 +44,29 @@ namespace verona::rt
    * the cown will be rescheduled to be picked up by another thread. (it might
    * later return to this thread if this is the last thread to use the cown in
    * read more before a write).
+   *
+   * The queue and reader/writer state are stored in CownSchedulerState so the
+   * BoC protocol can be reused with other object models.
    */
-
-  struct ReadRefCount
-  {
-    enum STATUS
-    {
-      LAST_READER,
-      LAST_READER_WAITING_WRITER,
-      NOT_LAST
-    };
-
-  private:
-    /**
-     * Even numbers 2n, signify n readers are reading the cown.
-     * Odd numbers 2n+1, signify n readers are reading the cown, and there is a
-     * writer waiting.
-     */
-    std::atomic<size_t> count{0};
-
-  public:
-    /**
-     * Add `readers` to the count. Returns true iff this is the first reader.
-     *
-     * The low bit may be set on entry by a delayed `try_write` from another
-     * chain; the fetch_add preserves the encoding (it adds an even number)
-     * and the bit is cleared by the last reader's `release_read`.
-     */
-    bool add_read(size_t readers = 1)
-    {
-      // `count == 1` means a writer has claimed the cown and no readers
-      // are present.  An add_read here would race with one of two transient
-      // count==1 windows --- try_write's success path between fetch_add(1)
-      // and store(0), or release_read's LAST_READER_WAITING_WRITER path
-      // between fetch_sub(2)=3 and store(0) --- and the subsequent store(0)
-      // would silently clobber our readers.  This invariant is the dual of
-      // the `assert(count == 1)` in release_read (~cown.h:88): together
-      // they detect either side of the race.
-      assert(count.load(std::memory_order_relaxed) != 1);
-      return count.fetch_add(readers * 2, std::memory_order_release) == 0;
-    }
-
-    // Returns whether this is the last reader, and if there is a writer
-    // waiting.
-    STATUS release_read()
-    {
-      auto old = count.fetch_sub(2, std::memory_order_acquire);
-      if (old > 3)
-        return NOT_LAST;
-      if (old == 2)
-        return LAST_READER;
-
-      assert(old == 3);
-      Systematic::yield();
-      assert(count.load(std::memory_order_relaxed) == 1);
-      count.store(0, std::memory_order_relaxed);
-      return LAST_READER_WAITING_WRITER;
-    }
-
-    // This function should be not be called in parellel with itself, or
-    // add_read.
-    //
-    // The function is used to check if it is okay to proceed with a write, or
-    // if the last reader should initiate this write. The function returns
-    // * True means that there are no readers currently accessing
-    // * False means that there are readers, but the last reader is guaranteed
-    // to see LAST_READER_WAITING_WRITER.
-    bool try_write()
-    {
-      if (count.load(std::memory_order_acquire) == 0)
-        return true;
-
-      assert(count.load(std::memory_order_relaxed) % 2 == 0);
-
-      // Mark a pending write.  acq_rel: acquire pairs with add_read's
-      // release (we observe readers that registered before us); release
-      // so a racing release_read's acquire fetch_sub observes our bit.
-      if (count.fetch_add(1, std::memory_order_acq_rel) != 0)
-        return false;
-
-      // if in the time between reading and writing the ref count, it
-      // became zero, we can now process the write, so clear the flag
-      // and continue
-      count.store(0, std::memory_order_relaxed);
-      Systematic::yield();
-      assert(count.load(std::memory_order_relaxed) == 0);
-      return true;
-    }
-
-    size_t get_count()
-    {
-      return count.load(std::memory_order_relaxed);
-    }
-  };
-
-  class Slot;
-  class BehaviourCore;
-
   class Cown : public Shared
   {
   public:
     Cown() {}
 
   private:
-    friend Core;
-    friend Slot;
     template<typename T>
     friend class Promise;
-    friend class BehaviourCore;
+    friend VeronaObjectModel;
 
     template<typename T>
     friend class Noticeboard;
 
-    /**
-     * MCS Queue having both readers and writers
-     */
-    std::atomic<Slot*> last_slot{nullptr};
-
-    /**
-     * Next writer in the queue
-     */
-    std::atomic<BehaviourCore*> next_writer{nullptr};
-
-    /*
-     * Cown's read ref count.
-     * Bottom bit is used to signal a waiting write.
-     * Remaining bits are the count.
-     */
-    ReadRefCount read_ref_count;
+    CownSchedulerState<VeronaObjectModel> scheduler_state;
 
   public:
     inline friend Logging::SysLog& operator<<(Logging::SysLog& os, Cown& c)
     {
-      return os << " Cown: " << &c
-                << " Last slot: " << c.last_slot.load(std::memory_order_relaxed)
-                << " Next writer: "
-                << c.next_writer.load(std::memory_order_relaxed)
-                << " Reader count: " << c.read_ref_count.get_count() << " ";
+      return os << " Cown: " << &c << c.scheduler_state;
     }
 
 #ifdef USE_SYSTEMATIC_TESTING_WEAK_NOTICEBOARDS
@@ -210,4 +95,36 @@ namespace verona::rt
 
 #endif
   };
+
+  /**
+   * Adapter between the BoC protocol and the existing Verona object model.
+   */
+  struct VeronaObjectModel
+  {
+    using Cown = verona::rt::Cown;
+
+    static CownSchedulerState<VeronaObjectModel>&
+    get_cown_scheduler_state(Cown& cown)
+    {
+      return cown.scheduler_state;
+    }
+
+    static void acquire(Cown& cown)
+    {
+      Shared::acquire(&cown);
+    }
+
+    static void release(Cown& cown)
+    {
+      Shared::release(&cown);
+    }
+
+    static uintptr_t get_cown_identity(const Cown& cown)
+    {
+      return cown.id();
+    }
+  };
+
+  using BehaviourCore = boc::BehaviourCore<VeronaObjectModel>;
+  using Slot = boc::Slot<VeronaObjectModel>;
 } // namespace verona::rt

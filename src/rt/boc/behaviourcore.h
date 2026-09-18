@@ -8,21 +8,42 @@
 // type/method correspondence and README.md there for the protocol explainer.
 
 #include "../ds/stackarray.h"
-#include "../object/object.h"
-#include "cown.h"
+#include "../sched/schedulerthread.h"
+#include "cown_scheduler_state.h"
 
+#include <algorithm>
 #include <snmalloc/snmalloc.h>
 
-namespace verona::rt
+namespace verona::rt::boc
 {
   using namespace snmalloc;
 
-  class BehaviourCore;
+  /**
+   * ObjectModel supplies the object representation used by the BoC protocol.
+   * It must provide:
+   *
+   * - Cown
+   * - get_cown_scheduler_state(Cown&)
+   * - get_cown_identity(const Cown&)
+   * - acquire(Cown&)
+   * - release(Cown&)
+   *
+   * Cown pointers must have their low three bits clear because Slot uses those
+   * bits for request metadata.
+   */
 
-  inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
+  template<class ObjectModel>
+  inline Logging::SysLog&
+  operator<<(Logging::SysLog&, BehaviourCore<ObjectModel>&);
 
+  template<class ObjectModel>
   class Slot
   {
+  public:
+    using BehaviourCore = boc::BehaviourCore<ObjectModel>;
+    using Cown = typename ObjectModel::Cown;
+
+  private:
     friend BehaviourCore;
 
   private:
@@ -227,8 +248,8 @@ namespace verona::rt
     Slot* next_slot()
     {
       assert(is_next_slot_read_only());
-      return (
-        Slot*)(status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK);
+      return (Slot*)(status.load(std::memory_order_acquire) &
+                     STATUS_NEXT_SLOT_MASK);
     }
 
     /**
@@ -316,8 +337,8 @@ namespace verona::rt
     BehaviourCore* next_behaviour()
     {
       assert(!is_next_slot_read_only());
-      return (
-        BehaviourCore*)(status.load(std::memory_order_acquire) & STATUS_NEXT_SLOT_MASK);
+      return (BehaviourCore*)(status.load(std::memory_order_acquire) &
+                              STATUS_NEXT_SLOT_MASK);
     }
 
     /**
@@ -420,13 +441,24 @@ namespace verona::rt
     }
 
   public:
+    /**
+     * Install this slot as the initial tail of its cown's queue.
+     *
+     * This supports cown-like abstractions, such as Promise, that begin with a
+     * preconstructed queue entry.
+     */
+    void set_as_cown_queue_tail()
+    {
+      ObjectModel::get_cown_scheduler_state(*cown()).last_slot.store(this);
+    }
+
     Slot(Cown* __cown, bool ready = false)
     {
       // Check that the last two bits are zero
       assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
       _cown = (uintptr_t)__cown;
       // Relaxed: the slot is private memory until the producer publishes
-      // it via cown->last_slot.exchange(this, acq_rel) in chain_acquire.
+      // it via state.last_slot.exchange(this, acq_rel) in chain_acquire.
       // That exchange acts as a release for every prior write by this
       // thread, including this initial status.
       status.store(
@@ -478,7 +510,7 @@ namespace verona::rt
     void reset_status()
     {
       // Relaxed: the slot is still private until chain_acquire's
-      // cown->last_slot.exchange(this, acq_rel) publishes it.
+      // state.last_slot.exchange(this, acq_rel) publishes it.
       status.store(STATUS_WAIT, std::memory_order_relaxed);
     }
 
@@ -522,8 +554,14 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
+  template<class ObjectModel>
   class BehaviourCore
   {
+  public:
+    using Cown = typename ObjectModel::Cown;
+    using Slot = boc::Slot<ObjectModel>;
+
+  private:
     friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
@@ -616,7 +654,7 @@ namespace verona::rt
         // Release transfer - required times, we needed one as we woke up
         // the cown, but the rest were not required.
         for (int j = 0; j < transfer - required; j++)
-          Cown::release(cown);
+          ObjectModel::release(*cown);
         return;
       }
 
@@ -625,7 +663,7 @@ namespace verona::rt
                       << cown << Logging::endl;
       // We didn't have enough RCs passed in, so we need to acquire the rest.
       for (int j = 0; j < required - transfer; j++)
-        Cown::acquire(cown);
+        ObjectModel::acquire(*cown);
     }
 
     static std::tuple<size_t, bool> handle_read_only_enqueue(
@@ -649,8 +687,8 @@ namespace verona::rt
       }
 
       yield();
-      first_reader =
-        cown->read_ref_count.add_read(first_consecutive_readers_count);
+      auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+      first_reader = state.read_count.add_read(first_consecutive_readers_count);
       Logging::cout() << " Reader got the cown " << *chain_first_slot
                       << Logging::endl;
       yield();
@@ -697,8 +735,9 @@ namespace verona::rt
       auto* chain_last_slot = ci.last_slot;
       auto* chain_first_slot = ci.first_slot;
 
+      auto& state = ObjectModel::get_cown_scheduler_state(*cown);
       auto prev_slot =
-        cown->last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
+        state.last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
 
       yield();
 
@@ -809,7 +848,8 @@ namespace verona::rt
       {
         if (!chain_first_slot->is_read_only())
         {
-          if (cown->read_ref_count.try_write())
+          auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+          if (state.read_count.try_write())
           {
             Logging::cout() << " Writer at head of queue and got the cown "
                             << *chain_first_slot << Logging::endl;
@@ -824,7 +864,7 @@ namespace verona::rt
             yield();
             // Release: publish the writer body to the eventual reader that
             // runs wakeup_next_writer (which loads with acquire).
-            cown->next_writer.store(first_body, std::memory_order_release);
+            state.next_writer.store(first_body, std::memory_order_release);
           }
 
           return;
@@ -832,12 +872,13 @@ namespace verona::rt
 
         if (first_writer != nullptr)
         {
-          auto result = cown->read_ref_count.try_write();
+          auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+          auto result = state.read_count.try_write();
           // There should definitely be at least one reader in the chain.
           assert(!result);
           snmalloc::UNUSED(result);
           // Release: pairs with the acquire load in wakeup_next_writer.
-          cown->next_writer.store(first_writer, std::memory_order_release);
+          state.next_writer.store(first_writer, std::memory_order_release);
         }
       }
 
@@ -1294,14 +1335,17 @@ namespace verona::rt
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
-        if (std::get<1>(i)->cown()->id() == std::get<1>(j)->cown()->id())
+        if (
+          ObjectModel::get_cown_identity(*std::get<1>(i)->cown()) ==
+          ObjectModel::get_cown_identity(*std::get<1>(j)->cown()))
           if (std::get<0>(i) == std::get<0>(j))
             return (!std::get<1>(i)->is_read_only()) &&
               std::get<1>(j)->is_read_only();
           else
             return std::get<0>(i) < std::get<0>(j);
         else
-          return std::get<1>(i)->cown()->id() < std::get<1>(j)->cown()->id();
+          return ObjectModel::get_cown_identity(*std::get<1>(i)->cown()) <
+            ObjectModel::get_cown_identity(*std::get<1>(j)->cown());
 #else
         if (std::get<1>(i)->cown() == std::get<1>(j)->cown())
           if (std::get<0>(i) == std::get<0>(j))
@@ -1462,27 +1506,29 @@ namespace verona::rt
   /**
    * Wake up the writer waiting behind a reader chain.
    */
-  inline void Slot::wakeup_next_writer()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::wakeup_next_writer()
   {
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     // Acquire: pairs with the release store that installed the writer
     // pointer.  If non-null, we have the HB edge we need before
     // dereferencing w.
-    auto w = cown()->next_writer.load(std::memory_order_acquire);
+    auto w = state.next_writer.load(std::memory_order_acquire);
 
     if (w == nullptr)
     {
       // Spin relaxed: value changes are visible by atomicity; we never
       // dereference the result of these loads.
-      while (cown()->next_writer.load(std::memory_order_relaxed) == nullptr)
+      while (state.next_writer.load(std::memory_order_relaxed) == nullptr)
       {
-        Systematic::yield_until([this]() {
-          return cown()->next_writer.load(std::memory_order_relaxed) != nullptr;
+        Systematic::yield_until([&state]() {
+          return state.next_writer.load(std::memory_order_relaxed) != nullptr;
         });
         Aal::pause();
       }
 
       // Re-acquire after spin: this is the load whose result we dereference.
-      w = cown()->next_writer.load(std::memory_order_acquire);
+      w = state.next_writer.load(std::memory_order_acquire);
     }
 
     Logging::cout() << *this << " Last Reader waking up next writer " << *w
@@ -1492,15 +1538,17 @@ namespace verona::rt
     // Relaxed: the release to the resolved writer is provided by
     // w->resolve() -> Scheduler::schedule -> MPMCQ.enqueue, not by
     // this store.
-    cown()->next_writer.store(nullptr, std::memory_order_relaxed);
+    state.next_writer.store(nullptr, std::memory_order_relaxed);
     w->resolve();
   }
 
-  inline void Slot::drop_read()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::drop_read()
   {
     assert(is_read_only());
 
-    auto status = cown()->read_ref_count.release_read();
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
+    auto status = state.read_count.release_read();
     if (status != ReadRefCount::NOT_LAST)
     {
       if (status == ReadRefCount::LAST_READER_WAITING_WRITER)
@@ -1519,12 +1567,14 @@ namespace verona::rt
       Logging::cout() << *this
                       << " Last Reader releasing the cown no writer waiting"
                       << Logging::endl;
-      shared::release(cown());
+      ObjectModel::release(*cown());
     }
   }
 
-  inline void Slot::release()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::release()
   {
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     Logging::cout() << "Release slot " << *this << Logging::endl;
 
     // This slot represents a duplicate cown, so we can ignore releasing it.
@@ -1558,7 +1608,7 @@ namespace verona::rt
       //     acquire, pairing with the successor's release write into
       //     status.  That acquire is the HB edge we need before
       //     dereferencing the successor pointer.
-      if (cown()->last_slot.compare_exchange_strong(
+      if (state.last_slot.compare_exchange_strong(
             slot_addr,
             nullptr,
             std::memory_order_release,
@@ -1576,7 +1626,7 @@ namespace verona::rt
         // queue.
         Logging::cout() << "CAS Success No more work for cown "
                         << Logging::endl;
-        shared::release(cown());
+        ObjectModel::release(*cown());
         return;
       }
 
@@ -1609,7 +1659,7 @@ namespace verona::rt
     // from another chain can set the low bit at any point (see
     // ReadRefCount::add_read), in which case we observe first_reader=false.
     // Either way is benign: our chain's last reader will clear the bit.
-    bool first_reader = cown()->read_ref_count.add_read();
+    bool first_reader = state.read_count.add_read();
     snmalloc::UNUSED(first_reader);
 
     yield();
@@ -1618,7 +1668,7 @@ namespace verona::rt
                        "reference count for first reader."
                     << *this << "next slot " << *next_slot() << Logging::endl;
 
-    Cown::acquire(cown());
+    ObjectModel::acquire(*cown());
     yield();
 
     bool writer_at_end = false;
@@ -1666,19 +1716,19 @@ namespace verona::rt
     }
 
     // Add read count for readers.
-    cown()->read_ref_count.add_read(count);
+    state.read_count.add_read(count);
 
     yield();
 
     if (writer_at_end)
     {
-      auto result = cown()->read_ref_count.try_write();
+      auto result = state.read_count.try_write();
       // There should definitely be at least one reader in the chain.
       assert(!result);
       snmalloc::UNUSED(result);
       yield();
       // Release: pairs with the acquire load in wakeup_next_writer.
-      cown()->next_writer.store(
+      state.next_writer.store(
         curr_slot->next_behaviour(), std::memory_order_release);
       yield();
     }
