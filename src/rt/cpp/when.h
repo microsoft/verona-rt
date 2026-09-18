@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "behaviour.h"
+#include "../boc/behaviourcore.h"
+#include "../boc/cown.h"
+#include "behaviour_rerun.h"
 #include "cown.h"
 #include "cown_array.h"
 
@@ -376,9 +378,8 @@ namespace verona::cpp
         [&](auto&&... args) { (*body)(convert_to_acquired(args)...); },
         cown_tuple);
 
-      if (Behaviour::behaviour_rerun())
+      if (take_behaviour_rerun_request())
       {
-        Behaviour::behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }

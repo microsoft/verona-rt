@@ -4,6 +4,7 @@
 
 #include "../boc/behaviourcore.h"
 #include "../boc/cown.h"
+#include "behaviour_rerun.h"
 
 namespace verona::rt
 {
@@ -64,9 +65,8 @@ namespace verona::rt
       Be* body = b->get_body<Be>();
 
       (*body)();
-      if (behaviour_rerun())
+      if (take_behaviour_rerun_request())
       {
-        behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
@@ -77,12 +77,6 @@ namespace verona::rt
     }
 
   public:
-    static bool& behaviour_rerun()
-    {
-      static thread_local bool rerun = false;
-      return rerun;
-    }
-
     template<typename Be>
     static Behaviour* make(size_t count, Be&& f)
     {

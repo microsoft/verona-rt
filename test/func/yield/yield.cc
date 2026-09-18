@@ -6,7 +6,7 @@
 
 #define BEHAVIOUR_YIELD(X) \
   { \
-    verona::rt::Behaviour::behaviour_rerun() = true; \
+    verona::rt::request_behaviour_rerun(); \
     return X; \
   }
 
