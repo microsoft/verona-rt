@@ -7,13 +7,13 @@
 #  define SNMALLOC_USE_THREAD_DESTRUCTOR 1
 #endif
 
-#include "object/epoch.h"
-#include "object/noticeboard.h"
 #include "cpp/lambdabehaviour.h"
 #include "cpp/promise.h"
 #include "cpp/vobject.h"
 #include "debug/logging.h"
 #include "debug/systematic.h"
+#include "object/epoch.h"
+#include "object/noticeboard.h"
 #include "object/object.h"
 #include "object/verona_object_model.h"
 #include "region/externalreference.h"
