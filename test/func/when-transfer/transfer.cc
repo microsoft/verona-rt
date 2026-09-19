@@ -13,6 +13,9 @@ public:
   }
 };
 
+struct alignas(64) AlignedCapture
+{};
+
 using namespace verona::cpp;
 
 void test_body_move()
@@ -124,6 +127,17 @@ void test_sched_many_move_same()
      [=](auto) { Logging::cout() << "log" << Logging::endl; });
 }
 
+void test_aligned_body()
+{
+  auto cown = make_cown<Body>();
+  AlignedCapture capture;
+
+  when(cown) << [capture](auto) {
+    assert(
+      reinterpret_cast<uintptr_t>(&capture) % alignof(AlignedCapture) == 0);
+  };
+}
+
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
@@ -137,6 +151,7 @@ int main(int argc, char** argv)
   harness.run(test_sched_many_mixed);
   harness.run(test_sched_many_mixed_busy);
   harness.run(test_sched_many_move_same);
+  harness.run(test_aligned_body);
 
   return 0;
 }

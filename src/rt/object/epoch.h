@@ -28,6 +28,7 @@
 #include "../debug/logging.h"
 #include "../debug/systematic.h"
 #include "../ds/asymlock.h"
+#include "../ds/heap.h"
 #include "../ds/queue.h"
 
 #include <snmalloc/snmalloc.h>

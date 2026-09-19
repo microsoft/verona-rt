@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "behaviour.h"
+#include "../boc/behaviourcore.h"
+#include "../object/verona_object_model.h"
+#include "behaviour_rerun.h"
 #include "cown.h"
 #include "cown_array.h"
 
@@ -308,8 +310,12 @@ namespace verona::cpp
     /// keeps its reference.  The runtime acquires independently if needed
     /// (head of queue).  Zero refcount overhead for the borrow.
     template<typename Stored, typename... Rest>
-    static void
-    initialise_slots(Slot* slots, size_t* lengths, Stored& s, Rest&... rest)
+    static void initialise_slots(
+      BehaviourCore::Construction& construction,
+      size_t slot_index,
+      size_t* lengths,
+      Stored& s,
+      Rest&... rest)
     {
       auto& cp = deref(s);
       constexpr bool borrowed = is_borrowed_v<Stored>;
@@ -321,46 +327,47 @@ namespace verona::cpp
 
         for (size_t i = 0; i < length; i++)
         {
-          new (&slots[i]) Slot(cp.array[i].underlying_cown());
-          if constexpr (std::is_const<GetCownType<RawStored<Stored>>>())
-          {
-            slots[i].set_read_only();
-          }
+          BehaviourCore::initialise_request(
+            construction,
+            slot_index + i,
+            cp.array[i].underlying_cown(),
+            std::is_const_v<GetCownType<RawStored<Stored>>> ? AccessMode::Read :
+                                                              AccessMode::Write,
+            borrowed ? Ownership::Borrowed : Ownership::Transferred);
           if constexpr (!borrowed)
-          {
-            slots[i].set_move();
             cp.array[i].allocated_cown = nullptr;
-          }
         }
         if constexpr (sizeof...(Rest) > 0)
-          initialise_slots(slots + length, lengths + 1, rest...);
+          initialise_slots(
+            construction, slot_index + length, lengths + 1, rest...);
       }
       else
       {
-        new (slots) Slot(cp.underlying_cown());
-        if constexpr (std::is_const<GetCownType<RawStored<Stored>>>())
-        {
-          slots[0].set_read_only();
-        }
+        BehaviourCore::initialise_request(
+          construction,
+          slot_index,
+          cp.underlying_cown(),
+          std::is_const_v<GetCownType<RawStored<Stored>>> ? AccessMode::Read :
+                                                            AccessMode::Write,
+          borrowed ? Ownership::Borrowed : Ownership::Transferred);
         if constexpr (!borrowed)
-        {
-          slots[0].set_move();
           cp.allocated_cown = nullptr;
-        }
         if constexpr (sizeof...(Rest) > 0)
-          initialise_slots(slots + 1, lengths, rest...);
+          initialise_slots(construction, slot_index + 1, lengths, rest...);
       }
     }
 
     /// Invoke function stored in BehaviourCore. Reconstructs acquired_cowns
     /// from slots at runtime.
     template<typename Be, typename... CownArgs>
-    static void invoke(Work* work)
+    static void invoke(Work* work) noexcept
     {
       BehaviourCore* b = BehaviourCore::from_work(work);
-      Be* body = b->template get_body<Be>();
       constexpr size_t lengths_offset =
         (sizeof(Be) + alignof(size_t) - 1) & ~(alignof(size_t) - 1);
+      constexpr size_t payload_alignment =
+        alignof(Be) > alignof(size_t) ? alignof(Be) : alignof(size_t);
+      Be* body = static_cast<Be*>(b->get_body(payload_alignment));
       size_t* lengths = reinterpret_cast<size_t*>(
         reinterpret_cast<char*>(body) + lengths_offset);
 
@@ -376,9 +383,8 @@ namespace verona::cpp
         [&](auto&&... args) { (*body)(convert_to_acquired(args)...); },
         cown_tuple);
 
-      if (Behaviour::behaviour_rerun())
+      if (take_behaviour_rerun_request())
       {
-        Behaviour::behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
@@ -434,33 +440,32 @@ namespace verona::cpp
 
         using Be = std::remove_reference_t<F>;
 
-        static_assert(
-          alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
-
         // Allocate BehaviourCore: slots + body(F) + aligned span lengths
         constexpr size_t lengths_offset =
           (sizeof(Be) + alignof(size_t) - 1) & ~(alignof(size_t) - 1);
-        auto* behaviour_core = BehaviourCore::make(
+        constexpr size_t payload_alignment =
+          alignof(Be) > alignof(size_t) ? alignof(Be) : alignof(size_t);
+        auto construction = BehaviourCore::make(
           spec.slot_count,
-          When::invoke<Be, Args...>,
-          lengths_offset + spec.span_count * sizeof(size_t));
-
-        auto* body = behaviour_core->template get_body<Be>();
+          lengths_offset + spec.span_count * sizeof(size_t),
+          payload_alignment,
+          When::invoke<Be, Args...>);
+        auto* body = static_cast<Be*>(construction.body);
         size_t* lengths = reinterpret_cast<size_t*>(
           reinterpret_cast<char*>(body) + lengths_offset);
-
-        // Initialise slots directly from cown arguments.
-        std::apply(
-          [&](auto&... args) {
-            When::initialise_slots(
-              behaviour_core->get_slots(), lengths, args...);
-          },
-          cown_args);
 
         // Placement-new the user's lambda into the body.
         new (body) Be(std::forward<F>(f));
 
-        return Batch<1>(behaviour_core);
+        // Initialise slots only after payload construction succeeds. Ownership
+        // transfer commits when the returned batch is scheduled.
+        std::apply(
+          [&](auto&... args) {
+            When::initialise_slots(construction, 0, lengths, args...);
+          },
+          cown_args);
+
+        return Batch<1>(BehaviourCore::finish_construction(construction));
       }
     }
   };

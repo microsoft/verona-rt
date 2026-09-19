@@ -8,21 +8,59 @@
 // type/method correspondence and README.md there for the protocol explainer.
 
 #include "../ds/stackarray.h"
-#include "../object/object.h"
-#include "cown.h"
+#include "../sched/schedulerthread.h"
+#include "cown_scheduler_state.h"
 
+#include <algorithm>
 #include <snmalloc/snmalloc.h>
+#include <type_traits>
+#include <utility>
 
 namespace verona::rt
 {
+  enum class AccessMode : uint8_t
+  {
+    Write,
+    Read
+  };
+
+  enum class Ownership : uint8_t
+  {
+    Borrowed,
+    Transferred
+  };
+} // namespace verona::rt
+
+namespace verona::rt::boc
+{
   using namespace snmalloc;
 
-  class BehaviourCore;
+  /**
+   * ObjectModel supplies the object representation used by the BoC protocol.
+   * It must provide:
+   *
+   * - Cown
+   * - get_cown_scheduler_state(Cown&)
+   * - get_cown_identity(const Cown&)
+   * - acquire(Cown&)
+   * - release(Cown&)
+   *
+   * Cown pointers must have their low three bits clear because Slot uses those
+   * bits for request metadata.
+   */
 
-  inline Logging::SysLog& operator<<(Logging::SysLog&, BehaviourCore&);
+  template<class ObjectModel>
+  inline Logging::SysLog&
+  operator<<(Logging::SysLog&, BehaviourCore<ObjectModel>&);
 
+  template<class ObjectModel>
   class Slot
   {
+  public:
+    using BehaviourCore = boc::BehaviourCore<ObjectModel>;
+    using Cown = typename ObjectModel::Cown;
+
+  private:
     friend BehaviourCore;
 
   private:
@@ -420,13 +458,24 @@ namespace verona::rt
     }
 
   public:
+    /**
+     * Install this slot as the initial tail of its cown's queue.
+     *
+     * This supports cown-like abstractions, such as Promise, that begin with a
+     * preconstructed queue entry.
+     */
+    void set_as_cown_queue_tail()
+    {
+      ObjectModel::get_cown_scheduler_state(*cown()).last_slot.store(this);
+    }
+
     Slot(Cown* __cown, bool ready = false)
     {
       // Check that the last two bits are zero
       assert(((uintptr_t)__cown & ~COWN_POINTER_MASK) == 0);
       _cown = (uintptr_t)__cown;
       // Relaxed: the slot is private memory until the producer publishes
-      // it via cown->last_slot.exchange(this, acq_rel) in chain_acquire.
+      // it via state.last_slot.exchange(this, acq_rel) in chain_acquire.
       // That exchange acts as a release for every prior write by this
       // thread, including this initial status.
       status.store(
@@ -478,7 +527,7 @@ namespace verona::rt
     void reset_status()
     {
       // Relaxed: the slot is still private until chain_acquire's
-      // cown->last_slot.exchange(this, acq_rel) publishes it.
+      // state.last_slot.exchange(this, acq_rel) publishes it.
       status.store(STATUS_WAIT, std::memory_order_relaxed);
     }
 
@@ -522,8 +571,46 @@ namespace verona::rt
    * the `Behaviour` class. This allows for code reuse with a notification
    * mechanism.
    */
+  template<class ObjectModel>
   class BehaviourCore
   {
+  public:
+    using Cown = typename ObjectModel::Cown;
+    using Slot = boc::Slot<ObjectModel>;
+    using EntryPoint = void (*)(Work*) noexcept;
+
+    struct Construction
+    {
+      BehaviourCore* behaviour;
+      void* body;
+
+#ifndef NDEBUG
+      size_t next_request;
+#endif
+    };
+
+    static_assert(
+      std::is_same_v<
+        decltype(ObjectModel::get_cown_scheduler_state(std::declval<Cown&>())),
+        CownSchedulerState<ObjectModel>&>);
+    static_assert(
+      noexcept(ObjectModel::get_cown_scheduler_state(std::declval<Cown&>())));
+    static_assert(std::is_same_v<
+                  decltype(ObjectModel::acquire(std::declval<Cown&>())),
+                  void>);
+    static_assert(noexcept(ObjectModel::acquire(std::declval<Cown&>())));
+    static_assert(std::is_same_v<
+                  decltype(ObjectModel::release(std::declval<Cown&>())),
+                  void>);
+    static_assert(noexcept(ObjectModel::release(std::declval<Cown&>())));
+    static_assert(
+      std::is_convertible_v<
+        decltype(ObjectModel::get_cown_identity(std::declval<const Cown&>())),
+        uintptr_t>);
+    static_assert(
+      noexcept(ObjectModel::get_cown_identity(std::declval<const Cown&>())));
+
+  private:
     friend Slot;
     std::atomic<size_t> exec_count_down;
     size_t count;
@@ -616,7 +703,7 @@ namespace verona::rt
         // Release transfer - required times, we needed one as we woke up
         // the cown, but the rest were not required.
         for (int j = 0; j < transfer - required; j++)
-          Cown::release(cown);
+          ObjectModel::release(*cown);
         return;
       }
 
@@ -625,7 +712,7 @@ namespace verona::rt
                       << cown << Logging::endl;
       // We didn't have enough RCs passed in, so we need to acquire the rest.
       for (int j = 0; j < required - transfer; j++)
-        Cown::acquire(cown);
+        ObjectModel::acquire(*cown);
     }
 
     static std::tuple<size_t, bool> handle_read_only_enqueue(
@@ -649,8 +736,8 @@ namespace verona::rt
       }
 
       yield();
-      first_reader =
-        cown->read_ref_count.add_read(first_consecutive_readers_count);
+      auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+      first_reader = state.read_count.add_read(first_consecutive_readers_count);
       Logging::cout() << " Reader got the cown " << *chain_first_slot
                       << Logging::endl;
       yield();
@@ -697,8 +784,9 @@ namespace verona::rt
       auto* chain_last_slot = ci.last_slot;
       auto* chain_first_slot = ci.first_slot;
 
+      auto& state = ObjectModel::get_cown_scheduler_state(*cown);
       auto prev_slot =
-        cown->last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
+        state.last_slot.exchange(chain_last_slot, std::memory_order_acq_rel);
 
       yield();
 
@@ -809,7 +897,8 @@ namespace verona::rt
       {
         if (!chain_first_slot->is_read_only())
         {
-          if (cown->read_ref_count.try_write())
+          auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+          if (state.read_count.try_write())
           {
             Logging::cout() << " Writer at head of queue and got the cown "
                             << *chain_first_slot << Logging::endl;
@@ -824,7 +913,7 @@ namespace verona::rt
             yield();
             // Release: publish the writer body to the eventual reader that
             // runs wakeup_next_writer (which loads with acquire).
-            cown->next_writer.store(first_body, std::memory_order_release);
+            state.next_writer.store(first_body, std::memory_order_release);
           }
 
           return;
@@ -832,12 +921,13 @@ namespace verona::rt
 
         if (first_writer != nullptr)
         {
-          auto result = cown->read_ref_count.try_write();
+          auto& state = ObjectModel::get_cown_scheduler_state(*cown);
+          auto result = state.read_count.try_write();
           // There should definitely be at least one reader in the chain.
           assert(!result);
           snmalloc::UNUSED(result);
           // Release: pairs with the acquire load in wakeup_next_writer.
-          cown->next_writer.store(first_writer, std::memory_order_release);
+          state.next_writer.store(first_writer, std::memory_order_release);
         }
       }
 
@@ -888,16 +978,41 @@ namespace verona::rt
       return pointer_offset<Slot>(this, sizeof(BehaviourCore));
     }
 
-    size_t get_count()
+    size_t get_count() const noexcept
     {
       return count;
     }
 
-    template<typename T = void>
-    T* get_body()
+    void* get_body(size_t alignment = alignof(void*)) noexcept
     {
+      assert(alignment != 0);
+      assert((alignment & (alignment - 1)) == 0);
+
       Slot* slots = pointer_offset<Slot>(this, sizeof(BehaviourCore));
-      return pointer_offset<T>(slots, sizeof(Slot) * count);
+      auto* unaligned = pointer_offset<void>(slots, sizeof(Slot) * count);
+      return pointer_align_up(unaligned, alignment);
+    }
+
+    template<typename T = void>
+    T* get_body() noexcept
+    {
+      if constexpr (std::is_void_v<T>)
+        return static_cast<T*>(get_body(alignof(void*)));
+      else
+        return static_cast<T*>(get_body(alignof(T)));
+    }
+
+    Cown* acquired_cown(size_t index) noexcept
+    {
+      assert(index < count);
+      return get_slots()[index].cown();
+    }
+
+    AccessMode acquired_mode(size_t index) noexcept
+    {
+      assert(index < count);
+      return get_slots()[index].is_read_only() ? AccessMode::Read :
+                                                 AccessMode::Write;
     }
 
     /**
@@ -907,104 +1022,119 @@ namespace verona::rt
      * This is inherently unsafe, and should only be used when it is known the
      * work object was constructed using `BehaviourCore::make`.
      */
-    static BehaviourCore* from_work(Work* w)
+    static BehaviourCore* from_work(Work* w) noexcept
     {
       return pointer_offset<BehaviourCore>(w, sizeof(Work));
     }
 
     /**
-     * @brief Called on completion of a behaviour.  This will release the slots
-     * so that subsequent behaviours can be scheduled.
-     * @param work - The work object that was used to schedule the behaviour.
-     * @param reuse - If true, then the behaviour will be reset and reused.
-     * Otherwise, it will be deallocated.
+     * Complete a behaviour after its body has been destroyed.
+     *
+     * Releases the acquired slots and deallocates the behaviour. The work
+     * pointer is invalid after this call.
      */
-    static void finished(Work* work, bool reuse = false)
+    static void finished(Work* work) noexcept
     {
       auto behaviour = BehaviourCore::from_work(work);
       Logging::cout() << "Finished Behaviour " << *behaviour << Logging::endl;
       behaviour->release_all();
-      if (!reuse)
-        heap::dealloc(work);
-      else
-        behaviour->reset();
+      heap::dealloc(work);
     }
 
     /**
-     * @brief Deallocate the behaviour.
+     * Complete a reusable behaviour after one invocation.
      *
-     * This will deallocate the work object, and the body of the behaviour.
-     * This only needs to be called for behaviours that called finished(...,
-     * true) as the finished function will not have deallocated the work object
-     * and behaviour.
+     * Releases the acquired slots and resets the behaviour without
+     * deallocating it.
      */
-    void dealloc()
+    static void finished_and_reuse(Work* work) noexcept
+    {
+      auto behaviour = BehaviourCore::from_work(work);
+      Logging::cout() << "Finished reusable Behaviour " << *behaviour
+                      << Logging::endl;
+      behaviour->release_all();
+      behaviour->reset();
+    }
+
+    /**
+     * Deallocate a reusable behaviour after its body has been destroyed and
+     * it can no longer be scheduled.
+     */
+    void dealloc() noexcept
     {
       Logging::cout() << "Deallocating Behaviour " << *this << Logging::endl;
       heap::dealloc(as_work());
     }
 
     /**
-     * @brief Constructs a behaviour.  Leaves space for the closure.
+     * Allocate storage for a behaviour under construction.
      *
-     * @param count - Number of slots to allocate, i.e. how many cowns to wait
-     * for.
-     * @param f - The function to execute once all the behaviours dependencies
-     * are ready.  This should have a specific form as it will receive a pointer
-     * to work object rather than body itself.
-     * @param payload - The size of the payload to allocate.
-     * @return BehaviourCore* - the pointer to the behaviour object.
+     * The allocation contains a `Work`, a `BehaviourCore`, storage for `count`
+     * cown requests, padding for `body_alignment`, and `body_size` bytes of
+     * body storage. Each request is represented internally by a `Slot`.
+     * `body_alignment` must be a non-zero power of two.
      *
-     * @note
-     * The work function of f should be of the form:Aal
+     * The returned `Construction` owns the unscheduled allocation. Construct
+     * the body in `construction.body`, then initialise every request with
+     * `initialise_request`. Call `finish_construction` to obtain the
+     * schedulable `BehaviourCore`, and pass that result to `schedule`.
      *
-     *   void invoke(Work*)
-     *   {
-     *     BehaviourCore* behaviour = BehaviourCore::from_work(work);
-     *     Body* body = behaviour->get_body<Body>();
+     * If construction cannot be completed, destroy any body that was
+     * constructed and call `abort`. References marked as
+     * `Ownership::Transferred` remain owned by the caller until `schedule`
+     * begins.
      *
-     *     // Load the cown pointers from the behaviour.
-     *     Cown* cown1 = behaviour->get_slots()[0].cown();
-     *     Cown* cown2 = behaviour->get_slots()[1].cown();
-     *     ...
+     * The scheduler invokes `entry` through its single indirect call. The
+     * entry point must recover the behaviour and body, execute the body,
+     * destroy it, and call `finished`. It must not unwind through `Work::run`.
+     * For example:
      *
-     *     // Do the actual behaviours work
-     *     ...
+     *     using Behaviour = BehaviourCore<MyObjectModel>;
      *
-     *     BehaviourCore::finished(work);
-     *   }
+     *     void invoke(Work* work) noexcept
+     *     {
+     *       auto* behaviour = Behaviour::from_work(work);
+     *       auto* body = behaviour->get_body<Body>();
      *
-     * Using this form allows the implementation to use a single indirect call
-     * to this function, rather than having to do a second indirect call inside
-     * the body of the behaviour for what to do.  (Note the underlying
-     * scheduler runs things other than behaviours, so it will alway need at
-     * least one indirect call).
+     *       (*body)();
+     *       body->~Body();
+     *       Behaviour::finished(work);
+     *     }
      *
-     * @note The behaviour does not fill in the slots for the cowns, and those
-     * should be filled in by the caller.
+     *     auto construction =
+     *       Behaviour::make(1, sizeof(Body), alignof(Body), invoke);
+     *     new (construction.body) Body{...};
+     *     Behaviour::initialise_request(
+     *       construction,
+     *       0,
+     *       cown,
+     *       AccessMode::Write,
+     *       Ownership::Borrowed);
+     *     auto* behaviour = Behaviour::finish_construction(construction);
+     *     Behaviour::schedule(behaviour);
      *
-     *    BehaviourCore b = make(2, invoke, sizeof(Body));
-     *    auto slots = b.get_slots();
-     *    new (&slots[0])) Slot(cown1);
-     *    new (&slots[1])) Slot(cown2);
-     *
-     *    BehaviourCore::schedule(&b, 1);
-     *
-     * This fills in the two slots, and then schedules the behaviour.  The
-     * function set_read_only should be called on a slot if it only requires
-     * read access to the cown, and set_move should be called if the cown is
-     * being moved into the behaviour, i.e. the context is transferring an RC
-     * to the cown.
+     * @param count Number of cown requests.
+     * @param body_size Number of bytes reserved for the body.
+     * @param body_alignment Required alignment of the body storage.
+     * @param entry Non-throwing entry point invoked by the scheduler.
+     * @return An unscheduled construction and its aligned body address.
      */
-    static BehaviourCore* make(size_t count, void (*f)(Work*), size_t payload)
+    static Construction make(
+      size_t count,
+      size_t body_size,
+      size_t body_alignment,
+      EntryPoint entry) noexcept
     {
+      assert(body_alignment != 0);
+      assert((body_alignment & (body_alignment - 1)) == 0);
+
       // Manual memory layout of the behaviour structure.
-      //   | Work | Behaviour | Slot ... Slot | Body |
-      size_t size =
-        sizeof(Work) + sizeof(BehaviourCore) + (sizeof(Slot) * count) + payload;
+      //   | Work | Behaviour | Slot ... Slot | padding | Body |
+      size_t size = sizeof(Work) + sizeof(BehaviourCore) +
+        (sizeof(Slot) * count) + (body_alignment - 1) + body_size;
       void* base = heap::alloc(size);
 
-      Work* work = new (base) Work(f);
+      Work* work = new (base) Work(entry);
       void* base_behaviour = from_work(work);
       BehaviourCore* behaviour = new (base_behaviour) BehaviourCore(count);
 
@@ -1020,8 +1150,73 @@ namespace verona::rt
       static_assert(
         sizeof(Work) % sizeof(void*) == 0,
         "Work size must be a multiple of pointer size");
+      static_assert(
+        std::is_trivially_destructible_v<Slot>,
+        "Unscheduled slots must not require destruction");
+
+      return {behaviour, behaviour->get_body(body_alignment)};
+    }
+
+    /**
+     * Construct one request in an allocated behaviour.
+     */
+    static void initialise_request(
+      Construction& construction,
+      size_t index,
+      Cown* cown,
+      AccessMode access,
+      Ownership ownership) noexcept
+    {
+      auto* behaviour = construction.behaviour;
+      assert(behaviour != nullptr);
+      assert(index < behaviour->count);
+
+      assert(index == construction.next_request);
+
+      auto* slot = new (&behaviour->get_slots()[index]) Slot(cown);
+      if (access == AccessMode::Read)
+        slot->set_read_only();
+      if (ownership == Ownership::Transferred)
+        slot->set_move();
+
+#ifndef NDEBUG
+      construction.next_request++;
+#endif
+    }
+
+    /**
+     * Finish constructing a behaviour and return its schedulable form.
+     */
+    static BehaviourCore*
+    finish_construction(Construction& construction) noexcept
+    {
+      assert(construction.behaviour != nullptr);
+
+      assert(construction.next_request == construction.behaviour->get_count());
+
+      auto* behaviour = construction.behaviour;
+
+#ifndef NDEBUG
+      construction = {nullptr, nullptr};
+#endif
 
       return behaviour;
+    }
+
+    /**
+     * Deallocate a behaviour whose construction has not been finished.
+     *
+     * The caller remains responsible for destroying any constructed body.
+     * Ownership marked as transferred does not commit until schedule begins.
+     */
+    static void abort(Construction& construction) noexcept
+    {
+      assert(construction.behaviour != nullptr);
+      heap::dealloc(construction.behaviour->as_work());
+
+#ifndef NDEBUG
+      construction = {nullptr, nullptr};
+#endif
     }
 
     /**
@@ -1032,8 +1227,13 @@ namespace verona::rt
      * site so the branch is predicted locally and either path is reached
      * via a direct call with no intermediate frame.
      */
+    static SNMALLOC_FAST_PATH void schedule(BehaviourCore* body) noexcept
+    {
+      schedule(&body, 1);
+    }
+
     static SNMALLOC_FAST_PATH void
-    schedule(BehaviourCore** bodies, size_t body_count)
+    schedule(BehaviourCore* const* bodies, size_t body_count) noexcept
     {
       if (body_count == 1 && bodies[0]->count == 1)
       {
@@ -1066,7 +1266,7 @@ namespace verona::rt
      *
      * Precondition: `body->count == 1`.
      */
-    static void schedule_one(BehaviourCore* body)
+    static void schedule_one(BehaviourCore* body) noexcept
     {
       assert(body->count == 1);
 
@@ -1133,7 +1333,8 @@ namespace verona::rt
      * @note This adds the behaviours to the dependency graph, and handles all
      * the process of waking up the work and adding to the underlying scheduler.
      */
-    static void schedule_many(BehaviourCore** bodies, size_t body_count)
+    static void
+    schedule_many(BehaviourCore* const* bodies, size_t body_count) noexcept
     {
       /* IMPLEMENTATION NOTE
        * *** Single behaviour scheduling ***
@@ -1294,14 +1495,17 @@ namespace verona::rt
                        const std::tuple<size_t, Slot*> i,
                        const std::tuple<size_t, Slot*> j) {
 #ifdef USE_SYSTEMATIC_TESTING
-        if (std::get<1>(i)->cown()->id() == std::get<1>(j)->cown()->id())
+        if (
+          ObjectModel::get_cown_identity(*std::get<1>(i)->cown()) ==
+          ObjectModel::get_cown_identity(*std::get<1>(j)->cown()))
           if (std::get<0>(i) == std::get<0>(j))
             return (!std::get<1>(i)->is_read_only()) &&
               std::get<1>(j)->is_read_only();
           else
             return std::get<0>(i) < std::get<0>(j);
         else
-          return std::get<1>(i)->cown()->id() < std::get<1>(j)->cown()->id();
+          return ObjectModel::get_cown_identity(*std::get<1>(i)->cown()) <
+            ObjectModel::get_cown_identity(*std::get<1>(j)->cown());
 #else
         if (std::get<1>(i)->cown() == std::get<1>(j)->cown())
           if (std::get<0>(i) == std::get<0>(j))
@@ -1362,10 +1566,6 @@ namespace verona::rt
           auto slot_next = std::get<1>(cown_to_behaviour_slot_map[i]);
           if (body_next == body)
           {
-            // Check if the caller passed an RC and add to the total.
-            transfer_count +=
-              std::get<1>(cown_to_behaviour_slot_map[i])->take_move();
-
             Logging::cout() << "Duplicate " << cown << " for " << body
                             << " Index " << i << Logging::endl;
             // We need to reduce the execution count by one, as we can't wait
@@ -1462,27 +1662,29 @@ namespace verona::rt
   /**
    * Wake up the writer waiting behind a reader chain.
    */
-  inline void Slot::wakeup_next_writer()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::wakeup_next_writer()
   {
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     // Acquire: pairs with the release store that installed the writer
     // pointer.  If non-null, we have the HB edge we need before
     // dereferencing w.
-    auto w = cown()->next_writer.load(std::memory_order_acquire);
+    auto w = state.next_writer.load(std::memory_order_acquire);
 
     if (w == nullptr)
     {
       // Spin relaxed: value changes are visible by atomicity; we never
       // dereference the result of these loads.
-      while (cown()->next_writer.load(std::memory_order_relaxed) == nullptr)
+      while (state.next_writer.load(std::memory_order_relaxed) == nullptr)
       {
-        Systematic::yield_until([this]() {
-          return cown()->next_writer.load(std::memory_order_relaxed) != nullptr;
+        Systematic::yield_until([&state]() {
+          return state.next_writer.load(std::memory_order_relaxed) != nullptr;
         });
         Aal::pause();
       }
 
       // Re-acquire after spin: this is the load whose result we dereference.
-      w = cown()->next_writer.load(std::memory_order_acquire);
+      w = state.next_writer.load(std::memory_order_acquire);
     }
 
     Logging::cout() << *this << " Last Reader waking up next writer " << *w
@@ -1492,15 +1694,17 @@ namespace verona::rt
     // Relaxed: the release to the resolved writer is provided by
     // w->resolve() -> Scheduler::schedule -> MPMCQ.enqueue, not by
     // this store.
-    cown()->next_writer.store(nullptr, std::memory_order_relaxed);
+    state.next_writer.store(nullptr, std::memory_order_relaxed);
     w->resolve();
   }
 
-  inline void Slot::drop_read()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::drop_read()
   {
     assert(is_read_only());
 
-    auto status = cown()->read_ref_count.release_read();
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
+    auto status = state.read_count.release_read();
     if (status != ReadRefCount::NOT_LAST)
     {
       if (status == ReadRefCount::LAST_READER_WAITING_WRITER)
@@ -1519,11 +1723,12 @@ namespace verona::rt
       Logging::cout() << *this
                       << " Last Reader releasing the cown no writer waiting"
                       << Logging::endl;
-      shared::release(cown());
+      ObjectModel::release(*cown());
     }
   }
 
-  inline void Slot::release()
+  template<class ObjectModel>
+  inline void Slot<ObjectModel>::release()
   {
     Logging::cout() << "Release slot " << *this << Logging::endl;
 
@@ -1534,6 +1739,7 @@ namespace verona::rt
       return;
     }
 
+    auto& state = ObjectModel::get_cown_scheduler_state(*cown());
     assert(!is_wait_2pl());
 
     if (no_successor_response())
@@ -1558,7 +1764,7 @@ namespace verona::rt
       //     acquire, pairing with the successor's release write into
       //     status.  That acquire is the HB edge we need before
       //     dereferencing the successor pointer.
-      if (cown()->last_slot.compare_exchange_strong(
+      if (state.last_slot.compare_exchange_strong(
             slot_addr,
             nullptr,
             std::memory_order_release,
@@ -1576,7 +1782,7 @@ namespace verona::rt
         // queue.
         Logging::cout() << "CAS Success No more work for cown "
                         << Logging::endl;
-        shared::release(cown());
+        ObjectModel::release(*cown());
         return;
       }
 
@@ -1609,7 +1815,7 @@ namespace verona::rt
     // from another chain can set the low bit at any point (see
     // ReadRefCount::add_read), in which case we observe first_reader=false.
     // Either way is benign: our chain's last reader will clear the bit.
-    bool first_reader = cown()->read_ref_count.add_read();
+    bool first_reader = state.read_count.add_read();
     snmalloc::UNUSED(first_reader);
 
     yield();
@@ -1618,7 +1824,7 @@ namespace verona::rt
                        "reference count for first reader."
                     << *this << "next slot " << *next_slot() << Logging::endl;
 
-    Cown::acquire(cown());
+    ObjectModel::acquire(*cown());
     yield();
 
     bool writer_at_end = false;
@@ -1666,19 +1872,19 @@ namespace verona::rt
     }
 
     // Add read count for readers.
-    cown()->read_ref_count.add_read(count);
+    state.read_count.add_read(count);
 
     yield();
 
     if (writer_at_end)
     {
-      auto result = cown()->read_ref_count.try_write();
+      auto result = state.read_count.try_write();
       // There should definitely be at least one reader in the chain.
       assert(!result);
       snmalloc::UNUSED(result);
       yield();
       // Release: pairs with the acquire load in wakeup_next_writer.
-      cown()->next_writer.store(
+      state.next_writer.store(
         curr_slot->next_behaviour(), std::memory_order_release);
       yield();
     }
@@ -1693,4 +1899,4 @@ namespace verona::rt
     }
     last_slot->get_behaviour()->resolve(1, false);
   }
-} // namespace verona::rt
+} // namespace verona::rt::boc

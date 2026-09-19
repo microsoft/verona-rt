@@ -8,6 +8,14 @@ using namespace std;
 struct TestCown : public VCown<TestCown>
 {};
 
+struct alignas(64) AlignedBehaviour
+{
+  void operator()()
+  {
+    assert(reinterpret_cast<uintptr_t>(this) % alignof(AlignedBehaviour) == 0);
+  }
+};
+
 struct A
 {
   int v;
@@ -50,6 +58,13 @@ void lambda_cown()
   Cown::release(c);
 }
 
+void aligned_lambda_cown()
+{
+  TestCown* c = new TestCown;
+  schedule_lambda(c, AlignedBehaviour{});
+  Cown::release(c);
+}
+
 int main(int argc, char** argv)
 {
   SystematicTestHarness harness(argc, argv);
@@ -58,6 +73,7 @@ int main(int argc, char** argv)
   harness.run(lambda_cown);
   harness.run(lambda_args);
   harness.run(lambda_smart);
+  harness.run(aligned_lambda_cown);
 
   return 0;
 }
