@@ -71,6 +71,9 @@ namespace verona::rt
     /// quiescence.
     size_t external_event_sources = 0;
 
+    /// Work to schedule one item at a time as the runtime reaches quiescence.
+    Work* quiescence_work = nullptr;
+
     bool teardown_in_progress = false;
 
     bool fair = false;
@@ -184,6 +187,25 @@ namespace verona::rt
 
       auto* core = round_robin();
       T::schedule_lifo(core, w);
+    }
+
+    /**
+     * Schedule a work item when the runtime next reaches quiescence.
+     *
+     * Items are scheduled in LIFO order, one per quiescence. Ownership of the
+     * work item transfers to the runtime.
+     */
+    static void schedule_at_quiescence(Work* work)
+    {
+      assert(work != nullptr);
+
+      auto& s = get();
+      auto h = s.sync.handle(local());
+      assert(!s.teardown_in_progress);
+      assert(work->next_in_queue == nullptr);
+
+      work->next_in_queue = s.quiescence_work;
+      s.quiescence_work = work;
     }
 
     void init(size_t count, void (*run_at_termination)(void) = nullptr)
@@ -332,6 +354,18 @@ namespace verona::rt
           h.pause(); // Spurious wake-ups are safe.
           Logging::cout() << "Unpausing last thread" << Logging::endl;
           return true;
+        }
+
+        if (quiescence_work != nullptr)
+        {
+          auto* work = quiescence_work;
+          quiescence_work = work->next_in_queue;
+          work->next_in_queue = nullptr;
+
+          local()->core->q.enqueue(work);
+          Logging::cout() << "Scheduled quiescence work " << work
+                          << Logging::endl;
+          return false;
         }
 
         Logging::cout() << "Teardown beginning" << Logging::endl;
