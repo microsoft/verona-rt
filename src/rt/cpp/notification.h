@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "../boc/shared.h"
+#include "../object/shared.h"
 #include "behaviour.h"
 
 namespace verona::rt
@@ -52,7 +52,7 @@ namespace verona::rt
      * The function to invoke on notification being scheduled.
      */
     template<typename Be>
-    static void invoke(Work* work)
+    static void invoke(Work* work) noexcept
     {
       // Dispatch to the body of the behaviour.
       BehaviourCore* b = BehaviourCore::from_work(work);
@@ -64,7 +64,7 @@ namespace verona::rt
       notification->set_running();
       (body)();
 
-      BehaviourCore::finished(work, true);
+      BehaviourCore::finished_and_reuse(work);
 
       notification->finished_running();
     }
@@ -132,7 +132,7 @@ namespace verona::rt
     {
       assert(status == Status::Requested);
       Logging::cout() << "Notification: Scheduling: " << std::endl;
-      BehaviourCore::schedule(&behaviour, 1);
+      BehaviourCore::schedule(behaviour);
     }
 
   public:
@@ -175,16 +175,13 @@ namespace verona::rt
     template<typename Be, typename... Args>
     static Notification* make(size_t count, Request* requests, Args... args)
     {
-      // These assertions are basically checking that we won't break any
-      // alignment assumptions on Be.  If we add some actual alignment, then
-      // this can be improved.
-      static_assert(
-        alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
-
       // Allocate the behaviour object.
-      auto behaviour_core =
-        BehaviourCore::make(count, invoke<Be>, sizeof(BehaviourWrapper<Be>));
-      auto wrapper = behaviour_core->template get_body<BehaviourWrapper<Be>>();
+      auto construction = BehaviourCore::make(
+        count,
+        sizeof(BehaviourWrapper<Be>),
+        alignof(BehaviourWrapper<Be>),
+        invoke<Be>);
+      auto wrapper = static_cast<BehaviourWrapper<Be>*>(construction.body);
       new (&(wrapper->body)) Be(std::forward<Args>(args)...);
 
       // Allocate the notification object.
@@ -193,17 +190,22 @@ namespace verona::rt
       auto notification = new (o) Notification();
 
       // Tie them together.
-      notification->behaviour = behaviour_core;
       wrapper->notification = notification;
 
       // Set up the slots.
-      auto* slots = behaviour_core->get_slots();
       for (size_t i = 0; i < count; i++)
       {
         Shared::acquire(requests[i].cown());
-        new (&slots[i]) Slot(requests[i].cown());
+        BehaviourCore::initialise_request(
+          construction,
+          i,
+          requests[i].cown(),
+          AccessMode::Write,
+          Ownership::Borrowed);
       }
 
+      notification->behaviour =
+        BehaviourCore::finish_construction(construction);
       return notification;
     }
   };

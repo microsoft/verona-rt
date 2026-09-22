@@ -207,7 +207,7 @@ namespace verona::rt
      */
     Promise() : slot(this, true), fulfilled(false)
     {
-      VCown<Promise<T>>::last_slot = &slot;
+      slot.set_as_cown_queue_tail();
     }
 
   public:

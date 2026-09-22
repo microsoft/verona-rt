@@ -3,6 +3,8 @@
 #pragma once
 
 #include "../boc/behaviourcore.h"
+#include "../object/verona_object_model.h"
+#include "behaviour_rerun.h"
 
 namespace verona::rt
 {
@@ -56,16 +58,15 @@ namespace verona::rt
   class Behaviour : public BehaviourCore
   {
     template<typename Be>
-    static void invoke(Work* work)
+    static void invoke(Work* work) noexcept
     {
       // Dispatch to the body of the behaviour.
       BehaviourCore* b = BehaviourCore::from_work(work);
       Be* body = b->get_body<Be>();
 
       (*body)();
-      if (behaviour_rerun())
+      if (take_behaviour_rerun_request())
       {
-        behaviour_rerun() = false;
         Scheduler::schedule(work);
         return;
       }
@@ -76,26 +77,14 @@ namespace verona::rt
     }
 
   public:
-    static bool& behaviour_rerun()
-    {
-      static thread_local bool rerun = false;
-      return rerun;
-    }
-
     template<typename Be>
-    static Behaviour* make(size_t count, Be&& f)
+    static BehaviourCore::Construction make(size_t count, Be&& f)
     {
-      auto behaviour_core = BehaviourCore::make(count, invoke<Be>, sizeof(Be));
+      auto construction =
+        BehaviourCore::make(count, sizeof(Be), alignof(Be), invoke<Be>);
+      new (construction.body) Be(std::forward<Be>(f));
 
-      new (behaviour_core->get_body()) Be(std::forward<Be>(f));
-
-      // These assertions are basically checking that we won't break any
-      // alignment assumptions on Be.  If we add some actual alignment, then
-      // this can be improved.
-      static_assert(
-        alignof(Be) <= sizeof(void*), "Alignment not supported, yet!");
-
-      return (Behaviour*)behaviour_core;
+      return construction;
     }
 
     template<TransferOwnership transfer = NoTransfer, class T>
@@ -133,23 +122,24 @@ namespace verona::rt
     static Behaviour*
     prepare_to_schedule(size_t count, Request* requests, Be&& f)
     {
-      auto body = Behaviour::make<Be>(count, std::forward<Be>(f));
+      auto construction = Behaviour::make<Be>(count, std::forward<Be>(f));
 
-      auto* slots = body->get_slots();
-      Logging::cout() << "Created behaviour " << body << " with ";
+      Logging::cout() << "Created behaviour " << construction.behaviour
+                      << " with ";
       for (size_t i = 0; i < count; i++)
       {
         Logging::cout() << requests[i].cown()
                         << (requests[i].is_read() ? "-R, " : "-RW, ");
-        auto* s = new (&slots[i]) Slot(requests[i].cown());
-        if (requests[i].is_move())
-          s->set_move();
-        if (requests[i].is_read())
-          s->set_read_only();
+        BehaviourCore::initialise_request(
+          construction,
+          i,
+          requests[i].cown(),
+          requests[i].is_read() ? AccessMode::Read : AccessMode::Write,
+          requests[i].is_move() ? Ownership::Transferred : Ownership::Borrowed);
       }
       Logging::cout() << Logging::endl;
 
-      return body;
+      return (Behaviour*)BehaviourCore::finish_construction(construction);
     }
 
     template<class Be>
@@ -161,9 +151,7 @@ namespace verona::rt
       auto* body =
         prepare_to_schedule<Be>(count, requests, std::forward<Be>(f));
 
-      BehaviourCore* arr[] = {body};
-
-      BehaviourCore::schedule(arr, 1);
+      BehaviourCore::schedule(body);
     }
   };
 } // namespace verona::rt

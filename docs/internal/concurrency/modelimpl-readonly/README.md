@@ -13,10 +13,10 @@ freedom, atomic multi-cown acquisition, FIFO fairness for writers).
 
 The C# model is a deliberate *port* of the production C++ implementation in
 [`src/rt/boc/behaviourcore.h`](../../../../src/rt/boc/behaviourcore.h) and
-[`src/rt/boc/cown.h`](../../../../src/rt/boc/cown.h) with three things
-left out: the orthogonal *atomic multi-schedule* feature, plus two
-production concerns (intrusive ref-counting and the `n==1` direct-dispatch
-shortcut). The read-only protocol logic is identical; see
+[`src/rt/boc/cown_scheduler_state.h`](../../../../src/rt/boc/cown_scheduler_state.h)
+with three things left out: the orthogonal *atomic multi-schedule* feature,
+plus two production concerns (intrusive ref-counting and the `n==1`
+direct-dispatch shortcut). The read-only protocol logic is identical; see
 ["What we left out"](#11-what-we-left-out) at the end.
 
 For the simpler exclusive-access model (the one in the paper), see the
@@ -73,8 +73,8 @@ enforces it through the type system.
 
 ## 2. Per-cown state
 
-Each cown carries three fields (see `CownBase` in `When.cs`, mirroring
-`Cown` in `boc/cown.h`):
+Each cown carries three scheduler fields (see `CownBase` in `When.cs`,
+mirroring `CownSchedulerState` in `boc/cown_scheduler_state.h`):
 
 ```
 +----------------+
@@ -283,7 +283,7 @@ state encodes *the successor link*, which is the only correct thing to walk.
 Treating `Wait` as "writer-successor by elimination" is exactly the
 cascade-walker `Wait` race that the spin guards against (and that the C++
 runtime fix in
-[`behaviourcore.h:159`](../../../../src/rt/boc/behaviourcore.h) addresses).
+[`behaviourcore.h`](../../../../src/rt/boc/behaviourcore.h) addresses).
 
 ---
 
@@ -328,7 +328,9 @@ implemented in `When.cs` (`PostEnqueue`, `ReadRefCount.ReleaseRead`, and
 reader must spin until `nextWriter` is non-null, otherwise the writer is
 lost.
 
-The subtle point ([`cown.h:84`](../../../../src/rt/boc/cown.h)): in the
+The subtle point
+([`cown_scheduler_state.h:66`](../../../../src/rt/boc/cown_scheduler_state.h)):
+in the
 `LastReaderWaitingWriter` path the reader must reset the count to 0, not
 just decrement. Otherwise a subsequent `Add(-2)` on the same counter from a
 stale path would underflow.
@@ -559,9 +561,10 @@ production port should use a flat representation.
   are reused from that directory via `<Compile Link>` in
   [`verona-csharp.csproj`](verona-csharp.csproj).
 - [`behaviourcore.h`](../../../../src/rt/boc/behaviourcore.h) — the
-  production implementation. See `Slot::release` (~line 1289) for the
-  cascade walker, and `BehaviourCore::schedule_many` for full multi-schedule.
-- [`cown.h`](../../../../src/rt/boc/cown.h) — `ReadRefCount` (~lines 46-121);
-  line 85 is the count-clear in `release_read` discussed in
+  production implementation. See `boc::Slot::release` for the cascade walker,
+  and `boc::BehaviourCore::schedule_many` for full multi-schedule.
+- [`cown_scheduler_state.h`](../../../../src/rt/boc/cown_scheduler_state.h) —
+  `ReadRefCount` and the three fields owned by the BoC protocol. The
+  count-clear in `release_read` is discussed in
   [§6](#6-last-reader-wakes-writer).
 - The original [BoC paper][bocpaper] for the write-only protocol.

@@ -5,6 +5,7 @@
 #include "../debug/logging.h"
 #include "../ds/forward_list.h"
 #include "../region/region.h"
+#include "base_noticeboard.h"
 #include "epoch.h"
 
 #include <queue>
