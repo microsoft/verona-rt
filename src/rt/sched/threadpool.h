@@ -202,7 +202,6 @@ namespace verona::rt
       auto& s = get();
       auto h = s.sync.handle(local());
       assert(!s.teardown_in_progress);
-      assert(work->next_in_queue == nullptr);
 
       work->next_in_queue = s.quiescence_work;
       s.quiescence_work = work;
