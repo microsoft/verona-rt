@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <verona.h>
 
@@ -34,6 +35,31 @@ namespace verona::cpp
   template<typename T>
   class cown_ptr;
 
+  template<typename T, typename = void>
+  struct has_trace : std::false_type
+  {};
+
+  template<typename T>
+  struct has_trace<
+    T,
+    std::void_t<decltype(std::declval<const T&>().trace(
+      std::declval<ObjectStack&>()))>> : std::true_type
+  {};
+
+  template<typename Derived, typename T, bool = has_trace<T>::value>
+  class ActualCownBase : public VCown<Derived>
+  {};
+
+  template<typename Derived, typename T>
+  class ActualCownBase<Derived, T, true> : public VCown<Derived>
+  {
+  public:
+    void trace(ObjectStack& fields) const
+    {
+      static_cast<const Derived*>(this)->trace_value(fields);
+    }
+  };
+
   /**
    * Internal Verona runtime cown for the type T.
    *
@@ -41,7 +67,7 @@ namespace verona::cpp
    * through the correct usage of cown_ptr and when.
    */
   template<typename T>
-  class ActualCown : public VCown<ActualCown<T>>
+  class ActualCown : public ActualCownBase<ActualCown<T>, T>
   {
   private:
     T value;
@@ -49,6 +75,18 @@ namespace verona::cpp
     template<typename... Args>
     ActualCown(Args&&... ts) : value(std::forward<Args>(ts)...)
     {}
+
+    /**
+     * Trace runtime-managed object-model edges from T. cown_ptr fields are
+     * RAII-managed and must not be added to this trace.
+     */
+    void trace_value(ObjectStack& fields) const
+    {
+      value.trace(fields);
+    }
+
+    template<typename, typename, bool>
+    friend class ActualCownBase;
 
     template<typename TT>
     friend class acquired_cown;
