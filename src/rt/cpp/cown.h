@@ -40,10 +40,7 @@ namespace verona::cpp
   {};
 
   template<typename T>
-  struct has_trace<
-    T,
-    std::void_t<decltype(std::declval<const T&>().trace(
-      std::declval<ObjectStack&>()))>> : std::true_type
+  struct has_trace<T, std::void_t<decltype(&T::trace)>> : std::true_type
   {};
 
   template<typename Derived, typename T, bool = has_trace<T>::value>
