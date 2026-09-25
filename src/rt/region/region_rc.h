@@ -271,7 +271,6 @@ namespace verona::rt
             assert(0);
           case Object::MARKED:
           case Object::UNMARKED:
-            // FIXME: we need to ensure decrefing removes from the lins q
             if (decref_inner(f))
             {
               f->trace(dfs);
@@ -280,6 +279,12 @@ namespace verona::rt
                 f->finalise(o, collect);
               }
               gc.push(f);
+              // Mark the object so that release_cycles skips it when draining
+              // the lins_stack. Without this, an object that was pushed to
+              // lins_stack before release and then had its RC brought to 0 here
+              // would appear UNMARKED (due to gc.push's init_next) and be added
+              // to gc a second time, causing a double-free.
+              f->mark();
             }
             break;
           case Object::SCC_PTR:
