@@ -42,7 +42,7 @@ namespace verona::cpp
   {};
 
   template<typename T>
-  struct has_trace<T, std::void_t<decltype(&T::trace)>> : std::true_type
+  struct has_trace<T, std::void_t<decltype(&T::trace)>> : std::true_type
 
   {};
 
@@ -90,6 +90,11 @@ namespace verona::cpp
       return *std::launder(reinterpret_cast<T*>(value_address()));
     }
 
+    const T& get_value() const
+    {
+      return const_cast<ActualCown*>(this)->get_value();
+    }
+
     template<typename... Args>
     ActualCown(Args&&... ts)
     {
@@ -107,7 +112,7 @@ namespace verona::cpp
      */
     void trace_value(ObjectStack& fields) const
     {
-      value.trace(fields);
+      get_value().trace(fields);
     }
 
     template<typename, typename, bool>
