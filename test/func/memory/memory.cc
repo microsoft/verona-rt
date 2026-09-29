@@ -16,7 +16,7 @@
 /**
  * Tests memory management, including the region functionality.
  *
- * Other tests to look at include finalisers and the various cowngc tests.
+ * Other tests to look at include finalisers and cown-tracing.
  **/
 
 void test_dealloc()
