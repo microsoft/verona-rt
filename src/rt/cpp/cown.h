@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstddef>
 #include <functional>
+#include <new>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -68,11 +70,36 @@ namespace verona::cpp
   class ActualCown : public ActualCownBase<ActualCown<T>, T>
   {
   private:
-    T value;
+    static constexpr size_t storage_alignment =
+      alignof(T) < Object::ALIGNMENT ? alignof(T) : Object::ALIGNMENT;
+    static constexpr size_t storage_size =
+      sizeof(T) + alignof(T) - storage_alignment;
+
+    alignas(storage_alignment) std::byte storage[storage_size];
+
+    void* value_address()
+    {
+      if constexpr (alignof(T) <= storage_alignment)
+        return storage;
+      else
+        return snmalloc::pointer_align_up(storage, alignof(T));
+    }
+
+    T& get_value()
+    {
+      return *std::launder(reinterpret_cast<T*>(value_address()));
+    }
 
     template<typename... Args>
-    ActualCown(Args&&... ts) : value(std::forward<Args>(ts)...)
-    {}
+    ActualCown(Args&&... ts)
+    {
+      auto* address = value_address();
+      assert(reinterpret_cast<uintptr_t>(address) % alignof(T) == 0);
+      assert(
+        reinterpret_cast<uintptr_t>(address) + sizeof(T) <=
+        reinterpret_cast<uintptr_t>(storage) + storage_size);
+      new (address) T(std::forward<Args>(ts)...);
+    }
 
     /**
      * Trace runtime-managed object-model edges from T. cown_ptr fields are
@@ -94,6 +121,12 @@ namespace verona::cpp
 
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&... ts);
+
+  public:
+    ~ActualCown()
+    {
+      get_value().~T();
+    }
   };
 
   /**
@@ -400,6 +433,9 @@ namespace verona::cpp
       "Cannot make a cown of const type as this conflicts with read acquire "
       "encoding trick. If we hit this assertion, raise an issue explaining the "
       "use case.");
+    static_assert(
+      alignof(ActualCown<T>) <= Object::ALIGNMENT,
+      "ActualCown must not require more than the runtime object alignment.");
     Scheduler::stats().cown();
     return cown_ptr<T>(new ActualCown<T>(std::forward<Args>(ts)...));
   }
@@ -471,10 +507,7 @@ namespace verona::cpp
 
     T& get_ref() const
     {
-      if constexpr (std::is_const<T>())
-        return const_cast<T&>(wrapped.allocated_cown->value);
-      else
-        return wrapped.allocated_cown->value;
+      return wrapped.allocated_cown->get_value();
     }
 
     T& operator*()

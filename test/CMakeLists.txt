@@ -79,6 +79,11 @@ else ()
 set (TOP_SEED 20)
 endif ()
 
+add_test(
+  runtime/func-sys-cown_alignment
+  ${TESTRUNNER} func-sys-cown_alignment
+  --cores 2 --seed 1 --seed_count ${CHUNK})
+
 add_test(${TESTNAME} ${TESTRUNNER} func-sys-hashmap --seed_count ${CHUNK})
 
 foreach(CORES 1 2 4)
