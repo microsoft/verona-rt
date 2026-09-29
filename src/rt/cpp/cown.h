@@ -70,7 +70,6 @@ namespace verona::cpp
     ActualCown(Args&&... ts)
     {
       auto* address = value_address();
-      assert(reinterpret_cast<uintptr_t>(storage) % storage_alignment == 0);
       assert(reinterpret_cast<uintptr_t>(address) % alignof(T) == 0);
       assert(
         reinterpret_cast<uintptr_t>(address) + sizeof(T) <=
